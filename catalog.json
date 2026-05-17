@@ -1,154 +1,21 @@
 {
   "catalog": [
     {
-      "id": "c1",
-      "name_ru": "Оверсайз худи бежевый",
-      "name_en": "Beige oversize hoodie",
-      "price_usd": 49,
-      "price_byn": 159,
-      "img": "https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=600",
-      "desc_ru": "Плотный хлопок 380 г/м². Свободный крой. Капюшон на шнурках.",
-      "desc_en": "Heavy cotton 380 gsm. Relaxed fit. Drawstring hood.",
+      "id": "c_mp9q1l414xa1",
+      "name_ru": "SHEEN KELLY Vintage",
+      "name_en": "SHEEN KELLY Vintage",
+      "desc_ru": "Описание на русском",
+      "desc_en": "English decription",
+      "images": [
+        "https://www.sheenkelly.com/cdn/shop/files/image_1_b7093572-8b63-446c-8be5-37d72252fdcd.jpg?v=1718759174&width=1440",
+        "https://www.sheenkelly.com/cdn/shop/files/23022-2_1_1.png?v=1739266136&width=600",
+        "https://www.sheenkelly.com/cdn/shop/files/image00013_6bd722ba-a491-43a3-bab2-b2e5b02b6f93.jpg?v=1739266136&width=1440"
+      ],
+      "price_usd": 25,
+      "price_byn": 69,
       "sizes": [
-        "XS",
-        "S",
-        "M",
-        "L",
-        "XL"
+        "One size"
       ]
-    },
-    {
-      "id": "c2",
-      "name_ru": "Карго-брюки чёрные",
-      "name_en": "Black cargo pants",
-      "price_usd": 55,
-      "price_byn": 179,
-      "img": "https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?w=600",
-      "desc_ru": "Универсальные карго с большими карманами. Эластичный пояс.",
-      "desc_en": "Versatile cargo with large pockets. Elastic waist.",
-      "sizes": [
-        "S",
-        "M",
-        "L",
-        "XL"
-      ]
-    },
-    {
-      "id": "c3",
-      "name_ru": "Базовая футболка белая",
-      "name_en": "Basic white tee",
-      "price_usd": 15,
-      "price_byn": 49,
-      "img": "https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?w=600",
-      "desc_ru": "Хлопок 220 г/м². Прямой крой. Без принтов.",
-      "desc_en": "Cotton 220 gsm. Straight cut. No prints.",
-      "sizes": [
-        "XS",
-        "S",
-        "M",
-        "L",
-        "XL",
-        "XXL"
-      ]
-    },
-    {
-      "id": "c4",
-      "name_ru": "Бомбер демисезонный",
-      "name_en": "Light bomber jacket",
-      "price_usd": 79,
-      "price_byn": 259,
-      "img": "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=600",
-      "desc_ru": "Лёгкий бомбер на молнии. Подойдёт на весну и осень.",
-      "desc_en": "Lightweight zip-up bomber. Great for spring and fall.",
-      "sizes": [
-        "S",
-        "M",
-        "L",
-        "XL"
-      ]
-    },
-    {
-      "id": "c5",
-      "name_ru": "Джинсы прямого кроя",
-      "name_en": "Straight-leg jeans",
-      "price_usd": 42,
-      "price_byn": 139,
-      "img": "https://images.unsplash.com/photo-1542272604-787c3835535d?w=600",
-      "desc_ru": "Классический деним. Прямой крой, средняя посадка.",
-      "desc_en": "Classic denim. Straight cut, mid-rise.",
-      "sizes": [
-        "28",
-        "30",
-        "32",
-        "34",
-        "36"
-      ]
-    },
-    {
-      "id": "c6",
-      "name_ru": "Кроссовки белые",
-      "name_en": "White sneakers",
-      "price_usd": 65,
-      "price_byn": 209,
-      "img": "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600",
-      "desc_ru": "Минималистичные кроссовки на каждый день.",
-      "desc_en": "Minimal everyday sneakers.",
-      "sizes": [
-        "38",
-        "39",
-        "40",
-        "41",
-        "42",
-        "43",
-        "44",
-        "45"
-      ]
-    }
-  ],
-  "inspiration": [
-    {
-      "id": "i1",
-      "name_ru": "Total black лук",
-      "name_en": "Total black look",
-      "price_usd": 129,
-      "price_byn": 419,
-      "img": "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=600",
-      "desc_ru": "Образ для прохладной погоды: оверсайз худи + карго + кроссовки.",
-      "desc_en": "Outfit for cool weather: oversize hoodie + cargo + sneakers.",
-      "sizes": []
-    },
-    {
-      "id": "i2",
-      "name_ru": "Спортивный сет",
-      "name_en": "Athleisure set",
-      "price_usd": 89,
-      "price_byn": 289,
-      "img": "https://images.unsplash.com/photo-1483721310020-03333e577078?w=600",
-      "desc_ru": "Спортивный костюм + футболка. Для тренировок и отдыха.",
-      "desc_en": "Tracksuit + tee. For workouts and downtime.",
-      "sizes": []
-    },
-    {
-      "id": "i3",
-      "name_ru": "Зимний образ",
-      "name_en": "Winter look",
-      "price_usd": 189,
-      "price_byn": 619,
-      "img": "https://images.unsplash.com/photo-1542838132-92c53300491e?w=600",
-      "desc_ru": "Пуховик + свитер + утеплённые штаны. До −20°C.",
-      "desc_en": "Puffer + sweater + insulated pants. Down to −4°F.",
-      "sizes": []
-    },
-    {
-      "id": "i4",
-      "name_ru": "Casual повседневный",
-      "name_en": "Everyday casual",
-      "price_usd": 64,
-      "price_byn": 209,
-      "img": "https://images.unsplash.com/photo-1551488831-00ddcb6c6bd3?w=600",
-      "desc_ru": "Футболка + джинсы + кроссовки. Классика на каждый день.",
-      "desc_en": "Tee + jeans + sneakers. Everyday classic.",
-      "sizes": []
     }
   ]
 }
