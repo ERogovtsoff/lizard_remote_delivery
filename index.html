@@ -28,6 +28,9 @@
     --radius: 12px;
     --radius-sm: 8px;
     --radius-lg: 16px;
+
+    --header-h: 60px;
+    --nav-h: calc(72px + env(safe-area-inset-bottom, 0px));
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body {
@@ -35,24 +38,42 @@
     background: var(--bg); color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     font-size: 15px; line-height: 1.4;
-    overscroll-behavior-y: contain;
     -webkit-font-smoothing: antialiased;
+    overscroll-behavior: none;
   }
-  body { min-height: 100vh; padding-bottom: calc(72px + env(safe-area-inset-bottom, 0)); }
+  html, body { height: 100%; }
+  body {
+    min-height: 100%;
+    padding-bottom: var(--nav-h);
+  }
   body.no-chrome { padding-bottom: 0; }
+  body.chat-mode {
+    /* в режиме чата страница не скроллится — скроллится только лента сообщений */
+    overflow: hidden;
+    height: 100vh;
+    height: 100dvh;
+    padding-bottom: 0;
+  }
   button { font-family: inherit; cursor: pointer; }
   input, textarea, select { font-family: inherit; font-size: 15px; }
   a { color: var(--link); text-decoration: none; }
   img { display: block; max-width: 100%; }
 
+  /* === Шапка === */
   .app-header {
     position: sticky; top: 0; z-index: 50;
     background: var(--bg); border-bottom: 1px solid var(--border);
     padding: 12px 16px;
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    min-height: var(--header-h);
   }
   .app-header.hidden { display: none; }
-  .header-title { font-size: 17px; font-weight: 600; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .header-title {
+    font-size: 17px; font-weight: 600; margin: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    background: none; border: none; color: inherit; padding: 0;
+    cursor: pointer;
+  }
   .header-actions { display: flex; gap: 6px; align-items: center; }
   .icon-btn {
     background: var(--bg-secondary); border: none; color: var(--text);
@@ -60,13 +81,6 @@
     display: flex; align-items: center; justify-content: center; padding: 0; position: relative;
   }
   .icon-btn svg { width: 20px; height: 20px; }
-  .currency-pill {
-    background: var(--bg-secondary); color: var(--text); border: none;
-    padding: 0 12px; height: 36px; border-radius: 18px;
-    font-size: 13px; font-weight: 600;
-    display: flex; align-items: center; gap: 4px;
-  }
-  .currency-pill svg { width: 12px; height: 12px; opacity: 0.6; }
   .badge {
     position: absolute; top: -2px; right: -2px;
     background: var(--danger); color: #fff;
@@ -81,6 +95,7 @@
   .page h2 { font-size: 22px; font-weight: 700; margin: 0 0 8px 0; }
   .page-sub { color: var(--text-secondary); margin: 0 0 20px 0; font-size: 14px; }
 
+  /* === Нижняя навигация === */
   .bottom-nav {
     position: fixed; bottom: 0; left: 0; right: 0;
     background: var(--bg); border-top: 1px solid var(--border);
@@ -102,7 +117,7 @@
   /* === Онбординг === */
   #page-onboarding {
     display: none; padding: 0; max-width: none; margin: 0;
-    min-height: 100vh;
+    min-height: 100vh; min-height: 100dvh;
     text-align: center;
     padding: 40px 24px;
     flex-direction: column; align-items: center; justify-content: center;
@@ -225,14 +240,18 @@
   #page-chat {
     display: none;
     padding: 0; max-width: 720px; margin: 0 auto;
-    min-height: calc(100vh - 0px);
+    /* высота: всё окно минус шапка и нижняя навигация */
+    height: calc(100vh - var(--header-h) - var(--nav-h));
+    height: calc(100dvh - var(--header-h) - var(--nav-h));
     flex-direction: column;
   }
   #page-chat.active { display: flex; }
   .chat-scroll {
-    flex: 1; overflow-y: auto;
+    flex: 1 1 auto; overflow-y: auto;
     padding: 16px 16px 12px;
     min-height: 0;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
   }
   .chat-day {
     text-align: center;
@@ -286,11 +305,10 @@
   .chat-bubble-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .chat-composer {
+    flex-shrink: 0;
     background: var(--bg);
     border-top: 1px solid var(--border);
-    padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0));
-    position: sticky;
-    bottom: 0;
+    padding: 8px 12px;
   }
   .chat-attached {
     display: flex; flex-wrap: wrap; gap: 8px;
@@ -318,7 +336,6 @@
     font-size: 12px; line-height: 1; padding: 0;
     display: flex; align-items: center; justify-content: center;
   }
-
   .chat-file-hint {
     background: rgba(217, 119, 6, 0.1);
     border-left: 3px solid var(--warning);
@@ -330,7 +347,6 @@
     line-height: 1.4;
   }
   .chat-file-hint:not(.show) { display: none; }
-
   .chat-input-row {
     display: flex; align-items: flex-end; gap: 6px;
   }
@@ -367,10 +383,77 @@
   }
 
   /* === Деталь товара === */
-  .product-detail-img {
-    width: calc(100% + 32px); margin: -16px -16px 16px -16px;
-    aspect-ratio: 1; object-fit: cover; background: var(--bg-tertiary);
+  .detail-top {
+    display: flex; align-items: center;
+    margin-bottom: 12px;
   }
+  .back-btn {
+    background: none; border: none; color: var(--link);
+    padding: 6px 0;
+    display: flex; align-items: center; gap: 4px; font-size: 15px;
+  }
+  .back-btn svg { width: 18px; height: 18px; }
+
+  /* Карусель фото */
+  .product-carousel {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1;
+    background: var(--bg-secondary);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+  .carousel-track {
+    display: flex;
+    height: 100%;
+    transition: transform 0.3s ease-out;
+    will-change: transform;
+  }
+  .carousel-track.dragging { transition: none; }
+  .carousel-slide {
+    flex: 0 0 100%;
+    height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    cursor: zoom-in;
+  }
+  .carousel-slide img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    user-select: none;
+    -webkit-user-drag: none;
+    pointer-events: none;
+  }
+  .carousel-dots {
+    position: absolute;
+    bottom: 8px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 6px;
+    background: rgba(0,0,0,0.25);
+    padding: 5px 8px;
+    border-radius: 12px;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+  .carousel-dots.hidden { display: none; }
+  .carousel-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.5);
+    transition: background 0.15s, width 0.15s;
+  }
+  .carousel-dot.active { background: #fff; width: 18px; border-radius: 3px; }
+  .carousel-counter {
+    position: absolute; top: 8px; right: 8px;
+    background: rgba(0,0,0,0.4);
+    color: #fff;
+    padding: 3px 8px;
+    border-radius: 10px;
+    font-size: 12px; font-weight: 500;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+  .carousel-counter.hidden { display: none; }
+
   .product-detail-name { font-size: 20px; font-weight: 600; margin: 0 0 6px; }
   .product-detail-price { font-size: 22px; font-weight: 700; margin: 0 0 4px; }
   .product-detail-price-alt { font-size: 14px; color: var(--text-secondary); margin: 0 0 16px; }
@@ -380,8 +463,48 @@
   }
   .product-section { margin: 20px 0; }
   .product-section h4 { font-size: 15px; font-weight: 600; margin: 0 0 10px; }
-  .size-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); gap: 8px; }
-  .size-cell { background: var(--bg-secondary); padding: 10px 8px; border-radius: var(--radius-sm); text-align: center; font-size: 13px; }
+
+  /* Сетка выбора размера */
+  .size-picker {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+    gap: 8px;
+  }
+  .size-cell {
+    background: var(--bg-secondary);
+    padding: 12px 8px;
+    border-radius: var(--radius-sm);
+    text-align: center;
+    font-size: 14px; font-weight: 500;
+    border: 2px solid transparent;
+    transition: all 0.15s;
+    cursor: pointer;
+  }
+  .size-cell.selected {
+    background: var(--accent);
+    color: var(--button-text);
+    border-color: var(--accent);
+  }
+  .size-cell.unavailable {
+    opacity: 0.45;
+    cursor: default;
+    text-decoration: line-through;
+  }
+
+  .size-ask-btn {
+    width: 100%;
+    background: none;
+    border: 1px dashed var(--border);
+    color: var(--text-secondary);
+    padding: 10px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    margin-top: 10px;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .size-ask-btn svg { width: 14px; height: 14px; }
+  .size-ask-btn:active { background: var(--bg-secondary); }
+
   .detail-actions { display: flex; gap: 10px; margin-top: 20px; }
   .detail-actions .primary-btn { margin: 0; flex: 1; }
   .detail-fav-btn {
@@ -391,11 +514,7 @@
   }
   .detail-fav-btn svg { width: 22px; height: 22px; }
   .detail-fav-btn.active svg { color: var(--danger); fill: var(--danger); }
-  .back-btn {
-    background: none; border: none; color: var(--link);
-    padding: 0; margin-bottom: 8px;
-    display: flex; align-items: center; gap: 4px; font-size: 15px;
-  }
+
   .primary-btn {
     width: 100%; background: var(--button); color: var(--button-text);
     border: none; padding: 14px; border-radius: var(--radius);
@@ -409,13 +528,77 @@
     border: none; padding: 12px; border-radius: var(--radius);
     font-size: 14px; font-weight: 500;
   }
-  .danger-btn {
-    width: 100%; background: rgba(229, 62, 62, 0.08); color: var(--danger);
-    border: none; padding: 12px; border-radius: var(--radius);
+
+  /* === Лайтбокс === */
+  .lightbox {
+    position: fixed; inset: 0;
+    background: #000;
+    z-index: 300;
+    display: none;
+    flex-direction: column;
+    touch-action: none;
+  }
+  .lightbox.show { display: flex; }
+  .lightbox-header {
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px;
+    padding-top: calc(12px + env(safe-area-inset-top, 0));
+    color: #fff;
+    background: linear-gradient(180deg, rgba(0,0,0,0.5) 0%, transparent 100%);
+    position: absolute; top: 0; left: 0; right: 0; z-index: 2;
+  }
+  .lightbox-counter {
     font-size: 14px; font-weight: 500;
   }
+  .lightbox-close {
+    background: rgba(255,255,255,0.15);
+    color: #fff; border: none;
+    width: 36px; height: 36px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0;
+  }
+  .lightbox-close svg { width: 20px; height: 20px; }
+  .lightbox-stage {
+    flex: 1; min-height: 0;
+    overflow: hidden;
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .lightbox-img-wrap {
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    touch-action: none;
+  }
+  .lightbox-img {
+    max-width: 100%; max-height: 100%;
+    transform-origin: 0 0;
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+  .lightbox-nav {
+    position: absolute;
+    top: 50%; transform: translateY(-50%);
+    background: rgba(0,0,0,0.4);
+    color: #fff; border: none;
+    width: 40px; height: 40px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0;
+    z-index: 2;
+  }
+  .lightbox-nav.prev { left: 12px; }
+  .lightbox-nav.next { right: 12px; }
+  .lightbox-nav svg { width: 22px; height: 22px; }
+  .lightbox-nav:disabled { opacity: 0; pointer-events: none; }
+  .lightbox-hint {
+    position: absolute;
+    bottom: 16px; left: 50%; transform: translateX(-50%);
+    color: rgba(255,255,255,0.7);
+    font-size: 12px;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
 
-  /* === Избранное / Корзина === */
+  /* === Корзина === */
   .cart-item {
     display: flex; gap: 12px; padding: 12px;
     background: var(--bg-secondary); border-radius: var(--radius);
@@ -429,6 +612,15 @@
   .cart-item-name {
     font-size: 14px; font-weight: 500; margin: 0 0 4px; overflow: hidden;
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+  .cart-item-size {
+    display: inline-block;
+    font-size: 11px; font-weight: 600;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-bottom: 4px;
   }
   .cart-item-price { font-size: 14px; font-weight: 600; }
   .cart-item-controls { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
@@ -462,17 +654,16 @@
     display: flex; align-items: center; justify-content: center;
     font-size: 22px; font-weight: 600;
     flex-shrink: 0;
+    overflow: hidden;
+    background-position: center;
+    background-size: cover;
   }
+  .profile-avatar.has-photo { background-color: var(--bg-tertiary); }
+  .profile-avatar.has-photo .avatar-letter { display: none; }
   .profile-info { flex: 1; min-width: 0; }
   .profile-name { font-size: 17px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .profile-username { font-size: 13px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .profile-section { margin-bottom: 24px; }
-  .profile-section-title {
-    font-size: 12px; font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: uppercase; letter-spacing: 0.5px;
-    margin: 0 0 8px 4px;
-  }
+
   .settings-group { background: var(--bg-secondary); border-radius: var(--radius); overflow: hidden; }
   .settings-row {
     display: flex; align-items: center; justify-content: space-between;
@@ -481,11 +672,26 @@
   .settings-row:last-child { border-bottom: none; }
   .settings-row-label { font-size: 15px; font-weight: 500; }
   .settings-row-sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+  .settings-row-icon {
+    flex-shrink: 0;
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--accent);
+  }
+  .settings-row-icon svg { width: 18px; height: 18px; }
+  .settings-row-content { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; }
   .settings-select {
     background: var(--bg); color: var(--text); border: 1px solid var(--border);
     border-radius: var(--radius-sm); padding: 8px 10px; font-size: 14px;
   }
   .settings-row.clickable { cursor: pointer; }
+  .chevron {
+    flex-shrink: 0;
+    color: var(--hint);
+  }
+  .chevron svg { width: 16px; height: 16px; }
 
   /* История */
   .history-item {
@@ -581,22 +787,56 @@
   }
   .admin-icon-btn svg { width: 16px; height: 16px; }
   .admin-icon-btn.danger { color: var(--danger); }
-  .image-preview {
-    width: 100%; aspect-ratio: 16/9; background: var(--bg-tertiary);
-    border-radius: var(--radius-sm); object-fit: cover;
-    margin-top: 8px; display: none;
+
+  /* Админский редактор картинок */
+  .image-editor {
+    margin-top: 8px;
+    display: flex; flex-direction: column; gap: 8px;
   }
-  .image-preview.show { display: block; }
+  .image-editor-item {
+    display: flex; gap: 8px; align-items: center;
+    background: var(--bg);
+    padding: 6px 8px 6px 6px;
+    border-radius: var(--radius-sm);
+  }
+  .image-editor-thumb {
+    width: 44px; height: 44px; border-radius: var(--radius-sm);
+    object-fit: cover; background: var(--bg-tertiary); flex-shrink: 0;
+  }
+  .image-editor-item input {
+    flex: 1; min-width: 0;
+    padding: 6px 10px;
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    background: var(--bg); color: var(--text); outline: none;
+    font-size: 13px;
+  }
+  .image-editor-remove {
+    flex-shrink: 0;
+    background: none; border: none; color: var(--danger);
+    width: 30px; height: 30px; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .image-editor-remove svg { width: 16px; height: 16px; }
+  .image-editor-add {
+    background: none;
+    border: 1px dashed var(--border);
+    color: var(--text-secondary);
+    padding: 10px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .image-editor-add svg { width: 14px; height: 14px; }
+
   .admin-form-actions { display: flex; gap: 8px; margin-top: 16px; }
   .admin-form-actions .primary-btn, .admin-form-actions .secondary-btn { margin-top: 0; }
 </style>
 </head>
 <body>
 
-<!-- ============== ОНБОРДИНГ (показывается один раз) ============== -->
+<!-- ============== ОНБОРДИНГ ============== -->
 <section class="page" id="page-onboarding">
   <div class="onb-logo">
-    <!-- Логотип-ящерица -->
     <svg viewBox="0 0 64 64" fill="currentColor" aria-hidden="true">
       <path d="M58 26c-1.2-4.6-5.4-8-10.4-8-1.8 0-3.5.5-5 1.3-1.7-2-4.3-3.3-7.1-3.3-2.5 0-4.8 1-6.5 2.6C27.3 16.9 24.8 16 22 16c-5.5 0-10 4.5-10 10 0 3.6 1.9 6.8 4.8 8.5-.5.8-.8 1.6-.8 2.5 0 3 2.5 5 6 5 .8 0 1.5-.1 2.2-.3l-3 3.5c-.5.6-.7 1.3-.7 2 0 1.7 1.3 3 3 3 .8 0 1.6-.3 2.2-.9L31 44c.8.2 1.6.4 2.5.4 2 0 3.8-.6 5.3-1.6.7 1.5 2.2 2.6 4 2.6 1.6 0 3-.8 3.8-2C50.4 41.8 56 36.5 56 30c0-.2 0-.4-.1-.6 1.3-.8 2.1-2.3 2.1-3.4zM45 28c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/>
     </svg>
@@ -604,48 +844,27 @@
   <div class="onb-brand" data-i18n="appName">Магазин</div>
   <h1 class="onb-title" data-i18n="onbTitle">Привет!</h1>
   <p class="onb-text" data-i18n="onbText">Магазин одежды и сервис заказа любых вещей из Китая — всё в одном приложении.</p>
-
   <div class="onb-features">
     <div class="onb-feature">
-      <div class="onb-feature-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-      </div>
-      <div class="onb-feature-text">
-        <strong data-i18n="onbF1Title">Заказ из Китая</strong>
-        <span data-i18n="onbF1Text">Опишите вещь или пришлите ссылку — менеджер найдёт и привезёт</span>
-      </div>
+      <div class="onb-feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+      <div class="onb-feature-text"><strong data-i18n="onbF1Title">Заказ из Китая</strong><span data-i18n="onbF1Text">Опишите вещь или пришлите ссылку — менеджер найдёт и привезёт</span></div>
     </div>
     <div class="onb-feature">
-      <div class="onb-feature-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
-      </div>
-      <div class="onb-feature-text">
-        <strong data-i18n="onbF2Title">Каталог в наличии</strong>
-        <span data-i18n="onbF2Text">Готовые товары, доступные сразу — без ожидания доставки</span>
-      </div>
+      <div class="onb-feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div>
+      <div class="onb-feature-text"><strong data-i18n="onbF2Title">Каталог в наличии</strong><span data-i18n="onbF2Text">Готовые товары, доступные сразу — без ожидания доставки</span></div>
     </div>
     <div class="onb-feature">
-      <div class="onb-feature-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-      </div>
-      <div class="onb-feature-text">
-        <strong data-i18n="onbF3Title">Избранное и корзина</strong>
-        <span data-i18n="onbF3Text">Сохраняйте понравившееся и оформляйте заказ в пару нажатий</span>
-      </div>
+      <div class="onb-feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></div>
+      <div class="onb-feature-text"><strong data-i18n="onbF3Title">Избранное и корзина</strong><span data-i18n="onbF3Text">Сохраняйте понравившееся и оформляйте заказ в пару нажатий</span></div>
     </div>
   </div>
-
   <button class="onb-btn" id="onbBtn" data-i18n="onbBtnLabel">Понятно</button>
 </section>
 
 <!-- ============== ШАПКА ============== -->
 <header class="app-header" id="appHeader">
-  <h1 class="header-title" data-i18n="appName">Магазин</h1>
+  <button class="header-title" id="headerTitle" data-i18n="appName">Магазин</button>
   <div class="header-actions">
-    <button class="currency-pill" id="currencyBtn" aria-label="Currency">
-      <span id="currencyLabel">USD</span>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-    </button>
     <button class="icon-btn" id="favBtn" aria-label="Favorites">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
       <span class="badge" id="favBadge" style="display:none">0</span>
@@ -661,9 +880,7 @@
 <section class="page active" id="page-home">
   <div class="home-hero">
     <div class="home-hero-logo">
-      <svg viewBox="0 0 64 64" fill="currentColor">
-        <path d="M58 26c-1.2-4.6-5.4-8-10.4-8-1.8 0-3.5.5-5 1.3-1.7-2-4.3-3.3-7.1-3.3-2.5 0-4.8 1-6.5 2.6C27.3 16.9 24.8 16 22 16c-5.5 0-10 4.5-10 10 0 3.6 1.9 6.8 4.8 8.5-.5.8-.8 1.6-.8 2.5 0 3 2.5 5 6 5 .8 0 1.5-.1 2.2-.3l-3 3.5c-.5.6-.7 1.3-.7 2 0 1.7 1.3 3 3 3 .8 0 1.6-.3 2.2-.9L31 44c.8.2 1.6.4 2.5.4 2 0 3.8-.6 5.3-1.6.7 1.5 2.2 2.6 4 2.6 1.6 0 3-.8 3.8-2C50.4 41.8 56 36.5 56 30c0-.2 0-.4-.1-.6 1.3-.8 2.1-2.3 2.1-3.4zM45 28c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/>
-      </svg>
+      <svg viewBox="0 0 64 64" fill="currentColor"><path d="M58 26c-1.2-4.6-5.4-8-10.4-8-1.8 0-3.5.5-5 1.3-1.7-2-4.3-3.3-7.1-3.3-2.5 0-4.8 1-6.5 2.6C27.3 16.9 24.8 16 22 16c-5.5 0-10 4.5-10 10 0 3.6 1.9 6.8 4.8 8.5-.5.8-.8 1.6-.8 2.5 0 3 2.5 5 6 5 .8 0 1.5-.1 2.2-.3l-3 3.5c-.5.6-.7 1.3-.7 2 0 1.7 1.3 3 3 3 .8 0 1.6-.3 2.2-.9L31 44c.8.2 1.6.4 2.5.4 2 0 3.8-.6 5.3-1.6.7 1.5 2.2 2.6 4 2.6 1.6 0 3-.8 3.8-2C50.4 41.8 56 36.5 56 30c0-.2 0-.4-.1-.6 1.3-.8 2.1-2.3 2.1-3.4zM45 28c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>
     </div>
     <h2 data-i18n="homeHeroTitle">Не нашли то, что нужно?</h2>
     <p data-i18n="homeHeroText">Опишите товар или пришлите ссылку — мы привезём из Китая.</p>
@@ -672,10 +889,7 @@
       <span data-i18n="orderFromChina">Заказать из Китая</span>
     </button>
   </div>
-
-  <div class="section-header">
-    <h3 data-i18n="inStock">В наличии</h3>
-  </div>
+  <div class="section-header"><h3 data-i18n="inStock">В наличии</h3></div>
   <div class="search-bar">
     <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
     <input type="text" id="searchInputHome" data-i18n-placeholder="searchPlaceholder" placeholder="Поиск по названию…" autocomplete="off">
@@ -683,7 +897,6 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
-
   <div class="products-grid" id="homeGrid"></div>
   <div class="empty-state" id="homeCatalogEmpty" style="display:none">
     <div class="icon">📦</div>
@@ -700,22 +913,15 @@
 <!-- ============== ЗАКАЗ (ЧАТ) ============== -->
 <section class="page" id="page-chat">
   <div class="chat-scroll" id="chatScroll"></div>
-
   <div class="chat-composer">
-    <div class="chat-file-hint" id="chatFileHint" data-i18n="chatFileHint">
-      В Telegram пока нельзя передать файл через мини-апп напрямую — после отправки откроется чат с менеджером с готовым текстом, нужно будет приложить файл вручную.
-    </div>
-
+    <div class="chat-file-hint" id="chatFileHint" data-i18n="chatFileHint">В Telegram пока нельзя передать файл через мини-апп напрямую — после отправки откроется чат с менеджером с готовым текстом, нужно будет приложить файл вручную.</div>
     <div class="chat-attached" id="chatAttached"></div>
-
     <div class="chat-input-row">
       <label class="chat-input-icon-btn" aria-label="Attach">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
         <input type="file" id="chatAttachInput" accept="image/*,application/pdf,.doc,.docx" multiple>
       </label>
-      <div class="chat-input-field">
-        <textarea id="chatInput" rows="1" data-i18n-placeholder="chatInputPlaceholder" placeholder="Напишите сообщение…"></textarea>
-      </div>
+      <div class="chat-input-field"><textarea id="chatInput" rows="1" data-i18n-placeholder="chatInputPlaceholder" placeholder="Напишите сообщение…"></textarea></div>
       <button class="chat-input-icon-btn send" id="chatSendBtn" aria-label="Send" disabled>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
       </button>
@@ -723,7 +929,7 @@
   </div>
 </section>
 
-<!-- ============== В НАЛИЧИИ (полный каталог) ============== -->
+<!-- ============== В НАЛИЧИИ ============== -->
 <section class="page" id="page-catalog">
   <h2 data-i18n="catalogTitle">В наличии</h2>
   <p class="page-sub" data-i18n="catalogSub">Товары, которые можно заказать прямо сейчас.</p>
@@ -747,12 +953,8 @@
   </div>
 </section>
 
-<!-- ============== ИЗБРАННОЕ ============== -->
+<!-- ============== ИЗБРАННОЕ (без кнопки «Назад») ============== -->
 <section class="page" id="page-favorites">
-  <button class="back-btn" data-nav="home">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-    <span data-i18n="back">Назад</span>
-  </button>
   <h2 data-i18n="favTitle">Избранное</h2>
   <p class="page-sub" data-i18n="favSub">Товары, которые вы сохранили.</p>
   <div class="products-grid" id="favGrid"></div>
@@ -763,12 +965,8 @@
   </div>
 </section>
 
-<!-- ============== КОРЗИНА ============== -->
+<!-- ============== КОРЗИНА (без кнопки «Назад») ============== -->
 <section class="page" id="page-cart">
-  <button class="back-btn" data-nav="home">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-    <span data-i18n="back">Назад</span>
-  </button>
   <h2 data-i18n="cartTitle">Корзина</h2>
   <p class="page-sub" data-i18n="cartSub">Товары из наличия, готовые к заказу.</p>
   <div id="cartList"></div>
@@ -788,96 +986,141 @@
   </div>
 </section>
 
-<!-- ============== ПРОФИЛЬ ============== -->
+<!-- ============== ПРОФИЛЬ (только кнопки) ============== -->
 <section class="page" id="page-profile">
   <div class="profile-header">
-    <div class="profile-avatar" id="profileAvatar">?</div>
+    <div class="profile-avatar" id="profileAvatar">
+      <span class="avatar-letter" id="avatarLetter">?</span>
+    </div>
     <div class="profile-info">
       <div class="profile-name" id="profileName" data-i18n="guest">Гость</div>
       <div class="profile-username" id="profileUsername"></div>
     </div>
   </div>
 
-  <!-- История -->
-  <div class="profile-section">
-    <div class="profile-section-title" data-i18n="historyTitle">История</div>
-    <div id="historyList"></div>
-    <div class="empty-state" id="historyEmpty" style="display:none">
-      <div class="icon">📋</div>
-      <h3 data-i18n="historyEmptyTitle">Пока пусто</h3>
-      <p data-i18n="historyEmptyText">Здесь появятся ваши запросы и заказы.</p>
+  <div class="settings-group">
+    <div class="settings-row clickable" data-nav="history">
+      <div class="settings-row-content">
+        <div class="settings-row-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <div>
+          <div class="settings-row-label" data-i18n="historyTitle">История заказов</div>
+          <div class="settings-row-sub" data-i18n="historySub">Запросы и заказы</div>
+        </div>
+      </div>
+      <span class="chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span>
     </div>
-  </div>
-
-  <!-- Настройки -->
-  <div class="profile-section">
-    <div class="profile-section-title" data-i18n="settingsTitle">Настройки</div>
-    <div class="settings-group">
-      <div class="settings-row">
-        <div>
-          <div class="settings-row-label" data-i18n="language">Язык</div>
-          <div class="settings-row-sub" data-i18n="languageSub">Язык интерфейса</div>
+    <div class="settings-row clickable" data-nav="settings">
+      <div class="settings-row-content">
+        <div class="settings-row-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </div>
-        <select class="settings-select" id="langSelect">
-          <option value="auto" data-i18n="auto">Авто</option>
-          <option value="ru">Русский</option>
-          <option value="en">English</option>
-        </select>
-      </div>
-      <div class="settings-row">
         <div>
-          <div class="settings-row-label" data-i18n="theme">Тема</div>
-          <div class="settings-row-sub" data-i18n="themeSub">Светлая или тёмная</div>
+          <div class="settings-row-label" data-i18n="settingsTitle">Настройки</div>
+          <div class="settings-row-sub" data-i18n="settingsSub">Язык, тема, валюта</div>
         </div>
-        <select class="settings-select" id="themeSelect">
-          <option value="auto" data-i18n="auto">Авто</option>
-          <option value="light" data-i18n="themeLight">Светлая</option>
-          <option value="dark" data-i18n="themeDark">Тёмная</option>
-        </select>
       </div>
-      <div class="settings-row">
-        <div>
-          <div class="settings-row-label" data-i18n="currency">Валюта</div>
-          <div class="settings-row-sub" data-i18n="currencySub">Отображение цен</div>
-        </div>
-        <select class="settings-select" id="currencySelect">
-          <option value="USD">USD</option>
-          <option value="BYN">BYN</option>
-        </select>
-      </div>
+      <span class="chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span>
     </div>
-  </div>
-
-  <!-- Админка (для @rogovtsoff) -->
-  <div class="profile-section" id="adminEntry" style="display:none">
-    <div class="profile-section-title" data-i18n="adminPanel">Админ-панель</div>
-    <div class="settings-group">
-      <div class="settings-row clickable" id="openAdminRow">
+    <div class="settings-row clickable" id="openAdminRow" style="display:none">
+      <div class="settings-row-content">
+        <div class="settings-row-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        </div>
         <div>
           <div class="settings-row-label" data-i18n="adminPanelOpen">Управление каталогом</div>
           <div class="settings-row-sub" data-i18n="adminPanelSub">Добавляйте и редактируйте товары</div>
         </div>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--hint)"><polyline points="9 18 15 12 9 6"/></svg>
       </div>
+      <span class="chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span>
+    </div>
+  </div>
+</section>
+
+<!-- ============== ИСТОРИЯ (отдельная страница) ============== -->
+<section class="page" id="page-history">
+  <div class="detail-top">
+    <button class="back-btn" data-nav="profile">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      <span data-i18n="back">Назад</span>
+    </button>
+  </div>
+  <h2 data-i18n="historyTitle">История заказов</h2>
+  <p class="page-sub" data-i18n="historySubFull">Все ваши запросы и заказы.</p>
+  <div id="historyList"></div>
+  <div class="empty-state" id="historyEmpty" style="display:none">
+    <div class="icon">📋</div>
+    <h3 data-i18n="historyEmptyTitle">Пока пусто</h3>
+    <p data-i18n="historyEmptyText">Здесь появятся ваши запросы и заказы.</p>
+  </div>
+</section>
+
+<!-- ============== НАСТРОЙКИ (отдельная страница) ============== -->
+<section class="page" id="page-settings">
+  <div class="detail-top">
+    <button class="back-btn" data-nav="profile">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      <span data-i18n="back">Назад</span>
+    </button>
+  </div>
+  <h2 data-i18n="settingsTitle">Настройки</h2>
+  <p class="page-sub" data-i18n="settingsSubFull">Язык, тема и валюта отображения.</p>
+  <div class="settings-group">
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-label" data-i18n="language">Язык</div>
+        <div class="settings-row-sub" data-i18n="languageSub">Язык интерфейса</div>
+      </div>
+      <select class="settings-select" id="langSelect">
+        <option value="auto" data-i18n="auto">Авто</option>
+        <option value="ru">Русский</option>
+        <option value="en">English</option>
+      </select>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-label" data-i18n="theme">Тема</div>
+        <div class="settings-row-sub" data-i18n="themeSub">Светлая или тёмная</div>
+      </div>
+      <select class="settings-select" id="themeSelect">
+        <option value="auto" data-i18n="auto">Авто</option>
+        <option value="light" data-i18n="themeLight">Светлая</option>
+        <option value="dark" data-i18n="themeDark">Тёмная</option>
+      </select>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-label" data-i18n="currency">Валюта</div>
+        <div class="settings-row-sub" data-i18n="currencySub">Отображение цен</div>
+      </div>
+      <select class="settings-select" id="currencySelect">
+        <option value="USD">USD</option>
+        <option value="BYN">BYN</option>
+      </select>
     </div>
   </div>
 </section>
 
 <!-- ============== ДЕТАЛЬ ТОВАРА ============== -->
 <section class="page" id="page-detail">
-  <button class="back-btn" id="backBtn">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-    <span data-i18n="back">Назад</span>
-  </button>
+  <div class="detail-top">
+    <button class="back-btn" id="backBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      <span data-i18n="back">Назад</span>
+    </button>
+  </div>
   <div id="detailContent"></div>
 </section>
 
 <!-- ============== АДМИНКА ============== -->
 <section class="page" id="page-admin">
-  <button class="back-btn" data-nav="profile">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-    <span data-i18n="back">Назад</span>
-  </button>
+  <div class="detail-top">
+    <button class="back-btn" data-nav="profile">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      <span data-i18n="back">Назад</span>
+    </button>
+  </div>
   <h2 data-i18n="adminTitle">Управление каталогом</h2>
   <p class="page-sub" data-i18n="adminSub">Изменения сохраняются локально. Не забудьте экспортировать JSON и загрузить на хостинг.</p>
   <div class="admin-tabs">
@@ -890,10 +1133,7 @@
 <!-- ============== НИЖНЯЯ НАВИГАЦИЯ ============== -->
 <nav class="bottom-nav" id="bottomNav">
   <button class="nav-btn active" data-nav="home" aria-label="Home">
-    <!-- Иконка-ящерица -->
-    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M21.6 9.4c-.5-1.7-2-2.9-3.8-2.9-.7 0-1.3.2-1.8.5-.6-.7-1.6-1.2-2.6-1.2-.9 0-1.8.4-2.4 1-.7-.4-1.6-.6-2.6-.6-2 0-3.7 1.7-3.7 3.7 0 1.3.7 2.5 1.8 3.1-.2.3-.3.6-.3.9 0 1.1.9 1.8 2.2 1.8.3 0 .5 0 .8-.1l-1.1 1.3c-.2.2-.3.5-.3.7 0 .6.5 1.1 1.1 1.1.3 0 .6-.1.8-.3l3-3.5c.3.1.6.1.9.1.7 0 1.4-.2 2-.6.2.6.8 1 1.5 1 .6 0 1.1-.3 1.4-.7 1.6-.6 3.6-2.6 3.6-5 0-.1 0-.1 0-.2.5-.3.8-.8.8-1.3 0 0 0-.1-.1-.1zm-4.9.7c-.4 0-.7-.3-.7-.7s.3-.7.7-.7.7.3.7.7-.3.7-.7.7z"/>
-    </svg>
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.6 9.4c-.5-1.7-2-2.9-3.8-2.9-.7 0-1.3.2-1.8.5-.6-.7-1.6-1.2-2.6-1.2-.9 0-1.8.4-2.4 1-.7-.4-1.6-.6-2.6-.6-2 0-3.7 1.7-3.7 3.7 0 1.3.7 2.5 1.8 3.1-.2.3-.3.6-.3.9 0 1.1.9 1.8 2.2 1.8.3 0 .5 0 .8-.1l-1.1 1.3c-.2.2-.3.5-.3.7 0 .6.5 1.1 1.1 1.1.3 0 .6-.1.8-.3l3-3.5c.3.1.6.1.9.1.7 0 1.4-.2 2-.6.2.6.8 1 1.5 1 .6 0 1.1-.3 1.4-.7 1.6-.6 3.6-2.6 3.6-5 0-.1 0-.1 0-.2.5-.3.8-.8.8-1.3 0 0 0-.1-.1-.1zm-4.9.7c-.4 0-.7-.3-.7-.7s.3-.7.7-.7.7.3.7.7-.3.7-.7.7z"/></svg>
     <span data-i18n="navHome">Главная</span>
   </button>
   <button class="nav-btn" data-nav="chat" aria-label="Order">
@@ -910,6 +1150,28 @@
   </button>
 </nav>
 
+<!-- Лайтбокс -->
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true">
+  <div class="lightbox-header">
+    <span class="lightbox-counter" id="lightboxCounter">1 / 1</span>
+    <button class="lightbox-close" id="lightboxClose" aria-label="Close">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div class="lightbox-stage" id="lightboxStage">
+    <button class="lightbox-nav prev" id="lightboxPrev" aria-label="Previous">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <div class="lightbox-img-wrap" id="lightboxWrap">
+      <img class="lightbox-img" id="lightboxImg" alt="">
+    </div>
+    <button class="lightbox-nav next" id="lightboxNext" aria-label="Next">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
+  </div>
+  <div class="lightbox-hint" data-i18n="lightboxHint">Двойной тап / щипок — приближение</div>
+</div>
+
 <div class="toast" id="toast"></div>
 <div class="modal-backdrop" id="modal">
   <div class="modal">
@@ -921,9 +1183,15 @@
 </div>
 
 <script>
-/* ===================== Telegram Mini App — Магазин (v3) ===================== */
+/* ========================== Telegram Mini App — Магазин (v4) ========================== */
 const tg = window.Telegram?.WebApp;
-if (tg) { try { tg.ready(); tg.expand(); } catch (e) {} }
+if (tg) {
+  try { tg.ready(); tg.expand(); } catch (e) {}
+  // Бесшовный fullscreen: отключаем вертикальные свайпы, чтобы апка не сворачивалась
+  // при скролле списков. Доступно с Bot API 7.7 (апрель 2024).
+  try { tg.disableVerticalSwipes && tg.disableVerticalSwipes(); } catch (e) {}
+  try { tg.enableClosingConfirmation && tg.enableClosingConfirmation(); } catch (e) {}
+}
 
 const CONFIG = {
   CATALOG_URL: './catalog.json',
@@ -934,17 +1202,12 @@ const CONFIG = {
 const I18N = {
   ru: {
     appName: 'Магазин',
-    // Онбординг
     onbTitle: 'Привет!',
     onbText: 'Магазин одежды и сервис заказа любых вещей из Китая — всё в одном приложении.',
-    onbF1Title: 'Заказ из Китая',
-    onbF1Text: 'Опишите вещь или пришлите ссылку — менеджер найдёт и привезёт',
-    onbF2Title: 'Каталог в наличии',
-    onbF2Text: 'Готовые товары, доступные сразу — без ожидания доставки',
-    onbF3Title: 'Избранное и корзина',
-    onbF3Text: 'Сохраняйте понравившееся и оформляйте заказ в пару нажатий',
+    onbF1Title: 'Заказ из Китая', onbF1Text: 'Опишите вещь или пришлите ссылку — менеджер найдёт и привезёт',
+    onbF2Title: 'Каталог в наличии', onbF2Text: 'Готовые товары, доступные сразу — без ожидания доставки',
+    onbF3Title: 'Избранное и корзина', onbF3Text: 'Сохраняйте понравившееся и оформляйте заказ в пару нажатий',
     onbBtnLabel: 'Понятно',
-    // Главная
     homeHeroTitle: 'Не нашли то, что нужно?',
     homeHeroText: 'Опишите товар или пришлите ссылку — мы привезём из Китая.',
     orderFromChina: 'Заказать из Китая',
@@ -952,53 +1215,49 @@ const I18N = {
     searchPlaceholder: 'Поиск по названию…',
     catalogEmptyTitle: 'Пока пусто', catalogEmptyText: 'Товары скоро появятся.',
     searchEmptyTitle: 'Ничего не найдено', searchEmptyText: 'Попробуйте изменить запрос.',
-    // Каталог
-    catalogTitle: 'В наличии',
-    catalogSub: 'Товары, которые можно заказать прямо сейчас.',
-    // Чат-форма
+    catalogTitle: 'В наличии', catalogSub: 'Товары, которые можно заказать прямо сейчас.',
     chatGreeting1: 'Здравствуйте! 👋',
     chatGreeting2: 'Я ваш менеджер из магазина. Расскажите, что вы хотели бы заказать — название, описание, ссылку или фото. Я найду и привезу.',
     chatGreeting3: 'Опишите вещь как удобно — а лучше пришлите ссылку или фото.',
     chatInputPlaceholder: 'Напишите сообщение…',
     chatFileHint: 'Чтобы переслать файлы, после отправки текста откроется чат с менеджером — приложите их там вручную (текст уже будет вставлен).',
     chatNothingToSend: 'Сначала напишите сообщение или прикрепите файл',
-    // Избранное / корзина
     favTitle: 'Избранное', favSub: 'Товары, которые вы сохранили.',
     favEmptyTitle: 'Пока пусто', favEmptyText: 'Добавляйте товары в избранное, чтобы вернуться к ним позже.',
     cartTitle: 'Корзина', cartSub: 'Товары из наличия, готовые к заказу.',
     cartEmptyTitle: 'Корзина пуста', cartEmptyText: 'Добавьте что-нибудь из раздела «В наличии».',
     cartTotal: 'Итого', checkout: 'Оформить заказ',
-    // Профиль
     guest: 'Гость',
-    historyTitle: 'История',
+    historyTitle: 'История заказов',
+    historySub: 'Запросы и заказы',
+    historySubFull: 'Все ваши запросы и заказы.',
     historyEmptyTitle: 'Пока пусто',
     historyEmptyText: 'Здесь появятся ваши запросы и заказы.',
     settingsTitle: 'Настройки',
+    settingsSub: 'Язык, тема, валюта',
+    settingsSubFull: 'Язык, тема и валюта отображения.',
     language: 'Язык', languageSub: 'Язык интерфейса',
     theme: 'Тема', themeSub: 'Светлая или тёмная',
     currency: 'Валюта', currencySub: 'Отображение цен',
     auto: 'Авто', themeLight: 'Светлая', themeDark: 'Тёмная',
-    adminPanel: 'Админ-панель',
     adminPanelOpen: 'Управление каталогом',
     adminPanelSub: 'Добавляйте и редактируйте товары',
-    // Навигация
     navHome: 'Главная', navChat: 'Заказать', navCatalog: 'В наличии', navProfile: 'Профиль',
     back: 'Назад',
-    // Деталь товара
     addToCart: 'В корзину', inCart: 'В корзине',
-    sizeChart: 'Размерная сетка', description: 'Описание',
-    // Тосты
+    sizeChart: 'Выберите размер', description: 'Описание',
+    selectSize: 'Выберите размер',
+    askOtherSizes: 'Уточнить наличие других размеров',
+    askOtherSizesMsg: 'Здравствуйте! Подскажите, есть ли в наличии другие размеры товара',
     addedToCart: 'Добавлено в корзину', removedFromCart: 'Убрано из корзины',
     addedToFav: 'Добавлено в избранное', removedFromFav: 'Убрано из избранного',
-    // История
     typeRequest: 'Запрос на подбор', typeOrder: 'Заказ из наличия',
     photos: 'Файлы',
-    // Открытие чата
     openingChat: 'Открываю чат с менеджером…',
-    cannotOpenChat: 'Не удалось открыть чат — напишите менеджеру @' + 'rogovtsoff' + ' вручную',
-    // Сообщение менеджеру при оформлении заказа
+    cannotOpenChat: 'Не удалось открыть чат — напишите менеджеру @rogovtsoff вручную',
     orderMsgHeader: 'Здравствуйте! Хочу оформить заказ:',
     orderMsgTotal: 'Итого',
+    lightboxHint: 'Двойной тап или щипок — приближение',
     // Админка
     adminTitle: 'Управление каталогом',
     adminSub: 'Изменения сохраняются локально. Не забудьте экспортировать JSON и загрузить на хостинг.',
@@ -1006,7 +1265,9 @@ const I18N = {
     adminAddProduct: 'Добавить товар', adminEditProduct: 'Редактировать товар',
     adminFieldNameRu: 'Название (рус)', adminFieldNameEn: 'Название (англ)',
     adminFieldDescRu: 'Описание (рус)', adminFieldDescEn: 'Описание (англ)',
-    adminFieldImage: 'URL картинки', adminFieldImagePlaceholder: 'https://...',
+    adminFieldImages: 'Картинки',
+    adminAddImage: 'Добавить картинку',
+    adminImagePlaceholder: 'https://...',
     adminFieldPriceUsd: 'Цена USD', adminFieldPriceByn: 'Цена BYN',
     adminFieldSizes: 'Размеры через запятую', adminFieldSizesPlaceholder: 'XS, S, M, L, XL',
     adminSave: 'Сохранить',
@@ -1018,11 +1279,7 @@ const I18N = {
     adminImportTitle: 'Импорт каталога',
     adminImportSub: 'Загрузите ранее экспортированный JSON-файл',
     adminImportBtn: 'Выбрать файл',
-    adminResetTitle: 'Сбросить к встроенному',
-    adminResetSub: 'Восстановить демо-каталог',
-    adminResetBtn: 'Сбросить',
-    adminConfirmReset: 'Сбросить каталог?', adminConfirmResetText: 'Все ваши изменения будут потеряны.',
-    adminImported: 'Каталог импортирован', adminReset: 'Каталог сброшен',
+    adminImported: 'Каталог импортирован',
     adminImportError: 'Ошибка импорта файла',
     adminNoName: 'Введите название товара',
     cancel: 'Отмена', yes: 'Да',
@@ -1031,12 +1288,9 @@ const I18N = {
     appName: 'Shop',
     onbTitle: 'Hello!',
     onbText: 'Clothing store and a service for ordering anything from China — all in one app.',
-    onbF1Title: 'Order from China',
-    onbF1Text: 'Describe the item or send a link — the manager will find and bring it',
-    onbF2Title: 'In-stock catalog',
-    onbF2Text: 'Ready items available now — no waiting for shipping',
-    onbF3Title: 'Favorites and cart',
-    onbF3Text: 'Save what you like and order in a couple of taps',
+    onbF1Title: 'Order from China', onbF1Text: 'Describe the item or send a link — the manager will find and bring it',
+    onbF2Title: 'In-stock catalog', onbF2Text: 'Ready items available now — no waiting for shipping',
+    onbF3Title: 'Favorites and cart', onbF3Text: 'Save what you like and order in a couple of taps',
     onbBtnLabel: 'Got it',
     homeHeroTitle: "Didn't find what you need?",
     homeHeroText: 'Describe the item or send a link — we will bring it from China.',
@@ -1045,8 +1299,7 @@ const I18N = {
     searchPlaceholder: 'Search by name…',
     catalogEmptyTitle: 'Empty for now', catalogEmptyText: 'Items coming soon.',
     searchEmptyTitle: 'Nothing found', searchEmptyText: 'Try a different query.',
-    catalogTitle: 'In Stock',
-    catalogSub: 'Items you can order right now.',
+    catalogTitle: 'In Stock', catalogSub: 'Items you can order right now.',
     chatGreeting1: 'Hi! 👋',
     chatGreeting2: 'I am your manager from the shop. Tell me what you would like to order — name, description, link or photo. I will find and bring it.',
     chatGreeting3: 'Describe the item however you like — or even better, send a link or a photo.',
@@ -1059,21 +1312,27 @@ const I18N = {
     cartEmptyTitle: 'Cart is empty', cartEmptyText: 'Add something from "In Stock".',
     cartTotal: 'Total', checkout: 'Place order',
     guest: 'Guest',
-    historyTitle: 'History',
+    historyTitle: 'Order history',
+    historySub: 'Requests and orders',
+    historySubFull: 'All your requests and orders.',
     historyEmptyTitle: 'Nothing here yet',
     historyEmptyText: 'Your requests and orders will appear here.',
     settingsTitle: 'Settings',
+    settingsSub: 'Language, theme, currency',
+    settingsSubFull: 'Language, theme and currency.',
     language: 'Language', languageSub: 'Interface language',
     theme: 'Theme', themeSub: 'Light or dark',
     currency: 'Currency', currencySub: 'Price display',
     auto: 'Auto', themeLight: 'Light', themeDark: 'Dark',
-    adminPanel: 'Admin panel',
     adminPanelOpen: 'Manage catalog',
     adminPanelSub: 'Add and edit products',
     navHome: 'Home', navChat: 'Order', navCatalog: 'Shop', navProfile: 'Profile',
     back: 'Back',
     addToCart: 'Add to cart', inCart: 'In cart',
-    sizeChart: 'Size chart', description: 'Description',
+    sizeChart: 'Select size', description: 'Description',
+    selectSize: 'Select size',
+    askOtherSizes: 'Ask about other sizes',
+    askOtherSizesMsg: 'Hi! Do you have other sizes available for the item',
     addedToCart: 'Added to cart', removedFromCart: 'Removed from cart',
     addedToFav: 'Added to favorites', removedFromFav: 'Removed from favorites',
     typeRequest: 'Pickup request', typeOrder: 'Order from stock',
@@ -1082,13 +1341,16 @@ const I18N = {
     cannotOpenChat: 'Could not open the chat — please write to @rogovtsoff manually',
     orderMsgHeader: 'Hello! I would like to place an order:',
     orderMsgTotal: 'Total',
+    lightboxHint: 'Double-tap or pinch to zoom',
     adminTitle: 'Catalog management',
     adminSub: 'Changes are saved locally. Export the JSON and upload it to your hosting.',
     adminTabCatalog: 'Products', adminTabExport: 'Export/Import',
     adminAddProduct: 'Add product', adminEditProduct: 'Edit product',
     adminFieldNameRu: 'Name (RU)', adminFieldNameEn: 'Name (EN)',
     adminFieldDescRu: 'Description (RU)', adminFieldDescEn: 'Description (EN)',
-    adminFieldImage: 'Image URL', adminFieldImagePlaceholder: 'https://...',
+    adminFieldImages: 'Images',
+    adminAddImage: 'Add image',
+    adminImagePlaceholder: 'https://...',
     adminFieldPriceUsd: 'Price USD', adminFieldPriceByn: 'Price BYN',
     adminFieldSizes: 'Sizes, comma-separated', adminFieldSizesPlaceholder: 'XS, S, M, L, XL',
     adminSave: 'Save',
@@ -1099,10 +1361,7 @@ const I18N = {
     adminExportBtn: 'Download catalog.json',
     adminImportTitle: 'Import catalog', adminImportSub: 'Load a previously exported JSON file',
     adminImportBtn: 'Choose file',
-    adminResetTitle: 'Reset to built-in', adminResetSub: 'Restore the demo catalog',
-    adminResetBtn: 'Reset',
-    adminConfirmReset: 'Reset catalog?', adminConfirmResetText: 'All your changes will be lost.',
-    adminImported: 'Catalog imported', adminReset: 'Catalog reset',
+    adminImported: 'Catalog imported',
     adminImportError: 'Import error',
     adminNoName: 'Enter product name',
     cancel: 'Cancel', yes: 'Yes',
@@ -1113,51 +1372,57 @@ const SEED_CATALOG = {
   catalog: [
     { id: 'c1', name_ru: 'Оверсайз худи бежевый', name_en: 'Beige oversize hoodie',
       price_usd: 49, price_byn: 159,
-      img: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=600',
+      images: [
+        'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=800',
+        'https://images.unsplash.com/photo-1620799140408-edc6dcb6d633?w=800',
+        'https://images.unsplash.com/photo-1571945153237-4929e783af4a?w=800'
+      ],
       desc_ru: 'Плотный хлопок 380 г/м². Свободный крой. Капюшон на шнурках.',
       desc_en: 'Heavy cotton 380 gsm. Relaxed fit. Drawstring hood.',
       sizes: ['XS', 'S', 'M', 'L', 'XL'] },
     { id: 'c2', name_ru: 'Карго-брюки чёрные', name_en: 'Black cargo pants',
       price_usd: 55, price_byn: 179,
-      img: 'https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?w=600',
+      images: ['https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?w=800'],
       desc_ru: 'Универсальные карго с большими карманами. Эластичный пояс.',
       desc_en: 'Versatile cargo with large pockets. Elastic waist.',
       sizes: ['S', 'M', 'L', 'XL'] },
     { id: 'c3', name_ru: 'Базовая футболка белая', name_en: 'Basic white tee',
       price_usd: 15, price_byn: 49,
-      img: 'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?w=600',
+      images: ['https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?w=800'],
       desc_ru: 'Хлопок 220 г/м². Прямой крой. Без принтов.',
       desc_en: 'Cotton 220 gsm. Straight cut. No prints.',
       sizes: ['XS', 'S', 'M', 'L', 'XL', 'XXL'] },
     { id: 'c4', name_ru: 'Бомбер демисезонный', name_en: 'Light bomber jacket',
       price_usd: 79, price_byn: 259,
-      img: 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=600',
+      images: ['https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=800'],
       desc_ru: 'Лёгкий бомбер на молнии. Подойдёт на весну и осень.',
       desc_en: 'Lightweight zip-up bomber. Great for spring and fall.',
       sizes: ['S', 'M', 'L', 'XL'] },
     { id: 'c5', name_ru: 'Джинсы прямого кроя', name_en: 'Straight-leg jeans',
       price_usd: 42, price_byn: 139,
-      img: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=600',
+      images: ['https://images.unsplash.com/photo-1542272604-787c3835535d?w=800'],
       desc_ru: 'Классический деним. Прямой крой, средняя посадка.',
       desc_en: 'Classic denim. Straight cut, mid-rise.',
       sizes: ['28', '30', '32', '34', '36'] },
     { id: 'c6', name_ru: 'Кроссовки белые', name_en: 'White sneakers',
       price_usd: 65, price_byn: 209,
-      img: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600',
+      images: ['https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=800'],
       desc_ru: 'Минималистичные кроссовки на каждый день.',
       desc_en: 'Minimal everyday sneakers.',
       sizes: ['38', '39', '40', '41', '42', '43', '44', '45'] }
   ]
 };
 
-const STORAGE_KEY = 'tg_shop_state_v3';
-const CATALOG_KEY = 'tg_shop_catalog_v3';
+const STORAGE_KEY = 'tg_shop_state_v4';
+const CATALOG_KEY = 'tg_shop_catalog_v4';
 const ONBOARDING_KEY = 'tg_shop_onboarded_v1';
 
 const defaultState = {
-  favorites: [], cart: [], history: [],
+  favorites: [],
+  cart: [],       /* теперь { id, size, qty } */
+  history: [],
   settings: { lang: 'auto', theme: 'auto', currency: 'USD' },
-  attached: []  /* черновик файлов в чате — не сохраняем */
+  attached: []
 };
 
 let state = loadState();
@@ -1169,13 +1434,18 @@ let searchQuery = '';
 let adminCurrentTab = 'catalog';
 let adminEditingId = null;
 let chatRendered = false;
+let selectedSize = null; /* выбранный размер на странице товара */
 
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      return { ...defaultState, ...parsed, settings: { ...defaultState.settings, ...(parsed.settings || {}) }, attached: [] };
+      // Миграция корзины старого формата ({id, qty} -> {id, size, qty})
+      const cart = (parsed.cart || []).map(c => ({
+        id: c.id, size: c.size || null, qty: c.qty || 1
+      }));
+      return { ...defaultState, ...parsed, cart, settings: { ...defaultState.settings, ...(parsed.settings || {}) }, attached: [] };
     }
   } catch (e) {}
   return JSON.parse(JSON.stringify(defaultState));
@@ -1188,14 +1458,21 @@ function saveState() {
   } catch (e) {}
 }
 
+function migrateProduct(p) {
+  // Миграция img -> images
+  if (!p.images || !Array.isArray(p.images) || p.images.length === 0) {
+    if (p.img) p.images = [p.img];
+    else p.images = [];
+  }
+  return p;
+}
 function loadCatalog() {
   try {
     const raw = localStorage.getItem(CATALOG_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && Array.isArray(parsed.catalog)) {
-        // На случай если в старом файле остались inspiration — игнорируем их
-        CATALOG = { catalog: parsed.catalog };
+        CATALOG = { catalog: parsed.catalog.map(migrateProduct) };
         return Promise.resolve();
       }
     }
@@ -1204,7 +1481,7 @@ function loadCatalog() {
     .then(r => r.ok ? r.json() : Promise.reject())
     .then(json => {
       if (json && Array.isArray(json.catalog)) {
-        CATALOG = { catalog: json.catalog };
+        CATALOG = { catalog: json.catalog.map(migrateProduct) };
       } else {
         CATALOG = JSON.parse(JSON.stringify(SEED_CATALOG));
       }
@@ -1279,7 +1556,8 @@ function localizedProduct(p) {
     ...p,
     name: p['name_' + lang] || p.name_ru || p.name_en || '—',
     desc: p['desc_' + lang] || p.desc_ru || p.desc_en || '',
-    price: cur === 'BYN' ? (p.price_byn ?? 0) : (p.price_usd ?? 0)
+    price: cur === 'BYN' ? (p.price_byn ?? 0) : (p.price_usd ?? 0),
+    mainImg: (p.images && p.images[0]) || p.img || ''
   };
 }
 function formatPrice(price, cur = null) {
@@ -1303,8 +1581,11 @@ function navigate(page, opts = {}) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   const target = document.getElementById('page-' + page);
   if (target) target.classList.add('active');
+  // active в нижней навигации показываем только для корневых разделов
+  const rootMap = { home: 'home', chat: 'chat', catalog: 'catalog', profile: 'profile' };
+  const rootPage = rootMap[page] || null;
   document.querySelectorAll('.nav-btn[data-nav]').forEach(b => {
-    b.classList.toggle('active', b.getAttribute('data-nav') === page);
+    b.classList.toggle('active', b.getAttribute('data-nav') === rootPage);
   });
   currentPage = page;
   window.scrollTo({ top: 0, behavior: 'instant' });
@@ -1315,18 +1596,22 @@ function navigate(page, opts = {}) {
   if (page === 'favorites') renderFavorites();
   if (page === 'cart') renderCart();
   if (page === 'profile') renderProfile();
+  if (page === 'history') renderHistory();
+  if (page === 'settings') renderSettings();
   if (page === 'detail' && opts.productId) renderDetail(opts.productId, opts.source || 'home');
   if (page === 'admin') renderAdmin();
 
-  // Видимость шапки и нижней навигации
+  // Шапка прячется только на онбординге и в режиме чата (там есть свой композитор)
   const showHeader = page !== 'onboarding';
-  const showNav = page !== 'onboarding' && page !== 'detail' && page !== 'admin';
+  // Нижняя навигация прячется на онбординге и деталях/админке/настройках/истории
+  const navHidden = ['onboarding', 'detail', 'admin'].includes(page);
   document.getElementById('appHeader').classList.toggle('hidden', !showHeader);
-  document.getElementById('bottomNav').classList.toggle('hidden', !showNav);
-  document.body.classList.toggle('no-chrome', !showNav);
+  document.getElementById('bottomNav').classList.toggle('hidden', navHidden);
+  document.body.classList.toggle('no-chrome', !showHeader);
+  document.body.classList.toggle('chat-mode', page === 'chat');
 
   if (tg?.BackButton) {
-    const showBack = (page === 'detail' || page === 'admin' || page === 'favorites' || page === 'cart');
+    const showBack = ['detail', 'admin', 'history', 'settings'].includes(page);
     if (showBack) { try { tg.BackButton.show(); } catch (e) {} }
     else { try { tg.BackButton.hide(); } catch (e) {} }
   }
@@ -1348,23 +1633,26 @@ function toggleFav(id) {
     });
   }
 }
-function cartQty(id) { const it = state.cart.find(c => c.id === id); return it ? it.qty : 0; }
+function cartKey(id, size) { return id + '::' + (size || ''); }
+function cartHasAny(id) { return state.cart.some(c => c.id === id); }
 function cartTotalItems() { return state.cart.reduce((s, c) => s + c.qty, 0); }
-function addToCart(id) {
-  const it = state.cart.find(c => c.id === id);
-  if (it) it.qty += 1; else state.cart.push({ id, qty: 1 });
+function addToCart(id, size) {
+  const key = cartKey(id, size);
+  const it = state.cart.find(c => cartKey(c.id, c.size) === key);
+  if (it) it.qty += 1;
+  else state.cart.push({ id, size: size || null, qty: 1 });
   saveState(); updateBadges(); showToast(t('addedToCart'));
   try { tg?.HapticFeedback?.impactOccurred('light'); } catch (e) {}
 }
-function changeCartQty(id, delta) {
-  const it = state.cart.find(c => c.id === id);
+function changeCartQty(key, delta) {
+  const it = state.cart.find(c => cartKey(c.id, c.size) === key);
   if (!it) return;
   it.qty += delta;
-  if (it.qty <= 0) state.cart = state.cart.filter(c => c.id !== id);
+  if (it.qty <= 0) state.cart = state.cart.filter(c => cartKey(c.id, c.size) !== key);
   saveState(); updateBadges(); renderCart();
 }
-function removeFromCart(id) {
-  state.cart = state.cart.filter(c => c.id !== id);
+function removeFromCart(key) {
+  state.cart = state.cart.filter(c => cartKey(c.id, c.size) !== key);
   saveState(); updateBadges(); renderCart();
   showToast(t('removedFromCart'));
 }
@@ -1378,7 +1666,6 @@ function updateBadges() {
   cartBadge.textContent = cartCount;
   cartBadge.style.display = cartCount > 0 ? 'flex' : 'none';
 }
-function updateCurrencyLabel() { document.getElementById('currencyLabel').textContent = currency(); }
 
 function productById(id) { return (CATALOG.catalog || []).find(p => p.id === id); }
 
@@ -1389,7 +1676,7 @@ function productCard(prod, opts = {}) {
   const card = document.createElement('div');
   card.className = 'product-card';
   card.innerHTML = `
-    <img class="product-card-img" src="${escapeAttr(p.img)}" alt="" loading="lazy">
+    <img class="product-card-img" src="${escapeAttr(p.mainImg)}" alt="" loading="lazy">
     <button class="product-card-fav ${fav ? 'active' : ''}" data-id="${escapeAttr(p.id)}" aria-label="Favorite">
       <svg viewBox="0 0 24 24" fill="${fav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
     </button>
@@ -1412,75 +1699,41 @@ function searchMatches(prod, q) {
   if (!q) return true;
   const norm = q.toLowerCase().trim();
   if (!norm) return true;
-  const fields = [prod.name_ru, prod.name_en].filter(Boolean).map(s => s.toLowerCase());
-  return fields.some(f => f.includes(norm));
+  return [prod.name_ru, prod.name_en].filter(Boolean).map(s => s.toLowerCase()).some(f => f.includes(norm));
 }
-function filteredCatalog() {
-  return (CATALOG.catalog || []).filter(p => searchMatches(p, searchQuery));
-}
+function filteredCatalog() { return (CATALOG.catalog || []).filter(p => searchMatches(p, searchQuery)); }
 
-/* ---- Рендер «Главной» ---- */
+/* ---- Главная ---- */
 function renderHome() {
   const grid = document.getElementById('homeGrid');
   const emptyAll = document.getElementById('homeCatalogEmpty');
   const emptySearch = document.getElementById('homeSearchEmpty');
   grid.innerHTML = '';
   const all = CATALOG.catalog || [];
-  if (all.length === 0) {
-    grid.style.display = 'none';
-    emptyAll.style.display = 'block';
-    emptySearch.style.display = 'none';
-    return;
-  }
+  if (all.length === 0) { grid.style.display = 'none'; emptyAll.style.display = 'block'; emptySearch.style.display = 'none'; return; }
   const items = filteredCatalog();
-  if (items.length === 0) {
-    grid.style.display = 'none';
-    emptyAll.style.display = 'none';
-    emptySearch.style.display = 'block';
-    return;
-  }
-  grid.style.display = 'grid';
-  emptyAll.style.display = 'none';
-  emptySearch.style.display = 'none';
+  if (items.length === 0) { grid.style.display = 'none'; emptyAll.style.display = 'none'; emptySearch.style.display = 'block'; return; }
+  grid.style.display = 'grid'; emptyAll.style.display = 'none'; emptySearch.style.display = 'none';
   items.forEach(p => grid.appendChild(productCard(p, { source: 'home' })));
-
-  // Синхронизируем оба поля поиска
   const inp = document.getElementById('searchInputHome');
   if (inp.value !== searchQuery) inp.value = searchQuery;
   document.getElementById('searchClearHome').classList.toggle('show', !!searchQuery);
 }
-
-/* ---- Рендер «В наличии» ---- */
 function renderCatalog() {
   const grid = document.getElementById('catalogGrid');
   const emptyAll = document.getElementById('catalogEmpty');
   const emptySearch = document.getElementById('catalogSearchEmpty');
   grid.innerHTML = '';
   const all = CATALOG.catalog || [];
-  if (all.length === 0) {
-    grid.style.display = 'none';
-    emptyAll.style.display = 'block';
-    emptySearch.style.display = 'none';
-    return;
-  }
+  if (all.length === 0) { grid.style.display = 'none'; emptyAll.style.display = 'block'; emptySearch.style.display = 'none'; return; }
   const items = filteredCatalog();
-  if (items.length === 0) {
-    grid.style.display = 'none';
-    emptyAll.style.display = 'none';
-    emptySearch.style.display = 'block';
-    return;
-  }
-  grid.style.display = 'grid';
-  emptyAll.style.display = 'none';
-  emptySearch.style.display = 'none';
+  if (items.length === 0) { grid.style.display = 'none'; emptyAll.style.display = 'none'; emptySearch.style.display = 'block'; return; }
+  grid.style.display = 'grid'; emptyAll.style.display = 'none'; emptySearch.style.display = 'none';
   items.forEach(p => grid.appendChild(productCard(p, { source: 'catalog' })));
-
   const inp = document.getElementById('searchInputCatalog');
   if (inp.value !== searchQuery) inp.value = searchQuery;
   document.getElementById('searchClearCatalog').classList.toggle('show', !!searchQuery);
 }
-
-/* ---- Рендер «Избранное» / «Корзина» ---- */
 function renderFavorites() {
   const grid = document.getElementById('favGrid');
   const empty = document.getElementById('favEmpty');
@@ -1490,6 +1743,8 @@ function renderFavorites() {
   grid.style.display = 'grid'; empty.style.display = 'none';
   favs.forEach(p => grid.appendChild(productCard(p, { source: 'favorites' })));
 }
+
+/* ---- Корзина ---- */
 function renderCart() {
   const list = document.getElementById('cartList');
   const empty = document.getElementById('cartEmpty');
@@ -1503,18 +1758,21 @@ function renderCart() {
     if (!prod) return;
     const p = localizedProduct(prod);
     total += p.price * c.qty;
+    const key = cartKey(c.id, c.size);
+    const sizeBadge = c.size ? `<div class="cart-item-size">${escapeHtml(c.size)}</div>` : '';
     const el = document.createElement('div');
     el.className = 'cart-item';
     el.innerHTML = `
-      <img src="${escapeAttr(p.img)}" alt="">
+      <img src="${escapeAttr(p.mainImg)}" alt="">
       <div class="cart-item-info">
         <div class="cart-item-name">${escapeHtml(p.name)}</div>
+        ${sizeBadge}
         <div class="cart-item-price">${formatPrice(p.price * c.qty)}</div>
         <div class="cart-item-controls">
-          <button class="qty-btn" data-act="dec" data-id="${escapeAttr(c.id)}">−</button>
+          <button class="qty-btn" data-act="dec" data-key="${escapeAttr(key)}">−</button>
           <span class="qty-val">${c.qty}</span>
-          <button class="qty-btn" data-act="inc" data-id="${escapeAttr(c.id)}">+</button>
-          <button class="remove-btn" data-act="remove" data-id="${escapeAttr(c.id)}" aria-label="Remove">
+          <button class="qty-btn" data-act="inc" data-key="${escapeAttr(key)}">+</button>
+          <button class="remove-btn" data-act="remove" data-key="${escapeAttr(key)}" aria-label="Remove">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>
           </button>
         </div>
@@ -1522,31 +1780,52 @@ function renderCart() {
     list.appendChild(el);
   });
   list.querySelectorAll('.qty-btn').forEach(b => {
-    b.onclick = () => changeCartQty(b.getAttribute('data-id'), b.getAttribute('data-act') === 'inc' ? 1 : -1);
+    b.onclick = () => changeCartQty(b.getAttribute('data-key'), b.getAttribute('data-act') === 'inc' ? 1 : -1);
   });
   list.querySelectorAll('.remove-btn').forEach(b => {
-    b.onclick = () => removeFromCart(b.getAttribute('data-id'));
+    b.onclick = () => removeFromCart(b.getAttribute('data-key'));
   });
   document.getElementById('cartTotalVal').textContent = formatPrice(total);
 }
 
-/* ---- Деталь товара ---- */
+/* ============================ ДЕТАЛЬ ТОВАРА ============================ */
 function renderDetail(id, source = 'home') {
   lastDetailFrom = source; lastDetailId = id;
+  selectedSize = null;
   const prod = productById(id);
   if (!prod) { navigate('home'); return; }
   const p = localizedProduct(prod);
   const fav = isFav(p.id);
-  const inCart = cartQty(p.id) > 0;
-  const sizesHtml = (prod.sizes && prod.sizes.length) ? `
+  const images = (prod.images && prod.images.length) ? prod.images : (prod.img ? [prod.img] : []);
+  const hasSizes = (prod.sizes || []).length > 0;
+
+  const sizesHtml = hasSizes ? `
     <div class="product-section">
       <h4>${t('sizeChart')}</h4>
-      <div class="size-grid">
-        ${prod.sizes.map(s => `<div class="size-cell">${escapeHtml(s)}</div>`).join('')}
+      <div class="size-picker" id="sizePicker">
+        ${prod.sizes.map(s => `<div class="size-cell" data-size="${escapeAttr(s)}">${escapeHtml(s)}</div>`).join('')}
       </div>
+      <button class="size-ask-btn" id="askSizesBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        ${t('askOtherSizes')}
+      </button>
     </div>` : '';
+
+  const carouselHtml = images.length > 0 ? `
+    <div class="product-carousel" id="productCarousel">
+      <div class="carousel-track" id="carouselTrack">
+        ${images.map(src => `<div class="carousel-slide"><img src="${escapeAttr(src)}" alt=""></div>`).join('')}
+      </div>
+      ${images.length > 1 ? `
+        <div class="carousel-counter" id="carouselCounter">1 / ${images.length}</div>
+        <div class="carousel-dots" id="carouselDots">
+          ${images.map((_, i) => `<div class="carousel-dot ${i === 0 ? 'active' : ''}"></div>`).join('')}
+        </div>` : ''
+      }
+    </div>` : '';
+
   document.getElementById('detailContent').innerHTML = `
-    <img class="product-detail-img" src="${escapeAttr(p.img)}" alt="">
+    ${carouselHtml}
     <h2 class="product-detail-name">${escapeHtml(p.name)}</h2>
     <div class="product-detail-price">${formatPrice(p.price)}</div>
     <div class="product-detail-price-alt">≈ ${formatPrice(altPrice(prod), altCurrency())}</div>
@@ -1556,58 +1835,281 @@ function renderDetail(id, source = 'home') {
     </div>
     ${sizesHtml}
     <div class="detail-actions">
-      <button class="primary-btn" id="detailCartBtn">${inCart ? t('inCart') + ' · ' + cartQty(p.id) : t('addToCart')}</button>
+      <button class="primary-btn" id="detailCartBtn" ${hasSizes ? 'disabled' : ''}>${hasSizes ? t('selectSize') : t('addToCart')}</button>
       <button class="detail-fav-btn ${fav ? 'active' : ''}" data-id="${escapeAttr(p.id)}" aria-label="Favorite">
         <svg viewBox="0 0 24 24" fill="${fav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
       </button>
     </div>`;
+
+  // Карусель
+  if (images.length > 0) setupCarousel(images);
+
+  // Выбор размера
+  if (hasSizes) {
+    document.querySelectorAll('.size-cell').forEach(cell => {
+      cell.addEventListener('click', () => {
+        if (cell.classList.contains('unavailable')) return;
+        document.querySelectorAll('.size-cell').forEach(c => c.classList.remove('selected'));
+        cell.classList.add('selected');
+        selectedSize = cell.getAttribute('data-size');
+        const btn = document.getElementById('detailCartBtn');
+        btn.disabled = false;
+        btn.textContent = t('addToCart');
+      });
+    });
+    const askBtn = document.getElementById('askSizesBtn');
+    if (askBtn) askBtn.onclick = () => askAboutSizes(prod);
+  }
+
   document.getElementById('detailCartBtn').onclick = () => {
-    addToCart(p.id);
-    document.getElementById('detailCartBtn').textContent = t('inCart') + ' · ' + cartQty(p.id);
+    if (hasSizes && !selectedSize) return;
+    addToCart(p.id, selectedSize);
   };
   document.querySelector('.detail-fav-btn').onclick = () => toggleFav(p.id);
 }
 
-/* ---- Чат-форма «Заказ» ---- */
+/* ---- Карусель: свайп + смена слайдов ---- */
+function setupCarousel(images) {
+  const track = document.getElementById('carouselTrack');
+  const dots = document.getElementById('carouselDots');
+  const counter = document.getElementById('carouselCounter');
+  let index = 0;
+  let startX = 0, startY = 0, currentX = 0, dragging = false, isHorizontal = false;
+  let trackWidth = 0;
+
+  function update() {
+    track.style.transform = `translateX(${-index * 100}%)`;
+    if (dots) {
+      dots.querySelectorAll('.carousel-dot').forEach((d, i) => d.classList.toggle('active', i === index));
+    }
+    if (counter) counter.textContent = `${index + 1} / ${images.length}`;
+  }
+  update();
+
+  function onStart(e) {
+    const touch = e.touches ? e.touches[0] : e;
+    startX = touch.clientX; startY = touch.clientY; currentX = 0;
+    dragging = true; isHorizontal = false;
+    trackWidth = track.offsetWidth;
+    track.classList.add('dragging');
+  }
+  function onMove(e) {
+    if (!dragging) return;
+    const touch = e.touches ? e.touches[0] : e;
+    const dx = touch.clientX - startX;
+    const dy = touch.clientY - startY;
+    if (!isHorizontal) {
+      if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
+        isHorizontal = Math.abs(dx) > Math.abs(dy);
+      }
+    }
+    if (isHorizontal) {
+      if (e.cancelable) e.preventDefault();
+      currentX = dx;
+      const offset = (-index * trackWidth + dx);
+      track.style.transform = `translateX(${offset}px)`;
+    }
+  }
+  function onEnd() {
+    if (!dragging) { return; }
+    dragging = false;
+    track.classList.remove('dragging');
+    if (isHorizontal) {
+      const threshold = trackWidth * 0.2;
+      if (currentX < -threshold && index < images.length - 1) index++;
+      else if (currentX > threshold && index > 0) index--;
+    }
+    update();
+  }
+
+  track.addEventListener('touchstart', onStart, { passive: true });
+  track.addEventListener('touchmove', onMove, { passive: false });
+  track.addEventListener('touchend', onEnd);
+  track.addEventListener('touchcancel', onEnd);
+  // Не делаем pointer-drag на десктопе, чтобы не конфликтовать с touch — оставляем только клик по слайду:
+  track.querySelectorAll('.carousel-slide').forEach((slide, i) => {
+    let downX = 0, downY = 0, downT = 0;
+    slide.addEventListener('touchstart', (e) => { downX = e.touches[0].clientX; downY = e.touches[0].clientY; downT = Date.now(); }, { passive: true });
+    slide.addEventListener('touchend', (e) => {
+      const t = e.changedTouches[0];
+      const dx = Math.abs(t.clientX - downX);
+      const dy = Math.abs(t.clientY - downY);
+      const elapsed = Date.now() - downT;
+      // Простой клик — открываем лайтбокс
+      if (dx < 8 && dy < 8 && elapsed < 400) {
+        openLightbox(images, index);
+      }
+    });
+    slide.addEventListener('click', () => openLightbox(images, index));
+  });
+}
+
+/* ============================ ЛАЙТБОКС ============================ */
+let lightboxImages = [];
+let lightboxIndex = 0;
+let lbScale = 1, lbTx = 0, lbTy = 0;
+let lbBaseW = 0, lbBaseH = 0;
+
+function openLightbox(images, startIndex) {
+  lightboxImages = images;
+  lightboxIndex = startIndex || 0;
+  document.getElementById('lightbox').classList.add('show');
+  showLightboxImage();
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('show');
+}
+function showLightboxImage() {
+  const img = document.getElementById('lightboxImg');
+  img.src = lightboxImages[lightboxIndex];
+  document.getElementById('lightboxCounter').textContent = `${lightboxIndex + 1} / ${lightboxImages.length}`;
+  document.getElementById('lightboxPrev').disabled = lightboxIndex === 0;
+  document.getElementById('lightboxNext').disabled = lightboxIndex === lightboxImages.length - 1;
+  // сброс масштаба
+  lbScale = 1; lbTx = 0; lbTy = 0;
+  img.onload = () => {
+    lbBaseW = img.clientWidth;
+    lbBaseH = img.clientHeight;
+    applyLbTransform();
+  };
+  applyLbTransform();
+}
+function applyLbTransform() {
+  const img = document.getElementById('lightboxImg');
+  img.style.transform = `translate(${lbTx}px, ${lbTy}px) scale(${lbScale})`;
+}
+function setupLightbox() {
+  const wrap = document.getElementById('lightboxWrap');
+  document.getElementById('lightboxClose').onclick = closeLightbox;
+  document.getElementById('lightboxPrev').onclick = () => {
+    if (lightboxIndex > 0) { lightboxIndex--; showLightboxImage(); }
+  };
+  document.getElementById('lightboxNext').onclick = () => {
+    if (lightboxIndex < lightboxImages.length - 1) { lightboxIndex++; showLightboxImage(); }
+  };
+
+  let touches = []; // активные касания
+  let pinchStartDist = 0, pinchStartScale = 1;
+  let panStartX = 0, panStartY = 0, panStartTx = 0, panStartTy = 0;
+  let swipeStartX = 0, swipeStartY = 0, swipeIsHoriz = false;
+  let lastTap = 0;
+
+  function distance(a, b) {
+    return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  }
+
+  wrap.addEventListener('touchstart', (e) => {
+    touches = Array.from(e.touches);
+    if (touches.length === 2) {
+      pinchStartDist = distance(touches[0], touches[1]);
+      pinchStartScale = lbScale;
+    } else if (touches.length === 1) {
+      panStartX = touches[0].clientX;
+      panStartY = touches[0].clientY;
+      panStartTx = lbTx; panStartTy = lbTy;
+      swipeStartX = touches[0].clientX;
+      swipeStartY = touches[0].clientY;
+      swipeIsHoriz = false;
+
+      // double-tap zoom
+      const now = Date.now();
+      if (now - lastTap < 300) {
+        if (lbScale > 1) { lbScale = 1; lbTx = 0; lbTy = 0; }
+        else lbScale = 2;
+        applyLbTransform();
+        lastTap = 0;
+      } else {
+        lastTap = now;
+      }
+    }
+  }, { passive: true });
+
+  wrap.addEventListener('touchmove', (e) => {
+    if (e.touches.length === 2 && touches.length === 2) {
+      const d = distance(e.touches[0], e.touches[1]);
+      const newScale = Math.max(1, Math.min(4, pinchStartScale * (d / pinchStartDist)));
+      lbScale = newScale;
+      if (lbScale === 1) { lbTx = 0; lbTy = 0; }
+      applyLbTransform();
+      if (e.cancelable) e.preventDefault();
+    } else if (e.touches.length === 1) {
+      const dx = e.touches[0].clientX - panStartX;
+      const dy = e.touches[0].clientY - panStartY;
+      if (lbScale > 1) {
+        // panning внутри увеличенной картинки
+        lbTx = panStartTx + dx;
+        lbTy = panStartTy + dy;
+        applyLbTransform();
+        if (e.cancelable) e.preventDefault();
+      } else {
+        // горизонтальный свайп — переключение картинок
+        if (!swipeIsHoriz && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+          swipeIsHoriz = Math.abs(dx) > Math.abs(dy);
+        }
+        if (swipeIsHoriz && e.cancelable) e.preventDefault();
+      }
+    }
+  }, { passive: false });
+
+  wrap.addEventListener('touchend', (e) => {
+    if (touches.length === 1 && lbScale === 1 && swipeIsHoriz) {
+      // Завершение свайпа — навигация по картинкам
+      const lastTouch = e.changedTouches[0];
+      const dx = lastTouch.clientX - swipeStartX;
+      if (Math.abs(dx) > 50) {
+        if (dx < 0 && lightboxIndex < lightboxImages.length - 1) { lightboxIndex++; showLightboxImage(); }
+        else if (dx > 0 && lightboxIndex > 0) { lightboxIndex--; showLightboxImage(); }
+      }
+    }
+    touches = Array.from(e.touches);
+  });
+
+  // Клавиатура — для удобства
+  document.addEventListener('keydown', (e) => {
+    if (!document.getElementById('lightbox').classList.contains('show')) return;
+    if (e.key === 'Escape') closeLightbox();
+    if (e.key === 'ArrowLeft' && lightboxIndex > 0) { lightboxIndex--; showLightboxImage(); }
+    if (e.key === 'ArrowRight' && lightboxIndex < lightboxImages.length - 1) { lightboxIndex++; showLightboxImage(); }
+  });
+}
+
+/* ---- «Уточнить наличие других размеров» ---- */
+function askAboutSizes(prod) {
+  const p = localizedProduct(prod);
+  const msg = `${t('askOtherSizesMsg')} «${p.name}» (${formatPrice(p.price)})`;
+  openManagerChat(msg);
+}
+
+/* ============================ ЧАТ ============================ */
 function renderChat() {
-  // Рендерим приветствие только один раз за сессию (или после очистки чата)
   const scroll = document.getElementById('chatScroll');
   if (!chatRendered) {
     scroll.innerHTML = '';
-
     const lang = detectLang();
     const today = new Intl.DateTimeFormat(lang === 'ru' ? 'ru-RU' : 'en-US', { day: 'numeric', month: 'long' }).format(new Date());
     const dayDiv = document.createElement('div');
     dayDiv.className = 'chat-day';
     dayDiv.textContent = today;
     scroll.appendChild(dayDiv);
-
     appendBubble('in', t('chatGreeting1'));
     appendBubble('in', t('chatGreeting2'));
     appendBubble('in', t('chatGreeting3'));
     chatRendered = true;
   }
-
   renderAttached();
   updateSendBtn();
   document.getElementById('chatFileHint').classList.toggle('show', state.attached.length > 0);
 }
-
 function appendBubble(direction, text, photos = [], files = []) {
   const scroll = document.getElementById('chatScroll');
   const msg = document.createElement('div');
   msg.className = 'chat-msg ' + direction;
   const bubble = document.createElement('div');
   bubble.className = 'chat-bubble';
-
   if (photos.length > 0) {
     const grid = document.createElement('div');
     grid.className = 'chat-bubble-photos' + (photos.length === 1 ? ' one' : '');
-    photos.forEach(url => {
-      const img = document.createElement('img');
-      img.src = url;
-      grid.appendChild(img);
-    });
+    photos.forEach(url => { const img = document.createElement('img'); img.src = url; grid.appendChild(img); });
     bubble.appendChild(grid);
   }
   if (files.length > 0) {
@@ -1623,16 +2125,11 @@ function appendBubble(direction, text, photos = [], files = []) {
     });
     bubble.appendChild(wrap);
   }
-  if (text) {
-    const tx = document.createElement('div');
-    tx.textContent = text;
-    bubble.appendChild(tx);
-  }
+  if (text) { const tx = document.createElement('div'); tx.textContent = text; bubble.appendChild(tx); }
   msg.appendChild(bubble);
   scroll.appendChild(msg);
   scroll.scrollTop = scroll.scrollHeight;
 }
-
 function renderAttached() {
   const wrap = document.getElementById('chatAttached');
   wrap.innerHTML = '';
@@ -1651,34 +2148,27 @@ function renderAttached() {
     }
     el.querySelector('button').onclick = () => {
       state.attached.splice(idx, 1);
-      renderAttached();
-      updateSendBtn();
+      renderAttached(); updateSendBtn();
       document.getElementById('chatFileHint').classList.toggle('show', state.attached.length > 0);
     };
     wrap.appendChild(el);
   });
 }
-
 function updateSendBtn() {
   const text = document.getElementById('chatInput').value.trim();
   const hasFiles = state.attached.length > 0;
   document.getElementById('chatSendBtn').disabled = !text && !hasFiles;
 }
 
-/* ---- Открытие чата с менеджером с готовым текстом ---- */
 function openManagerChat(text) {
-  // Telegram API позволяет открыть чат с предзаполненным текстом через t.me/{username}?text=...
-  // Это лучший способ "перебросить" клиента в чат с введённым сообщением.
   const url = 'https://t.me/' + CONFIG.MANAGER_USERNAME + (text ? '?text=' + encodeURIComponent(text) : '');
   if (tg?.openTelegramLink) {
     try { tg.openTelegramLink(url); return true; } catch (e) {}
   }
-  // Фолбэк — попытка через window.open
   try { window.open(url, '_blank'); return true; } catch (e) {}
   return false;
 }
 
-/* ---- Отправка из чата ---- */
 function sendChatMessage() {
   const input = document.getElementById('chatInput');
   const text = input.value.trim();
@@ -1688,70 +2178,49 @@ function sendChatMessage() {
     try { tg?.HapticFeedback?.notificationOccurred('warning'); } catch (e) {}
     return;
   }
-
-  // Показываем сообщение в чате как "отправленное"
   const photos = attached.filter(a => a.kind === 'image').map(a => a.dataUrl);
   const files = attached.filter(a => a.kind === 'file').map(a => a.name);
   appendBubble('out', text, photos, files);
-
-  // Сохраняем в историю
   state.history.push({
-    id: 'h' + Date.now(),
-    type: 'request',
-    date: new Date().toISOString(),
-    payload: {
-      text, link: '',
-      photosCount: photos.length + files.length
-    }
+    id: 'h' + Date.now(), type: 'request', date: new Date().toISOString(),
+    payload: { text, link: '', photosCount: photos.length + files.length }
   });
   saveState();
-
-  // Чистим черновик
-  input.value = '';
-  input.style.height = '';
+  input.value = ''; input.style.height = '';
   state.attached = [];
-  renderAttached();
-  updateSendBtn();
+  renderAttached(); updateSendBtn();
   document.getElementById('chatFileHint').classList.remove('show');
   try { tg?.HapticFeedback?.notificationOccurred('success'); } catch (e) {}
-
-  // Через небольшую паузу открываем чат с менеджером с готовым текстом
   setTimeout(() => {
-    const hadFiles = attached.length > 0;
-    const msgForManager = text || ''; // только текст; файлы клиент пришлёт следом сам
-    const ok = openManagerChat(msgForManager);
-    if (!ok) {
-      showToast(t('cannotOpenChat'));
-      return;
-    }
-    if (hadFiles) {
-      // В Telegram нельзя передать файлы через ссылку — клиент должен дослать вручную
-      showToast(t('openingChat'));
-    }
+    const ok = openManagerChat(text || '');
+    if (!ok) { showToast(t('cannotOpenChat')); return; }
+    if (attached.length > 0) showToast(t('openingChat'));
   }, 350);
 }
 
-/* ---- Профиль ---- */
+/* ============================ ПРОФИЛЬ / ИСТОРИЯ / НАСТРОЙКИ ============================ */
 function renderProfile() {
-  // Карточка пользователя
   const user = tg?.initDataUnsafe?.user || null;
   const name = user ? [user.first_name, user.last_name].filter(Boolean).join(' ') : '';
   document.getElementById('profileName').textContent = name || t('guest');
   document.getElementById('profileUsername').textContent = user?.username ? '@' + user.username : '';
-  document.getElementById('profileAvatar').textContent = (name ? name[0] : '?').toUpperCase();
 
-  // Селекты
-  document.getElementById('langSelect').value = state.settings.lang;
-  document.getElementById('themeSelect').value = state.settings.theme;
-  document.getElementById('currencySelect').value = state.settings.currency;
+  const avatar = document.getElementById('profileAvatar');
+  const letter = document.getElementById('avatarLetter');
+  letter.textContent = (name ? name[0] : '?').toUpperCase();
+  // Photo URL доступен только если бот настроен на получение фото пользователя (Bot API)
+  // и пользователь не скрыл фото. Поэтому fallback на букву.
+  const photoUrl = user?.photo_url;
+  if (photoUrl) {
+    avatar.classList.add('has-photo');
+    avatar.style.backgroundImage = `url('${photoUrl}')`;
+  } else {
+    avatar.classList.remove('has-photo');
+    avatar.style.backgroundImage = '';
+  }
 
-  // Админский раздел
-  document.getElementById('adminEntry').style.display = isAdmin() ? 'block' : 'none';
-
-  // История
-  renderHistory();
+  document.getElementById('openAdminRow').style.display = isAdmin() ? 'flex' : 'none';
 }
-
 function renderHistory() {
   const list = document.getElementById('historyList');
   const empty = document.getElementById('historyEmpty');
@@ -1777,7 +2246,8 @@ function renderHistory() {
       const itemsList = h.payload.items.map(it => {
         const prod = productById(it.id);
         const name = prod ? localizedProduct(prod).name : it.id;
-        return `${escapeHtml(name)} × ${it.qty}`;
+        const sizeStr = it.size ? ` (${it.size})` : '';
+        return `${escapeHtml(name)}${sizeStr} × ${it.qty}`;
       }).join('<br>');
       const totalCur = h.payload.currency || 'USD';
       body = `${itemsList}<br><span class="label">${t('cartTotal')}</span>${formatPrice(h.payload.total, totalCur)}`;
@@ -1791,38 +2261,38 @@ function renderHistory() {
     list.appendChild(el);
   });
 }
+function renderSettings() {
+  document.getElementById('langSelect').value = state.settings.lang;
+  document.getElementById('themeSelect').value = state.settings.theme;
+  document.getElementById('currencySelect').value = state.settings.currency;
+}
 
-/* ---- Оформление заказа из корзины ---- */
+/* ============================ ОФОРМЛЕНИЕ ЗАКАЗА ============================ */
 function submitOrder() {
   if (state.cart.length === 0) return;
   let total = 0;
-  const lang = detectLang();
   const lines = [t('orderMsgHeader'), ''];
-  const items = state.cart.map(c => {
+  state.cart.forEach(c => {
     const prod = productById(c.id);
     const p = prod ? localizedProduct(prod) : null;
     if (p) total += p.price * c.qty;
-    if (p) lines.push(`• ${p.name} × ${c.qty} = ${formatPrice(p.price * c.qty)}`);
-    return {
-      id: c.id, qty: c.qty,
-      name_ru: prod?.name_ru || '', name_en: prod?.name_en || '',
-      price_usd: prod?.price_usd ?? 0, price_byn: prod?.price_byn ?? 0
-    };
+    if (p) {
+      const sizeStr = c.size ? ` (${c.size})` : '';
+      lines.push(`• ${p.name}${sizeStr} × ${c.qty} = ${formatPrice(p.price * c.qty)}`);
+    }
   });
   lines.push('');
   lines.push(`${t('orderMsgTotal')}: ${formatPrice(total)}`);
 
-  // В историю
   state.history.push({
-    id: 'h' + Date.now(),
-    type: 'order',
-    date: new Date().toISOString(),
-    payload: { items: state.cart.map(c => ({ id: c.id, qty: c.qty })), total, currency: currency() }
+    id: 'h' + Date.now(), type: 'order', date: new Date().toISOString(),
+    payload: {
+      items: state.cart.map(c => ({ id: c.id, size: c.size, qty: c.qty })),
+      total, currency: currency()
+    }
   });
   state.cart = []; saveState(); updateBadges(); renderCart();
-
   try { tg?.HapticFeedback?.notificationOccurred('success'); } catch (e) {}
-
   setTimeout(() => {
     const ok = openManagerChat(lines.join('\n'));
     if (!ok) showToast(t('cannotOpenChat'));
@@ -1830,7 +2300,7 @@ function submitOrder() {
   }, 200);
 }
 
-/* ---- Админка ---- */
+/* ============================ АДМИНКА ============================ */
 function renderAdmin() {
   document.querySelectorAll('.admin-tab').forEach(b => {
     b.classList.toggle('active', b.getAttribute('data-admin-tab') === adminCurrentTab);
@@ -1844,14 +2314,12 @@ function renderAdmin() {
     return;
   }
   const addBtn = document.createElement('button');
-  addBtn.className = 'primary-btn';
-  addBtn.style.marginTop = '0';
+  addBtn.className = 'primary-btn'; addBtn.style.marginTop = '0';
   addBtn.textContent = t('adminAddProduct');
   addBtn.onclick = () => { adminEditingId = '__new__'; renderAdmin(); };
   panel.appendChild(addBtn);
   const section = document.createElement('div');
-  section.className = 'admin-section';
-  section.style.marginTop = '16px';
+  section.className = 'admin-section'; section.style.marginTop = '16px';
   if (list.length === 0) {
     section.innerHTML = `<div style="text-align:center;color:var(--text-secondary);padding:20px">${escapeHtml(t('catalogEmptyTitle'))}</div>`;
   } else {
@@ -1860,7 +2328,7 @@ function renderAdmin() {
       const row = document.createElement('div');
       row.className = 'admin-product-row';
       row.innerHTML = `
-        <img src="${escapeAttr(p.img)}" alt="">
+        <img src="${escapeAttr(p.mainImg)}" alt="">
         <div class="admin-product-info">
           <div class="admin-product-name">${escapeHtml(p.name)}</div>
           <div class="admin-product-price">$${prod.price_usd ?? 0} · ${prod.price_byn ?? 0} BYN</div>
@@ -1898,10 +2366,15 @@ function renderAdmin() {
   }
   panel.appendChild(section);
 }
+
 function renderAdminForm(prod) {
   const isNew = !prod;
   const wrap = document.createElement('div');
   wrap.className = 'admin-section';
+
+  let images = (prod?.images || (prod?.img ? [prod.img] : []) || []).slice();
+  if (images.length === 0) images = [''];
+
   wrap.innerHTML = `
     <h3>${isNew ? t('adminAddProduct') : t('adminEditProduct')}</h3>
     <div class="form-row"><label>${t('adminFieldNameRu')}</label><input type="text" id="f_name_ru" value="${escapeAttr(prod?.name_ru || '')}" placeholder="Худи бежевый"></div>
@@ -1910,9 +2383,9 @@ function renderAdminForm(prod) {
       <div class="form-row"><label>${t('adminFieldPriceUsd')}</label><input type="number" inputmode="decimal" step="0.01" id="f_price_usd" value="${prod?.price_usd ?? ''}" placeholder="49"></div>
       <div class="form-row"><label>${t('adminFieldPriceByn')}</label><input type="number" inputmode="decimal" step="0.01" id="f_price_byn" value="${prod?.price_byn ?? ''}" placeholder="159"></div>
     </div>
-    <div class="form-row"><label>${t('adminFieldImage')}</label>
-      <input type="url" id="f_img" value="${escapeAttr(prod?.img || '')}" placeholder="${escapeAttr(t('adminFieldImagePlaceholder'))}">
-      <img class="image-preview ${prod?.img ? 'show' : ''}" id="f_img_preview" src="${escapeAttr(prod?.img || '')}" alt="">
+    <div class="form-row">
+      <label>${t('adminFieldImages')}</label>
+      <div class="image-editor" id="imageEditor"></div>
     </div>
     <div class="form-row"><label>${t('adminFieldDescRu')}</label><textarea id="f_desc_ru">${escapeHtml(prod?.desc_ru || '')}</textarea></div>
     <div class="form-row"><label>${t('adminFieldDescEn')}</label><textarea id="f_desc_en">${escapeHtml(prod?.desc_en || '')}</textarea></div>
@@ -1921,28 +2394,61 @@ function renderAdminForm(prod) {
       <button class="secondary-btn" id="f_cancel">${t('cancel')}</button>
       <button class="primary-btn" id="f_save">${t('adminSave')}</button>
     </div>`;
-  const imgInput = wrap.querySelector('#f_img');
-  const imgPreview = wrap.querySelector('#f_img_preview');
-  imgInput.addEventListener('input', () => {
-    const v = imgInput.value.trim();
-    if (v) { imgPreview.src = v; imgPreview.classList.add('show'); }
-    else { imgPreview.classList.remove('show'); }
-  });
+
+  const editor = wrap.querySelector('#imageEditor');
+
+  function renderImages() {
+    editor.innerHTML = '';
+    images.forEach((url, idx) => {
+      const row = document.createElement('div');
+      row.className = 'image-editor-item';
+      const thumbSrc = url || '';
+      row.innerHTML = `
+        <img class="image-editor-thumb" src="${escapeAttr(thumbSrc)}" alt="">
+        <input type="url" value="${escapeAttr(url)}" placeholder="${escapeAttr(t('adminImagePlaceholder'))}">
+        <button class="image-editor-remove" aria-label="Remove">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>
+        </button>`;
+      const inp = row.querySelector('input');
+      const thumb = row.querySelector('img');
+      inp.addEventListener('input', () => {
+        images[idx] = inp.value.trim();
+        thumb.src = images[idx] || '';
+      });
+      row.querySelector('button').onclick = () => {
+        images.splice(idx, 1);
+        if (images.length === 0) images.push('');
+        renderImages();
+      };
+      editor.appendChild(row);
+    });
+    const addBtn = document.createElement('button');
+    addBtn.className = 'image-editor-add';
+    addBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> ${t('adminAddImage')}`;
+    addBtn.onclick = () => { images.push(''); renderImages(); };
+    editor.appendChild(addBtn);
+  }
+  renderImages();
+
   wrap.querySelector('#f_cancel').onclick = () => { adminEditingId = null; renderAdmin(); };
   wrap.querySelector('#f_save').onclick = () => {
+    const cleanImages = images.map(s => (s || '').trim()).filter(Boolean);
     const data = {
       name_ru: wrap.querySelector('#f_name_ru').value.trim(),
       name_en: wrap.querySelector('#f_name_en').value.trim(),
       desc_ru: wrap.querySelector('#f_desc_ru').value.trim(),
       desc_en: wrap.querySelector('#f_desc_en').value.trim(),
-      img: wrap.querySelector('#f_img').value.trim(),
+      images: cleanImages,
       price_usd: parseFloat(wrap.querySelector('#f_price_usd').value) || 0,
       price_byn: parseFloat(wrap.querySelector('#f_price_byn').value) || 0,
       sizes: wrap.querySelector('#f_sizes').value.split(',').map(s => s.trim()).filter(Boolean),
     };
     if (!data.name_ru && !data.name_en) { showToast(t('adminNoName')); return; }
-    if (prod) { Object.assign(prod, data); }
-    else {
+    if (prod) {
+      // удалим старое поле img — оставляем только images
+      delete prod.img;
+      Object.assign(prod, data);
+    } else {
       const id = 'c_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
       CATALOG.catalog.push({ id, ...data });
     }
@@ -1951,6 +2457,7 @@ function renderAdminForm(prod) {
   };
   return wrap;
 }
+
 function renderAdminExport() {
   const wrap = document.createElement('div');
   const exp = document.createElement('div');
@@ -1986,7 +2493,8 @@ function renderAdminExport() {
       try {
         const parsed = JSON.parse(ev.target.result);
         if (!parsed || !Array.isArray(parsed.catalog)) throw new Error('Invalid structure');
-        CATALOG = { catalog: parsed.catalog }; saveCatalog(); renderAdmin();
+        CATALOG = { catalog: parsed.catalog.map(migrateProduct) };
+        saveCatalog(); renderAdmin();
         showToast(t('adminImported'));
       } catch (err) { showToast(t('adminImportError')); }
     };
@@ -1994,33 +2502,14 @@ function renderAdminExport() {
     e.target.value = '';
   });
   wrap.appendChild(imp);
-  const reset = document.createElement('div');
-  reset.className = 'admin-section';
-  reset.innerHTML = `
-    <h3 style="color:var(--danger)">${t('adminResetTitle')}</h3>
-    <p style="color:var(--text-secondary);font-size:13px;margin:0 0 12px">${t('adminResetSub')}</p>
-    <button class="danger-btn" id="resetBtn">${t('adminResetBtn')}</button>`;
-  reset.querySelector('#resetBtn').onclick = () => {
-    showConfirm({
-      icon: '⚠️', title: t('adminConfirmReset'), text: t('adminConfirmResetText'),
-      yes: t('yes'), no: t('cancel'),
-      onYes: () => {
-        CATALOG = JSON.parse(JSON.stringify(SEED_CATALOG));
-        saveCatalog(); renderAdmin();
-        showToast(t('adminReset'));
-      }
-    });
-  };
-  wrap.appendChild(reset);
   return wrap;
 }
 
-/* ---- Хелперы ---- */
+/* ============================ ХЕЛПЕРЫ ============================ */
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 }
 function escapeAttr(s) { return escapeHtml(s); }
-
 let toastTimer = null;
 function showToast(msg) {
   const el = document.getElementById('toast');
@@ -2049,17 +2538,16 @@ function showConfirm({ icon = '⚠️', title, text, yes, no, onYes }) {
   btn.onclick = () => { modal.classList.remove('show'); cancelBtn.remove(); if (onYes) onYes(); };
   cancelBtn.onclick = () => { modal.classList.remove('show'); cancelBtn.remove(); };
 }
-
 function rerenderCurrencyDependent() {
   if (currentPage === 'home') renderHome();
   if (currentPage === 'catalog') renderCatalog();
   if (currentPage === 'favorites') renderFavorites();
   if (currentPage === 'cart') renderCart();
-  if (currentPage === 'profile') renderHistory();
+  if (currentPage === 'history') renderHistory();
   if (currentPage === 'detail' && lastDetailId) renderDetail(lastDetailId, lastDetailFrom);
 }
 
-/* ---- Онбординг ---- */
+/* ============================ ОНБОРДИНГ ============================ */
 function showOnboarding() {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-onboarding').classList.add('active');
@@ -2067,6 +2555,7 @@ function showOnboarding() {
   document.getElementById('bottomNav').classList.add('hidden');
   document.body.classList.add('no-chrome');
   if (tg?.BackButton) { try { tg.BackButton.hide(); } catch (e) {} }
+  currentPage = 'onboarding';
 }
 function finishOnboarding() {
   try { localStorage.setItem(ONBOARDING_KEY, '1'); } catch (e) {}
@@ -2076,12 +2565,14 @@ function shouldShowOnboarding() {
   try { return !localStorage.getItem(ONBOARDING_KEY); } catch (e) { return false; }
 }
 
-/* ---- Инициализация ---- */
+/* ============================ ИНИЦИАЛИЗАЦИЯ ============================ */
 function init() {
-  applyTheme(); applyLang(); updateBadges(); updateCurrencyLabel();
+  applyTheme(); applyLang(); updateBadges();
 
   if (tg?.onEvent) {
     try { tg.onEvent('themeChanged', () => { if (state.settings.theme === 'auto') applyTheme(); }); } catch (e) {}
+    // Если телега когда-то «отпустит» свайпы — снова их отключим
+    try { tg.onEvent('viewportChanged', () => { try { tg.disableVerticalSwipes && tg.disableVerticalSwipes(); } catch (e) {} }); } catch (e) {}
   }
   if (window.matchMedia) {
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => {
@@ -2092,7 +2583,8 @@ function init() {
     try {
       tg.BackButton.onClick(() => {
         if (currentPage === 'detail') navigate(lastDetailFrom || 'home');
-        else if (currentPage === 'favorites' || currentPage === 'cart') navigate('home');
+        else if (currentPage === 'history') navigate('profile');
+        else if (currentPage === 'settings') navigate('profile');
         else if (currentPage === 'admin') {
           if (adminEditingId !== null) { adminEditingId = null; renderAdmin(); }
           else navigate('profile');
@@ -2108,17 +2600,14 @@ function init() {
   document.getElementById('favBtn').onclick = () => navigate('favorites');
   document.getElementById('cartBtn').onclick = () => navigate('cart');
   document.getElementById('backBtn').onclick = () => navigate(lastDetailFrom || 'home');
-
-  // Кнопка-CTA «Заказать из Китая» на главной
+  document.getElementById('headerTitle').onclick = () => navigate('home');
   document.getElementById('homeCtaBtn').onclick = () => navigate('chat');
-
-  // Валюта в шапке
-  document.getElementById('currencyBtn').onclick = () => {
-    state.settings.currency = state.settings.currency === 'USD' ? 'BYN' : 'USD';
-    saveState(); updateCurrencyLabel(); rerenderCurrencyDependent();
+  document.getElementById('openAdminRow').onclick = () => {
+    adminCurrentTab = 'catalog'; adminEditingId = null;
+    navigate('admin');
   };
 
-  // Поиск (два инпута — на главной и в каталоге)
+  // Поиск
   function setupSearch(inputId, clearId) {
     const input = document.getElementById(inputId);
     const clear = document.getElementById(clearId);
@@ -2139,16 +2628,9 @@ function init() {
   // Чат
   const chatInput = document.getElementById('chatInput');
   chatInput.addEventListener('input', () => {
-    // авто-рост textarea
     chatInput.style.height = 'auto';
     chatInput.style.height = Math.min(chatInput.scrollHeight, 100) + 'px';
     updateSendBtn();
-  });
-  chatInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
-      // На мобиле Enter обычно ставит перенос — оставляем дефолт.
-      // На десктопе Ctrl+Enter тоже добавит перенос. Кнопка-самолётик надёжнее.
-    }
   });
   document.getElementById('chatSendBtn').onclick = sendChatMessage;
   document.getElementById('chatAttachInput').addEventListener('change', (e) => {
@@ -2171,18 +2653,15 @@ function init() {
     e.target.value = '';
   });
 
-  // Оформить заказ
+  // Корзина
   document.getElementById('checkoutBtn').onclick = submitOrder;
 
   // Настройки
   document.getElementById('langSelect').addEventListener('change', (e) => {
     state.settings.lang = e.target.value;
     saveState(); applyLang();
-    // перерисуем чат, чтобы приветственные сообщения сменили язык
-    chatRendered = false;
-    if (currentPage === 'chat') renderChat();
+    chatRendered = false; if (currentPage === 'chat') renderChat();
     rerenderCurrencyDependent();
-    if (currentPage === 'profile') renderProfile();
   });
   document.getElementById('themeSelect').addEventListener('change', (e) => {
     state.settings.theme = e.target.value;
@@ -2190,14 +2669,10 @@ function init() {
   });
   document.getElementById('currencySelect').addEventListener('change', (e) => {
     state.settings.currency = e.target.value;
-    saveState(); updateCurrencyLabel(); rerenderCurrencyDependent();
+    saveState(); rerenderCurrencyDependent();
   });
 
   // Админка
-  document.getElementById('openAdminRow').onclick = () => {
-    adminCurrentTab = 'catalog'; adminEditingId = null;
-    navigate('admin');
-  };
   document.querySelectorAll('.admin-tab').forEach(b => {
     b.addEventListener('click', () => {
       adminCurrentTab = b.getAttribute('data-admin-tab');
@@ -2209,12 +2684,12 @@ function init() {
   // Онбординг
   document.getElementById('onbBtn').onclick = finishOnboarding;
 
+  // Лайтбокс
+  setupLightbox();
+
   // Старт
-  if (shouldShowOnboarding()) {
-    showOnboarding();
-  } else {
-    navigate('home');
-  }
+  if (shouldShowOnboarding()) showOnboarding();
+  else navigate('home');
 }
 
 loadCatalog().then(init);
