@@ -8,23 +8,25 @@
 <style>
   :root {
     --bg: #ffffff;
-    --bg-secondary: #f4f4f5;
-    --bg-tertiary: #ebebed;
-    --text: #0f0f10;
-    --text-secondary: #6a6a70;
-    --hint: #8a8a90;
-    --link: #2481cc;
-    --button: #2481cc;
+    --bg-secondary: #f6f1ea;
+    --bg-tertiary: #ece2d4;
+    --text: #2a1a0e;
+    --text-secondary: #6e503a;
+    --hint: #9c826a;
+    --link: #c4661f;
+    --button: #d97326;
     --button-text: #ffffff;
-    --border: #e4e4e7;
-    --danger: #e53e3e;
-    --success: #16a34a;
+    --border: #e6d9c7;
+    --danger: #c0392b;
+    --success: #6b8e23;
     --warning: #d97706;
-    --accent: #2481cc;
-    --chat-in: #f0f0f2;
-    --chat-out: #2481cc;
+    --accent: #d97326;
+    --accent-soft: rgba(217, 115, 38, 0.10);
+    --brown: #5c3a1e;
+    --chat-in: #f1e7da;
+    --chat-out: #d97326;
     --chat-out-text: #ffffff;
-    --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04);
+    --shadow: 0 1px 2px rgba(92,58,30,0.06), 0 4px 12px rgba(92,58,30,0.06);
     --radius: 12px;
     --radius-sm: 8px;
     --radius-lg: 16px;
@@ -1503,44 +1505,48 @@ function detectTheme() {
 function applyTheme() {
   const theme = detectTheme();
   const isDark = theme === 'dark';
-  const tp = tg?.themeParams || {};
+  // Используем собственную тёплую палитру; themeParams игнорируем, чтобы сохранить фирменные цвета
   const root = document.documentElement;
   if (isDark) {
-    root.style.setProperty('--bg', tp.bg_color || '#17212b');
-    root.style.setProperty('--bg-secondary', tp.secondary_bg_color || '#232e3c');
-    root.style.setProperty('--bg-tertiary', '#2b3947');
-    root.style.setProperty('--text', tp.text_color || '#ffffff');
-    root.style.setProperty('--text-secondary', tp.subtitle_text_color || '#a0a8b3');
-    root.style.setProperty('--hint', tp.hint_color || '#7d8b99');
-    root.style.setProperty('--link', tp.link_color || '#62a8e0');
-    root.style.setProperty('--button', tp.button_color || '#3a93d8');
-    root.style.setProperty('--button-text', tp.button_text_color || '#ffffff');
-    root.style.setProperty('--border', '#2b3947');
-    root.style.setProperty('--accent', tp.button_color || '#3a93d8');
-    root.style.setProperty('--chat-in', '#2b3947');
-    root.style.setProperty('--chat-out', tp.button_color || '#3a93d8');
-    root.style.setProperty('--chat-out-text', tp.button_text_color || '#ffffff');
+    root.style.setProperty('--bg', '#1c130c');
+    root.style.setProperty('--bg-secondary', '#2a1c12');
+    root.style.setProperty('--bg-tertiary', '#3a2718');
+    root.style.setProperty('--text', '#f4e9da');
+    root.style.setProperty('--text-secondary', '#c3a988');
+    root.style.setProperty('--hint', '#8b7355');
+    root.style.setProperty('--link', '#ed8a3e');
+    root.style.setProperty('--button', '#e07a2a');
+    root.style.setProperty('--button-text', '#ffffff');
+    root.style.setProperty('--border', '#3a2718');
+    root.style.setProperty('--accent', '#e07a2a');
+    root.style.setProperty('--accent-soft', 'rgba(224, 122, 42, 0.16)');
+    root.style.setProperty('--brown', '#a87148');
+    root.style.setProperty('--chat-in', '#3a2718');
+    root.style.setProperty('--chat-out', '#e07a2a');
+    root.style.setProperty('--chat-out-text', '#ffffff');
     root.style.setProperty('color-scheme', 'dark');
   } else {
-    root.style.setProperty('--bg', tp.bg_color || '#ffffff');
-    root.style.setProperty('--bg-secondary', tp.secondary_bg_color || '#f4f4f5');
-    root.style.setProperty('--bg-tertiary', '#ebebed');
-    root.style.setProperty('--text', tp.text_color || '#0f0f10');
-    root.style.setProperty('--text-secondary', tp.subtitle_text_color || '#6a6a70');
-    root.style.setProperty('--hint', tp.hint_color || '#8a8a90');
-    root.style.setProperty('--link', tp.link_color || '#2481cc');
-    root.style.setProperty('--button', tp.button_color || '#2481cc');
-    root.style.setProperty('--button-text', tp.button_text_color || '#ffffff');
-    root.style.setProperty('--border', '#e4e4e7');
-    root.style.setProperty('--accent', tp.button_color || '#2481cc');
-    root.style.setProperty('--chat-in', '#f0f0f2');
-    root.style.setProperty('--chat-out', tp.button_color || '#2481cc');
-    root.style.setProperty('--chat-out-text', tp.button_text_color || '#ffffff');
+    root.style.setProperty('--bg', '#ffffff');
+    root.style.setProperty('--bg-secondary', '#f6f1ea');
+    root.style.setProperty('--bg-tertiary', '#ece2d4');
+    root.style.setProperty('--text', '#2a1a0e');
+    root.style.setProperty('--text-secondary', '#6e503a');
+    root.style.setProperty('--hint', '#9c826a');
+    root.style.setProperty('--link', '#c4661f');
+    root.style.setProperty('--button', '#d97326');
+    root.style.setProperty('--button-text', '#ffffff');
+    root.style.setProperty('--border', '#e6d9c7');
+    root.style.setProperty('--accent', '#d97326');
+    root.style.setProperty('--accent-soft', 'rgba(217, 115, 38, 0.10)');
+    root.style.setProperty('--brown', '#5c3a1e');
+    root.style.setProperty('--chat-in', '#f1e7da');
+    root.style.setProperty('--chat-out', '#d97326');
+    root.style.setProperty('--chat-out-text', '#ffffff');
     root.style.setProperty('color-scheme', 'light');
   }
   try {
-    if (tg?.setHeaderColor) tg.setHeaderColor(isDark ? '#17212b' : '#ffffff');
-    if (tg?.setBackgroundColor) tg.setBackgroundColor(isDark ? '#17212b' : '#ffffff');
+    if (tg?.setHeaderColor) tg.setHeaderColor(isDark ? '#1c130c' : '#ffffff');
+    if (tg?.setBackgroundColor) tg.setBackgroundColor(isDark ? '#1c130c' : '#ffffff');
   } catch (e) {}
 }
 function t(key) { const lang = detectLang(); return I18N[lang]?.[key] ?? I18N.en[key] ?? key; }
