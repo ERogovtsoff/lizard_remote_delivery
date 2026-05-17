@@ -2,17 +2,36 @@
   "catalog": [
     {
       "id": "c_mp9q1l414xa1",
-      "name_ru": "SHEEN KELLY Vintage",
-      "name_en": "SHEEN KELLY Vintage",
-      "desc_ru": "Описание на русском",
-      "desc_en": "English decription",
+      "name_ru": "SHEEN KELLY LONELINESS Square Colorful Sunglasses #23022",
+      "name_en": "SHEEN KELLY LONELINESS Square Colorful Sunglasses #23022",
+      "desc_ru": "Материал: Пластиковая оправа\nЗащита от UV400\n\nШирина линзы: 54 мм\nВысота линзы: 38 мм\nШирина переносицы: 21 мм\nДлина виска: 140 мм",
+      "desc_en": "Material: Plastic frame\nUV400 Protction\n\nLens Width: 54 mm\nLens Height: 38 mm\nBridge Width: 21 mm\nTemple Length: 140 mm",
       "images": [
         "https://www.sheenkelly.com/cdn/shop/files/image_1_b7093572-8b63-446c-8be5-37d72252fdcd.jpg?v=1718759174&width=1440",
         "https://www.sheenkelly.com/cdn/shop/files/23022-2_1_1.png?v=1739266136&width=600",
-        "https://www.sheenkelly.com/cdn/shop/files/image00013_6bd722ba-a491-43a3-bab2-b2e5b02b6f93.jpg?v=1739266136&width=1440"
+        "https://www.sheenkelly.com/cdn/shop/files/image00013_6bd722ba-a491-43a3-bab2-b2e5b02b6f93.jpg?v=1739266136&width=1440",
+        "https://www.sheenkelly.com/cdn/shop/files/3EAA737DFBC9C47E3AE623D3527FFE39.jpg?v=1748057793&width=720"
       ],
       "price_usd": 25,
       "price_byn": 69,
+      "sizes": [
+        "One size"
+      ]
+    },
+    {
+      "id": "c_mp9rwolvjwoy",
+      "name_ru": "Dickies Moreauville cross body bag in black",
+      "name_en": "Dickies Moreauville cross body bag in black",
+      "desc_ru": "",
+      "desc_en": "",
+      "images": [
+        "https://images.asos-media.com/products/dickies-moreauville-cross-body-bag-in-black/204477277-1-black?$n_640w$&wid=513&fit=constrain",
+        "https://images.asos-media.com/products/dickies-moreauville-cross-body-bag-in-black/204477277-2?$n_640w$&wid=513&fit=constrain",
+        "https://images.asos-media.com/products/dickies-moreauville-cross-body-bag-in-black/204477277-3?$n_640w$&wid=513&fit=constrain",
+        "https://images.asos-media.com/products/dickies-moreauville-cross-body-bag-in-black/204477277-4?$n_640w$&wid=513&fit=constrain"
+      ],
+      "price_usd": 11,
+      "price_byn": 30,
       "sizes": [
         "One size"
       ]
