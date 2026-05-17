@@ -1,0 +1,1672 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<title>Магазин</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-secondary: #f4f4f5;
+    --bg-tertiary: #ebebed;
+    --text: #0f0f10;
+    --text-secondary: #6a6a70;
+    --hint: #8a8a90;
+    --link: #2481cc;
+    --button: #2481cc;
+    --button-text: #ffffff;
+    --border: #e4e4e7;
+    --danger: #e53e3e;
+    --success: #16a34a;
+    --accent: #2481cc;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.04);
+    --radius: 12px;
+    --radius-sm: 8px;
+    --radius-lg: 16px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 15px; line-height: 1.4;
+    overscroll-behavior-y: contain;
+    -webkit-font-smoothing: antialiased;
+  }
+  body { min-height: 100vh; padding-bottom: calc(72px + env(safe-area-inset-bottom, 0)); }
+  button { font-family: inherit; cursor: pointer; }
+  input, textarea, select { font-family: inherit; font-size: 15px; }
+  a { color: var(--link); text-decoration: none; }
+  img { display: block; max-width: 100%; }
+
+  .app-header {
+    position: sticky; top: 0; z-index: 50;
+    background: var(--bg); border-bottom: 1px solid var(--border);
+    padding: 12px 16px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  .header-title { font-size: 17px; font-weight: 600; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .header-actions { display: flex; gap: 6px; align-items: center; }
+  .icon-btn {
+    background: var(--bg-secondary); border: none; color: var(--text);
+    width: 36px; height: 36px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; padding: 0; position: relative;
+  }
+  .icon-btn svg { width: 20px; height: 20px; }
+  .currency-pill {
+    background: var(--bg-secondary); color: var(--text); border: none;
+    padding: 0 12px; height: 36px; border-radius: 18px;
+    font-size: 13px; font-weight: 600;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .currency-pill svg { width: 12px; height: 12px; opacity: 0.6; }
+  .badge {
+    position: absolute; top: -2px; right: -2px;
+    background: var(--danger); color: #fff;
+    font-size: 10px; font-weight: 600;
+    min-width: 16px; height: 16px; border-radius: 8px; padding: 0 4px;
+    display: flex; align-items: center; justify-content: center;
+    border: 2px solid var(--bg); box-sizing: content-box;
+  }
+
+  .page { display: none; padding: 16px; max-width: 720px; margin: 0 auto; }
+  .page.active { display: block; }
+  .page h2 { font-size: 22px; font-weight: 700; margin: 0 0 8px 0; }
+  .page-sub { color: var(--text-secondary); margin: 0 0 20px 0; font-size: 14px; }
+
+  .bottom-nav {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--bg); border-top: 1px solid var(--border);
+    display: grid; grid-template-columns: repeat(5, 1fr);
+    padding: 8px 4px calc(8px + env(safe-area-inset-bottom, 0));
+    z-index: 100;
+  }
+  .nav-btn {
+    background: none; border: none; padding: 6px 4px;
+    color: var(--text-secondary);
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    border-radius: var(--radius-sm); transition: color 0.15s; position: relative;
+  }
+  .nav-btn svg { width: 22px; height: 22px; }
+  .nav-btn span { font-size: 10.5px; font-weight: 500; }
+  .nav-btn.active { color: var(--link); }
+
+  .order-card { background: var(--bg-secondary); border-radius: var(--radius-lg); padding: 18px; margin-bottom: 16px; }
+  .order-card h3 { margin: 0 0 6px 0; font-size: 17px; font-weight: 600; }
+  .order-card p { margin: 0 0 14px 0; color: var(--text-secondary); font-size: 14px; }
+  .order-textarea {
+    width: 100%; min-height: 110px; padding: 12px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--bg); color: var(--text); resize: vertical; outline: none;
+  }
+  .order-textarea:focus { border-color: var(--accent); }
+  .order-input-wrap { margin-top: 10px; }
+  .input-label { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 6px; }
+  .order-input {
+    width: 100%; padding: 11px 12px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--bg); color: var(--text); outline: none;
+  }
+  .order-input:focus { border-color: var(--accent); }
+  .attach-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .attach-btn {
+    flex: 1; min-width: 130px;
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: 10px; border-radius: var(--radius);
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    font-size: 14px; font-weight: 500;
+  }
+  .attach-btn svg { width: 18px; height: 18px; }
+  .attach-btn input[type="file"] { display: none; }
+  .attached-photos { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .attached-photo {
+    position: relative; width: 64px; height: 64px;
+    border-radius: var(--radius-sm); overflow: hidden; background: var(--bg-tertiary);
+  }
+  .attached-photo img { width: 100%; height: 100%; object-fit: cover; }
+  .attached-photo button {
+    position: absolute; top: 2px; right: 2px;
+    background: rgba(0,0,0,0.65); color: #fff; border: none;
+    width: 18px; height: 18px; border-radius: 50%;
+    font-size: 12px; line-height: 1; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .info-banner {
+    background: rgba(36, 129, 204, 0.08); border-left: 3px solid var(--accent);
+    color: var(--text); padding: 10px 12px;
+    border-radius: var(--radius-sm); font-size: 13px;
+    margin-top: 12px; line-height: 1.4;
+  }
+  .primary-btn {
+    width: 100%; background: var(--button); color: var(--button-text);
+    border: none; padding: 14px; border-radius: var(--radius);
+    font-size: 15px; font-weight: 600; margin-top: 16px;
+    transition: opacity 0.15s;
+  }
+  .primary-btn:active { opacity: 0.8; }
+  .primary-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .secondary-btn {
+    width: 100%; background: var(--bg-secondary); color: var(--text);
+    border: none; padding: 12px; border-radius: var(--radius);
+    font-size: 14px; font-weight: 500;
+  }
+  .danger-btn {
+    width: 100%; background: rgba(229, 62, 62, 0.08); color: var(--danger);
+    border: none; padding: 12px; border-radius: var(--radius);
+    font-size: 14px; font-weight: 500;
+  }
+
+  .promo-block { margin-top: 8px; background: var(--bg-secondary); border-radius: var(--radius-lg); padding: 16px; }
+  .promo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .promo-header h3 { margin: 0; font-size: 16px; font-weight: 600; }
+  .promo-header .promo-sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+  .promo-link { color: var(--link); font-size: 14px; background: none; border: none; padding: 4px 0; font-weight: 500; }
+  .promo-scroll {
+    display: flex; gap: 10px; overflow-x: auto;
+    margin: 0 -16px; padding: 0 16px 4px 16px;
+    scrollbar-width: none;
+  }
+  .promo-scroll::-webkit-scrollbar { display: none; }
+  .promo-card { flex: 0 0 130px; background: var(--bg); border-radius: var(--radius); overflow: hidden; cursor: pointer; }
+  .promo-card-img { width: 100%; aspect-ratio: 1; background: var(--bg-tertiary); object-fit: cover; }
+  .promo-card-info { padding: 8px 10px 10px; }
+  .promo-card-name {
+    font-size: 12.5px; font-weight: 500; line-height: 1.3;
+    margin: 0 0 4px; overflow: hidden;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    min-height: 32px;
+  }
+  .promo-card-price { font-size: 13px; font-weight: 600; }
+
+  .products-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .product-card {
+    background: var(--bg-secondary); border-radius: var(--radius);
+    overflow: hidden; cursor: pointer; position: relative;
+  }
+  .product-card-img { width: 100%; aspect-ratio: 1; object-fit: cover; background: var(--bg-tertiary); }
+  .product-card-fav {
+    position: absolute; top: 8px; right: 8px;
+    background: rgba(255,255,255,0.85);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    border: none; width: 32px; height: 32px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; padding: 0;
+  }
+  .product-card-fav svg { width: 18px; height: 18px; color: #333; }
+  .product-card-fav.active svg { color: var(--danger); fill: var(--danger); }
+  .product-card-info { padding: 10px 12px 12px; }
+  .product-card-name {
+    font-size: 13.5px; font-weight: 500; line-height: 1.35;
+    margin: 0 0 6px; overflow: hidden;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    min-height: 36px;
+  }
+  .product-card-price { font-size: 14.5px; font-weight: 600; }
+
+  .product-detail-img {
+    width: calc(100% + 32px); margin: -16px -16px 16px -16px;
+    aspect-ratio: 1; object-fit: cover; background: var(--bg-tertiary);
+  }
+  .product-detail-name { font-size: 20px; font-weight: 600; margin: 0 0 6px; }
+  .product-detail-price { font-size: 22px; font-weight: 700; margin: 0 0 4px; }
+  .product-detail-price-alt { font-size: 14px; color: var(--text-secondary); margin: 0 0 16px; }
+  .product-detail-desc {
+    color: var(--text-secondary); margin: 0 0 16px;
+    font-size: 14px; line-height: 1.5; white-space: pre-wrap;
+  }
+  .product-section { margin: 20px 0; }
+  .product-section h4 { font-size: 15px; font-weight: 600; margin: 0 0 10px; }
+  .size-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); gap: 8px; }
+  .size-cell { background: var(--bg-secondary); padding: 10px 8px; border-radius: var(--radius-sm); text-align: center; font-size: 13px; }
+  .detail-actions { display: flex; gap: 10px; margin-top: 20px; }
+  .detail-actions .primary-btn { margin: 0; flex: 1; }
+  .detail-fav-btn {
+    width: 50px; background: var(--bg-secondary); border: none;
+    border-radius: var(--radius);
+    display: flex; align-items: center; justify-content: center; color: var(--text);
+  }
+  .detail-fav-btn svg { width: 22px; height: 22px; }
+  .detail-fav-btn.active svg { color: var(--danger); fill: var(--danger); }
+  .back-btn {
+    background: none; border: none; color: var(--link);
+    padding: 0; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 4px; font-size: 15px;
+  }
+
+  .cart-item {
+    display: flex; gap: 12px; padding: 12px;
+    background: var(--bg-secondary); border-radius: var(--radius);
+    margin-bottom: 10px; align-items: center;
+  }
+  .cart-item img {
+    width: 64px; height: 64px; border-radius: var(--radius-sm);
+    object-fit: cover; background: var(--bg-tertiary); flex-shrink: 0;
+  }
+  .cart-item-info { flex: 1; min-width: 0; }
+  .cart-item-name {
+    font-size: 14px; font-weight: 500; margin: 0 0 4px; overflow: hidden;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+  .cart-item-price { font-size: 14px; font-weight: 600; }
+  .cart-item-controls { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+  .qty-btn {
+    width: 26px; height: 26px; border-radius: 50%;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text);
+    font-size: 16px; line-height: 1; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .qty-val { font-size: 14px; font-weight: 500; min-width: 20px; text-align: center; }
+  .remove-btn { background: none; border: none; color: var(--danger); padding: 4px; margin-left: auto; }
+  .remove-btn svg { width: 18px; height: 18px; }
+  .cart-total {
+    background: var(--bg-secondary); padding: 16px; border-radius: var(--radius);
+    margin-top: 16px; display: flex; justify-content: space-between; align-items: center;
+  }
+  .cart-total-label { color: var(--text-secondary); font-size: 14px; }
+  .cart-total-val { font-size: 20px; font-weight: 700; }
+
+  .history-item { background: var(--bg-secondary); border-radius: var(--radius); padding: 14px; margin-bottom: 10px; }
+  .history-item-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; gap: 8px; }
+  .history-type { font-size: 13px; font-weight: 600; padding: 3px 8px; border-radius: 8px; display: inline-block; }
+  .history-type.request { background: rgba(36, 129, 204, 0.12); color: var(--link); }
+  .history-type.order { background: rgba(22, 163, 74, 0.12); color: var(--success); }
+  .history-date { font-size: 12px; color: var(--hint); white-space: nowrap; }
+  .history-body { font-size: 14px; color: var(--text); line-height: 1.4; word-wrap: break-word; }
+  .history-body .label {
+    font-weight: 600; color: var(--text-secondary); font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.4px;
+    display: block; margin-top: 6px;
+  }
+
+  .settings-group { background: var(--bg-secondary); border-radius: var(--radius); overflow: hidden; margin-bottom: 16px; }
+  .settings-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px; border-bottom: 1px solid var(--border); gap: 12px;
+  }
+  .settings-row:last-child { border-bottom: none; }
+  .settings-row-label { font-size: 15px; font-weight: 500; }
+  .settings-row-sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+  .settings-select {
+    background: var(--bg); color: var(--text); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 8px 10px; font-size: 14px;
+  }
+  .settings-row.clickable { cursor: pointer; }
+
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--text-secondary); }
+  .empty-state .icon { font-size: 44px; margin-bottom: 10px; opacity: 0.4; }
+  .empty-state h3 { margin: 0 0 6px; color: var(--text); font-size: 16px; }
+  .empty-state p { margin: 0; font-size: 14px; }
+
+  .toast {
+    position: fixed; top: 70px; left: 50%;
+    transform: translateX(-50%) translateY(-20px);
+    background: var(--text); color: var(--bg);
+    padding: 12px 18px; border-radius: var(--radius);
+    font-size: 14px; font-weight: 500;
+    opacity: 0; pointer-events: none; z-index: 200;
+    transition: opacity 0.2s, transform 0.2s;
+    box-shadow: var(--shadow); max-width: 90vw; text-align: center;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    display: none; align-items: center; justify-content: center;
+    z-index: 150; padding: 20px;
+  }
+  .modal-backdrop.show { display: flex; }
+  .modal {
+    background: var(--bg); border-radius: var(--radius-lg);
+    padding: 24px; max-width: 360px; width: 100%; text-align: center;
+  }
+  .modal-icon { font-size: 40px; margin-bottom: 12px; }
+  .modal h3 { margin: 0 0 8px; font-size: 18px; font-weight: 600; }
+  .modal p { margin: 0 0 18px; color: var(--text-secondary); font-size: 14px; }
+
+  .admin-section { background: var(--bg-secondary); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
+  .admin-section h3 { margin: 0 0 12px; font-size: 15px; font-weight: 600; }
+  .admin-tabs {
+    display: flex; gap: 6px; margin-bottom: 16px;
+    background: var(--bg-secondary); padding: 4px; border-radius: var(--radius);
+  }
+  .admin-tab {
+    flex: 1; background: none; border: none; padding: 8px;
+    border-radius: var(--radius-sm); color: var(--text-secondary);
+    font-size: 13px; font-weight: 500;
+  }
+  .admin-tab.active { background: var(--bg); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+
+  .form-row { margin-bottom: 12px; }
+  .form-row label { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 6px; font-weight: 500; }
+  .form-row input, .form-row textarea {
+    width: 100%; padding: 10px 12px;
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    background: var(--bg); color: var(--text); outline: none;
+  }
+  .form-row textarea { min-height: 70px; resize: vertical; }
+  .form-row input:focus, .form-row textarea:focus { border-color: var(--accent); }
+  .form-row-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  .admin-product-row {
+    display: flex; gap: 10px; align-items: center;
+    padding: 10px; background: var(--bg);
+    border-radius: var(--radius-sm); margin-bottom: 8px;
+  }
+  .admin-product-row img {
+    width: 44px; height: 44px; border-radius: var(--radius-sm);
+    object-fit: cover; background: var(--bg-tertiary); flex-shrink: 0;
+  }
+  .admin-product-info { flex: 1; min-width: 0; }
+  .admin-product-name { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .admin-product-price { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+  .admin-product-actions { display: flex; gap: 4px; }
+  .admin-icon-btn {
+    background: var(--bg-secondary); border: none;
+    width: 32px; height: 32px; border-radius: 50%; color: var(--text);
+    display: flex; align-items: center; justify-content: center; padding: 0;
+  }
+  .admin-icon-btn svg { width: 16px; height: 16px; }
+  .admin-icon-btn.danger { color: var(--danger); }
+  .image-preview {
+    width: 100%; aspect-ratio: 16/9; background: var(--bg-tertiary);
+    border-radius: var(--radius-sm); object-fit: cover;
+    margin-top: 8px; display: none;
+  }
+  .image-preview.show { display: block; }
+  .admin-form-actions { display: flex; gap: 8px; margin-top: 16px; }
+  .admin-form-actions .primary-btn, .admin-form-actions .secondary-btn { margin-top: 0; }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <h1 class="header-title" data-i18n="appName">Магазин</h1>
+  <div class="header-actions">
+    <button class="currency-pill" id="currencyBtn" aria-label="Currency">
+      <span id="currencyLabel">USD</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
+    <button class="icon-btn" id="favBtn" aria-label="Favorites">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+      <span class="badge" id="favBadge" style="display:none">0</span>
+    </button>
+    <button class="icon-btn" id="cartBtn" aria-label="Cart">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+      <span class="badge" id="cartBadge" style="display:none">0</span>
+    </button>
+  </div>
+</header>
+
+<section class="page active" id="page-order">
+  <h2 data-i18n="orderTitle">Заказать из Китая</h2>
+  <p class="page-sub" data-i18n="orderSub">Опишите товар любым удобным способом — менеджер свяжется с вами.</p>
+  <div class="order-card">
+    <h3 data-i18n="orderCardTitle">Что вы хотите заказать?</h3>
+    <p data-i18n="orderCardSub">Название, описание, размер, цвет — что угодно.</p>
+    <textarea class="order-textarea" id="orderText" data-i18n-placeholder="orderTextPlaceholder" placeholder="Например: чёрная толстовка Nike Tech, размер M…"></textarea>
+    <div class="order-input-wrap">
+      <label class="input-label" data-i18n="orderLinkLabel">Ссылка на товар (необязательно)</label>
+      <input type="url" class="order-input" id="orderLink" data-i18n-placeholder="orderLinkPlaceholder" placeholder="https://...">
+    </div>
+    <div class="attach-row">
+      <label class="attach-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        <span data-i18n="attachPhoto">Прикрепить фото</span>
+        <input type="file" accept="image/*" multiple id="orderPhoto">
+      </label>
+    </div>
+    <div class="attached-photos" id="attachedPhotos"></div>
+    <div class="info-banner" data-i18n="photoHintBanner">После отправки бот попросит переслать фото в чат — так менеджер их получит.</div>
+    <button class="primary-btn" id="sendOrderBtn" data-i18n="sendToManager">Отправить менеджеру</button>
+  </div>
+  <div class="promo-block">
+    <div class="promo-header">
+      <div>
+        <h3 data-i18n="promoTitle">А ещё у нас есть в наличии</h3>
+        <div class="promo-sub" data-i18n="promoSub">Без ожидания доставки из Китая</div>
+      </div>
+      <button class="promo-link" data-nav="catalog" data-i18n="seeAll">Все →</button>
+    </div>
+    <div class="promo-scroll" id="promoScroll"></div>
+  </div>
+</section>
+
+<section class="page" id="page-catalog">
+  <h2 data-i18n="catalogTitle">В наличии</h2>
+  <p class="page-sub" data-i18n="catalogSub">Товары, которые можно заказать прямо сейчас.</p>
+  <div class="products-grid" id="catalogGrid"></div>
+  <div class="empty-state" id="catalogEmpty" style="display:none">
+    <div class="icon">📦</div>
+    <h3 data-i18n="catalogEmptyTitle">Пока пусто</h3>
+    <p data-i18n="catalogEmptyText">Товары скоро появятся.</p>
+  </div>
+</section>
+
+<section class="page" id="page-inspiration">
+  <h2 data-i18n="inspirationTitle">Вдохновение</h2>
+  <p class="page-sub" data-i18n="inspirationSub">Подборка от наших стилистов. Нажмите, чтобы заказать.</p>
+  <div class="products-grid" id="inspirationGrid"></div>
+  <div class="empty-state" id="inspirationEmpty" style="display:none">
+    <div class="icon">💡</div>
+    <h3 data-i18n="inspirationEmptyTitle">Пока пусто</h3>
+    <p data-i18n="inspirationEmptyText">Идеи скоро появятся.</p>
+  </div>
+</section>
+
+<section class="page" id="page-favorites">
+  <h2 data-i18n="favTitle">Избранное</h2>
+  <p class="page-sub" data-i18n="favSub">Товары, которые вы сохранили.</p>
+  <div class="products-grid" id="favGrid"></div>
+  <div class="empty-state" id="favEmpty" style="display:none">
+    <div class="icon">♡</div>
+    <h3 data-i18n="favEmptyTitle">Пока пусто</h3>
+    <p data-i18n="favEmptyText">Добавляйте товары в избранное, чтобы вернуться к ним позже.</p>
+  </div>
+</section>
+
+<section class="page" id="page-cart">
+  <h2 data-i18n="cartTitle">Корзина</h2>
+  <p class="page-sub" data-i18n="cartSub">Товары из наличия, готовые к заказу.</p>
+  <div id="cartList"></div>
+  <div class="empty-state" id="cartEmpty" style="display:none">
+    <div class="icon">🛒</div>
+    <h3 data-i18n="cartEmptyTitle">Корзина пуста</h3>
+    <p data-i18n="cartEmptyText">Добавьте что-нибудь из раздела «В наличии».</p>
+  </div>
+  <div id="cartFooter" style="display:none">
+    <div class="cart-total">
+      <div>
+        <div class="cart-total-label" data-i18n="cartTotal">Итого</div>
+        <div class="cart-total-val" id="cartTotalVal">0</div>
+      </div>
+    </div>
+    <button class="primary-btn" id="checkoutBtn" data-i18n="checkout">Оформить заказ</button>
+  </div>
+</section>
+
+<section class="page" id="page-history">
+  <h2 data-i18n="historyTitle">История</h2>
+  <p class="page-sub" data-i18n="historySub">Ваши запросы и заказы.</p>
+  <div id="historyList"></div>
+  <div class="empty-state" id="historyEmpty" style="display:none">
+    <div class="icon">📋</div>
+    <h3 data-i18n="historyEmptyTitle">Пока пусто</h3>
+    <p data-i18n="historyEmptyText">Здесь появятся все ваши запросы и заказы.</p>
+  </div>
+</section>
+
+<section class="page" id="page-settings">
+  <h2 data-i18n="settingsTitle">Настройки</h2>
+  <div class="settings-group">
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-label" data-i18n="language">Язык</div>
+        <div class="settings-row-sub" data-i18n="languageSub">Язык интерфейса</div>
+      </div>
+      <select class="settings-select" id="langSelect">
+        <option value="auto" data-i18n="auto">Авто</option>
+        <option value="ru">Русский</option>
+        <option value="en">English</option>
+      </select>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-label" data-i18n="theme">Тема</div>
+        <div class="settings-row-sub" data-i18n="themeSub">Светлая или тёмная</div>
+      </div>
+      <select class="settings-select" id="themeSelect">
+        <option value="auto" data-i18n="auto">Авто</option>
+        <option value="light" data-i18n="themeLight">Светлая</option>
+        <option value="dark" data-i18n="themeDark">Тёмная</option>
+      </select>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-label" data-i18n="currency">Валюта</div>
+        <div class="settings-row-sub" data-i18n="currencySub">Отображение цен</div>
+      </div>
+      <select class="settings-select" id="currencySelect">
+        <option value="USD">USD</option>
+        <option value="BYN">BYN</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="settings-group" id="adminEntry" style="display:none">
+    <div class="settings-row clickable" id="openAdminRow">
+      <div>
+        <div class="settings-row-label" data-i18n="adminPanel">Админ-панель</div>
+        <div class="settings-row-sub" data-i18n="adminPanelSub">Управление каталогом</div>
+      </div>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--hint)"><polyline points="9 18 15 12 9 6"/></svg>
+    </div>
+  </div>
+</section>
+
+<section class="page" id="page-detail">
+  <button class="back-btn" id="backBtn">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    <span data-i18n="back">Назад</span>
+  </button>
+  <div id="detailContent"></div>
+</section>
+
+<section class="page" id="page-admin">
+  <button class="back-btn" data-nav="settings">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    <span data-i18n="back">Назад</span>
+  </button>
+  <h2 data-i18n="adminTitle">Управление каталогом</h2>
+  <p class="page-sub" data-i18n="adminSub">Изменения сохраняются локально. Не забудьте экспортировать JSON и загрузить на хостинг.</p>
+  <div class="admin-tabs">
+    <button class="admin-tab active" data-admin-tab="catalog" data-i18n="adminTabCatalog">В наличии</button>
+    <button class="admin-tab" data-admin-tab="inspiration" data-i18n="adminTabInspiration">Идеи</button>
+    <button class="admin-tab" data-admin-tab="export" data-i18n="adminTabExport">Экспорт/Импорт</button>
+  </div>
+  <div id="adminPanel"></div>
+</section>
+
+<nav class="bottom-nav">
+  <button class="nav-btn active" data-nav="order">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+    <span data-i18n="navOrder">Заказ</span>
+  </button>
+  <button class="nav-btn" data-nav="catalog">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+    <span data-i18n="navCatalog">В наличии</span>
+  </button>
+  <button class="nav-btn" data-nav="inspiration">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.3A7 7 0 0 0 12 2z"/></svg>
+    <span data-i18n="navInspiration">Идеи</span>
+  </button>
+  <button class="nav-btn" data-nav="history">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+    <span data-i18n="navHistory">История</span>
+  </button>
+  <button class="nav-btn" data-nav="settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    <span data-i18n="navSettings">Настройки</span>
+  </button>
+</nav>
+
+<div class="toast" id="toast"></div>
+<div class="modal-backdrop" id="modal">
+  <div class="modal">
+    <div class="modal-icon" id="modalIcon">✓</div>
+    <h3 id="modalTitle"></h3>
+    <p id="modalText"></p>
+    <button class="primary-btn" id="modalBtn" style="margin-top: 0">OK</button>
+  </div>
+</div>
+
+<script>
+/* Telegram Mini App — Магазин одежды + заказ из Китая (v2) */
+const tg = window.Telegram?.WebApp;
+if (tg) { try { tg.ready(); tg.expand(); } catch (e) {} }
+
+const CONFIG = {
+  CATALOG_URL: './catalog.json',
+  ADMIN_USERNAMES: ['rogovtsoff'],
+};
+
+const I18N = {
+  ru: {
+    appName: 'Магазин',
+    orderTitle: 'Заказать из Китая',
+    orderSub: 'Опишите товар любым удобным способом — менеджер свяжется с вами.',
+    orderCardTitle: 'Что вы хотите заказать?',
+    orderCardSub: 'Название, описание, размер, цвет — что угодно.',
+    orderTextPlaceholder: 'Например: чёрная толстовка Nike Tech, размер M…',
+    orderLinkLabel: 'Ссылка на товар (необязательно)',
+    orderLinkPlaceholder: 'https://...',
+    attachPhoto: 'Прикрепить фото',
+    photoHintBanner: 'После отправки бот попросит переслать фото в чат — так менеджер их получит.',
+    sendToManager: 'Отправить менеджеру',
+    promoTitle: 'А ещё у нас есть в наличии',
+    promoSub: 'Без ожидания доставки из Китая',
+    seeAll: 'Все →',
+    catalogTitle: 'В наличии',
+    catalogSub: 'Товары, которые можно заказать прямо сейчас.',
+    catalogEmptyTitle: 'Пока пусто', catalogEmptyText: 'Товары скоро появятся.',
+    inspirationTitle: 'Вдохновение',
+    inspirationSub: 'Подборка от наших стилистов. Нажмите, чтобы заказать.',
+    inspirationEmptyTitle: 'Пока пусто', inspirationEmptyText: 'Идеи скоро появятся.',
+    favTitle: 'Избранное', favSub: 'Товары, которые вы сохранили.',
+    favEmptyTitle: 'Пока пусто', favEmptyText: 'Добавляйте товары в избранное, чтобы вернуться к ним позже.',
+    cartTitle: 'Корзина', cartSub: 'Товары из наличия, готовые к заказу.',
+    cartEmptyTitle: 'Корзина пуста', cartEmptyText: 'Добавьте что-нибудь из раздела «В наличии».',
+    cartTotal: 'Итого', checkout: 'Оформить заказ',
+    historyTitle: 'История', historySub: 'Ваши запросы и заказы.',
+    historyEmptyTitle: 'Пока пусто', historyEmptyText: 'Здесь появятся все ваши запросы и заказы.',
+    settingsTitle: 'Настройки',
+    language: 'Язык', languageSub: 'Язык интерфейса',
+    theme: 'Тема', themeSub: 'Светлая или тёмная',
+    currency: 'Валюта', currencySub: 'Отображение цен',
+    auto: 'Авто', themeLight: 'Светлая', themeDark: 'Тёмная',
+    back: 'Назад',
+    navOrder: 'Заказ', navCatalog: 'В наличии', navInspiration: 'Идеи', navHistory: 'История', navSettings: 'Настройки',
+    addToCart: 'В корзину', inCart: 'В корзине',
+    sizeChart: 'Размерная сетка', description: 'Описание',
+    requestSent: 'Запрос отправлен!',
+    requestSentText: 'Менеджер свяжется с вами в ближайшее время. Если вы прикрепили фото — бот попросит переслать их в чат.',
+    requestSentTextNoPhoto: 'Менеджер свяжется с вами в ближайшее время для уточнения деталей.',
+    orderSent: 'Заказ оформлен!',
+    orderSentText: 'Менеджер свяжется с вами в ближайшее время для подтверждения и оплаты.',
+    addedToCart: 'Добавлено в корзину', removedFromCart: 'Убрано из корзины',
+    addedToFav: 'Добавлено в избранное', removedFromFav: 'Убрано из избранного',
+    enterDescription: 'Опишите товар, прикрепите фото или ссылку',
+    typeRequest: 'Запрос на подбор', typeOrder: 'Заказ из наличия',
+    yes: 'Да', cancel: 'Отмена',
+    link: 'Ссылка', photos: 'Фото',
+    adminPanel: 'Админ-панель', adminPanelSub: 'Управление каталогом',
+    adminTitle: 'Управление каталогом',
+    adminSub: 'Изменения сохраняются локально. Не забудьте экспортировать JSON и загрузить на хостинг.',
+    adminTabCatalog: 'В наличии', adminTabInspiration: 'Идеи', adminTabExport: 'Экспорт/Импорт',
+    adminAddProduct: 'Добавить товар', adminEditProduct: 'Редактировать товар',
+    adminFieldNameRu: 'Название (рус)', adminFieldNameEn: 'Название (англ)',
+    adminFieldDescRu: 'Описание (рус)', adminFieldDescEn: 'Описание (англ)',
+    adminFieldImage: 'URL картинки', adminFieldImagePlaceholder: 'https://...',
+    adminFieldPriceUsd: 'Цена USD', adminFieldPriceByn: 'Цена BYN',
+    adminFieldSizes: 'Размеры через запятую', adminFieldSizesPlaceholder: 'XS, S, M, L, XL',
+    adminSave: 'Сохранить',
+    adminProductSaved: 'Товар сохранён', adminProductDeleted: 'Товар удалён',
+    adminConfirmDelete: 'Удалить товар?', adminConfirmDeleteText: 'Это действие нельзя отменить.',
+    adminExportTitle: 'Экспорт каталога',
+    adminExportSub: 'Скачайте JSON-файл и загрузите его на ваш хостинг как catalog.json',
+    adminExportBtn: 'Скачать catalog.json',
+    adminImportTitle: 'Импорт каталога',
+    adminImportSub: 'Загрузите ранее экспортированный JSON-файл',
+    adminImportBtn: 'Выбрать файл',
+    adminResetTitle: 'Сбросить к встроенному',
+    adminResetSub: 'Восстановить демо-каталог из исходников',
+    adminResetBtn: 'Сбросить',
+    adminConfirmReset: 'Сбросить каталог?', adminConfirmResetText: 'Все ваши изменения будут потеряны.',
+    adminImported: 'Каталог импортирован', adminReset: 'Каталог сброшен',
+    adminImportError: 'Ошибка импорта файла',
+    adminNoName: 'Введите название товара',
+  },
+  en: {
+    appName: 'Shop',
+    orderTitle: 'Order from China',
+    orderSub: 'Describe the item any way you like — a manager will get back to you.',
+    orderCardTitle: 'What would you like to order?',
+    orderCardSub: 'Name, description, size, color — anything.',
+    orderTextPlaceholder: 'For example: black Nike Tech hoodie, size M…',
+    orderLinkLabel: 'Product link (optional)',
+    orderLinkPlaceholder: 'https://...',
+    attachPhoto: 'Attach photo',
+    photoHintBanner: 'After sending, the bot will ask you to forward photos to the chat — so the manager can see them.',
+    sendToManager: 'Send to manager',
+    promoTitle: 'Also available in stock',
+    promoSub: 'No waiting for shipping from China',
+    seeAll: 'All →',
+    catalogTitle: 'In Stock', catalogSub: 'Items you can order right now.',
+    catalogEmptyTitle: 'Empty for now', catalogEmptyText: 'Items coming soon.',
+    inspirationTitle: 'Inspiration', inspirationSub: 'Picks from our stylists. Tap to order.',
+    inspirationEmptyTitle: 'Empty for now', inspirationEmptyText: 'Ideas coming soon.',
+    favTitle: 'Favorites', favSub: 'Items you saved.',
+    favEmptyTitle: 'Nothing here yet', favEmptyText: 'Save items to favorites to come back to them later.',
+    cartTitle: 'Cart', cartSub: 'In-stock items ready to order.',
+    cartEmptyTitle: 'Cart is empty', cartEmptyText: 'Add something from "In Stock".',
+    cartTotal: 'Total', checkout: 'Place order',
+    historyTitle: 'History', historySub: 'Your requests and orders.',
+    historyEmptyTitle: 'Nothing here yet', historyEmptyText: 'All your requests and orders will appear here.',
+    settingsTitle: 'Settings',
+    language: 'Language', languageSub: 'Interface language',
+    theme: 'Theme', themeSub: 'Light or dark',
+    currency: 'Currency', currencySub: 'Price display',
+    auto: 'Auto', themeLight: 'Light', themeDark: 'Dark',
+    back: 'Back',
+    navOrder: 'Order', navCatalog: 'Shop', navInspiration: 'Ideas', navHistory: 'History', navSettings: 'Settings',
+    addToCart: 'Add to cart', inCart: 'In cart',
+    sizeChart: 'Size chart', description: 'Description',
+    requestSent: 'Request sent!',
+    requestSentText: 'A manager will contact you soon. If you attached photos — the bot will ask you to forward them to the chat.',
+    requestSentTextNoPhoto: 'A manager will contact you soon to clarify the details.',
+    orderSent: 'Order placed!',
+    orderSentText: 'A manager will contact you soon to confirm and process payment.',
+    addedToCart: 'Added to cart', removedFromCart: 'Removed from cart',
+    addedToFav: 'Added to favorites', removedFromFav: 'Removed from favorites',
+    enterDescription: 'Describe the item, attach a photo or link',
+    typeRequest: 'Pickup request', typeOrder: 'Order from stock',
+    yes: 'Yes', cancel: 'Cancel',
+    link: 'Link', photos: 'Photos',
+    adminPanel: 'Admin panel', adminPanelSub: 'Manage catalog',
+    adminTitle: 'Catalog management',
+    adminSub: 'Changes are saved locally. Don\u0027t forget to export the JSON and upload it to your hosting.',
+    adminTabCatalog: 'In Stock', adminTabInspiration: 'Ideas', adminTabExport: 'Export/Import',
+    adminAddProduct: 'Add product', adminEditProduct: 'Edit product',
+    adminFieldNameRu: 'Name (RU)', adminFieldNameEn: 'Name (EN)',
+    adminFieldDescRu: 'Description (RU)', adminFieldDescEn: 'Description (EN)',
+    adminFieldImage: 'Image URL', adminFieldImagePlaceholder: 'https://...',
+    adminFieldPriceUsd: 'Price USD', adminFieldPriceByn: 'Price BYN',
+    adminFieldSizes: 'Sizes, comma-separated', adminFieldSizesPlaceholder: 'XS, S, M, L, XL',
+    adminSave: 'Save',
+    adminProductSaved: 'Product saved', adminProductDeleted: 'Product deleted',
+    adminConfirmDelete: 'Delete product?', adminConfirmDeleteText: 'This cannot be undone.',
+    adminExportTitle: 'Export catalog',
+    adminExportSub: 'Download the JSON file and upload it to your hosting as catalog.json',
+    adminExportBtn: 'Download catalog.json',
+    adminImportTitle: 'Import catalog', adminImportSub: 'Load a previously exported JSON file',
+    adminImportBtn: 'Choose file',
+    adminResetTitle: 'Reset to built-in', adminResetSub: 'Restore demo catalog from sources',
+    adminResetBtn: 'Reset',
+    adminConfirmReset: 'Reset catalog?', adminConfirmResetText: 'All your changes will be lost.',
+    adminImported: 'Catalog imported', adminReset: 'Catalog reset',
+    adminImportError: 'Import error',
+    adminNoName: 'Enter product name',
+  }
+};
+
+const SEED_CATALOG = {
+  catalog: [
+    { id: 'c1', name_ru: 'Оверсайз худи бежевый', name_en: 'Beige oversize hoodie',
+      price_usd: 49, price_byn: 159,
+      img: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=600',
+      desc_ru: 'Плотный хлопок 380 г/м². Свободный крой. Капюшон на шнурках.',
+      desc_en: 'Heavy cotton 380 gsm. Relaxed fit. Drawstring hood.',
+      sizes: ['XS', 'S', 'M', 'L', 'XL'] },
+    { id: 'c2', name_ru: 'Карго-брюки чёрные', name_en: 'Black cargo pants',
+      price_usd: 55, price_byn: 179,
+      img: 'https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?w=600',
+      desc_ru: 'Универсальные карго с большими карманами. Эластичный пояс.',
+      desc_en: 'Versatile cargo with large pockets. Elastic waist.',
+      sizes: ['S', 'M', 'L', 'XL'] },
+    { id: 'c3', name_ru: 'Базовая футболка белая', name_en: 'Basic white tee',
+      price_usd: 15, price_byn: 49,
+      img: 'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?w=600',
+      desc_ru: 'Хлопок 220 г/м². Прямой крой. Без принтов.',
+      desc_en: 'Cotton 220 gsm. Straight cut. No prints.',
+      sizes: ['XS', 'S', 'M', 'L', 'XL', 'XXL'] },
+    { id: 'c4', name_ru: 'Бомбер демисезонный', name_en: 'Light bomber jacket',
+      price_usd: 79, price_byn: 259,
+      img: 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=600',
+      desc_ru: 'Лёгкий бомбер на молнии. Подойдёт на весну и осень.',
+      desc_en: 'Lightweight zip-up bomber. Great for spring and fall.',
+      sizes: ['S', 'M', 'L', 'XL'] },
+    { id: 'c5', name_ru: 'Джинсы прямого кроя', name_en: 'Straight-leg jeans',
+      price_usd: 42, price_byn: 139,
+      img: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=600',
+      desc_ru: 'Классический деним. Прямой крой, средняя посадка.',
+      desc_en: 'Classic denim. Straight cut, mid-rise.',
+      sizes: ['28', '30', '32', '34', '36'] },
+    { id: 'c6', name_ru: 'Кроссовки белые', name_en: 'White sneakers',
+      price_usd: 65, price_byn: 209,
+      img: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600',
+      desc_ru: 'Минималистичные кроссовки на каждый день.',
+      desc_en: 'Minimal everyday sneakers.',
+      sizes: ['38', '39', '40', '41', '42', '43', '44', '45'] }
+  ],
+  inspiration: [
+    { id: 'i1', name_ru: 'Total black лук', name_en: 'Total black look',
+      price_usd: 129, price_byn: 419,
+      img: 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=600',
+      desc_ru: 'Образ для прохладной погоды: оверсайз худи + карго + кроссовки.',
+      desc_en: 'Outfit for cool weather: oversize hoodie + cargo + sneakers.',
+      sizes: [] },
+    { id: 'i2', name_ru: 'Спортивный сет', name_en: 'Athleisure set',
+      price_usd: 89, price_byn: 289,
+      img: 'https://images.unsplash.com/photo-1483721310020-03333e577078?w=600',
+      desc_ru: 'Спортивный костюм + футболка. Для тренировок и отдыха.',
+      desc_en: 'Tracksuit + tee. For workouts and downtime.',
+      sizes: [] },
+    { id: 'i3', name_ru: 'Зимний образ', name_en: 'Winter look',
+      price_usd: 189, price_byn: 619,
+      img: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=600',
+      desc_ru: 'Пуховик + свитер + утеплённые штаны. До −20°C.',
+      desc_en: 'Puffer + sweater + insulated pants. Down to −4°F.',
+      sizes: [] },
+    { id: 'i4', name_ru: 'Casual повседневный', name_en: 'Everyday casual',
+      price_usd: 64, price_byn: 209,
+      img: 'https://images.unsplash.com/photo-1551488831-00ddcb6c6bd3?w=600',
+      desc_ru: 'Футболка + джинсы + кроссовки. Классика на каждый день.',
+      desc_en: 'Tee + jeans + sneakers. Everyday classic.',
+      sizes: [] }
+  ]
+};
+
+const STORAGE_KEY = 'tg_shop_state_v2';
+const CATALOG_KEY = 'tg_shop_catalog_v2';
+const defaultState = {
+  favorites: [], cart: [], history: [],
+  settings: { lang: 'auto', theme: 'auto', currency: 'USD' },
+  attachedPhotos: []
+};
+
+let state = loadState();
+let CATALOG = { catalog: [], inspiration: [] };
+let currentPage = 'order';
+let lastDetailFrom = 'catalog';
+let lastDetailId = null;
+let adminCurrentTab = 'catalog';
+let adminEditingId = null;
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return { ...defaultState, ...parsed, settings: { ...defaultState.settings, ...(parsed.settings || {}) }, attachedPhotos: [] };
+    }
+  } catch (e) {}
+  return JSON.parse(JSON.stringify(defaultState));
+}
+function saveState() {
+  try {
+    const toSave = { ...state };
+    delete toSave.attachedPhotos;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+  } catch (e) {}
+}
+
+function loadCatalog() {
+  try {
+    const raw = localStorage.getItem(CATALOG_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.catalog) && Array.isArray(parsed.inspiration)) {
+        CATALOG = parsed;
+        return Promise.resolve();
+      }
+    }
+  } catch (e) {}
+  return fetch(CONFIG.CATALOG_URL, { cache: 'no-store' })
+    .then(r => r.ok ? r.json() : Promise.reject())
+    .then(json => {
+      if (json && Array.isArray(json.catalog) && Array.isArray(json.inspiration)) {
+        CATALOG = json;
+      } else {
+        CATALOG = JSON.parse(JSON.stringify(SEED_CATALOG));
+      }
+    })
+    .catch(() => { CATALOG = JSON.parse(JSON.stringify(SEED_CATALOG)); });
+}
+function saveCatalog() { try { localStorage.setItem(CATALOG_KEY, JSON.stringify(CATALOG)); } catch (e) {} }
+
+function detectLang() {
+  if (state.settings.lang && state.settings.lang !== 'auto') return state.settings.lang;
+  const tgLang = tg?.initDataUnsafe?.user?.language_code || navigator.language || 'en';
+  return tgLang.toLowerCase().startsWith('ru') ? 'ru' : 'en';
+}
+function detectTheme() {
+  if (state.settings.theme && state.settings.theme !== 'auto') return state.settings.theme;
+  if (tg?.colorScheme) return tg.colorScheme;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+function applyTheme() {
+  const theme = detectTheme();
+  const isDark = theme === 'dark';
+  const tp = tg?.themeParams || {};
+  const root = document.documentElement;
+  if (isDark) {
+    root.style.setProperty('--bg', tp.bg_color || '#17212b');
+    root.style.setProperty('--bg-secondary', tp.secondary_bg_color || '#232e3c');
+    root.style.setProperty('--bg-tertiary', '#2b3947');
+    root.style.setProperty('--text', tp.text_color || '#ffffff');
+    root.style.setProperty('--text-secondary', tp.subtitle_text_color || '#a0a8b3');
+    root.style.setProperty('--hint', tp.hint_color || '#7d8b99');
+    root.style.setProperty('--link', tp.link_color || '#62a8e0');
+    root.style.setProperty('--button', tp.button_color || '#3a93d8');
+    root.style.setProperty('--button-text', tp.button_text_color || '#ffffff');
+    root.style.setProperty('--border', '#2b3947');
+    root.style.setProperty('--accent', tp.button_color || '#3a93d8');
+    root.style.setProperty('color-scheme', 'dark');
+  } else {
+    root.style.setProperty('--bg', tp.bg_color || '#ffffff');
+    root.style.setProperty('--bg-secondary', tp.secondary_bg_color || '#f4f4f5');
+    root.style.setProperty('--bg-tertiary', '#ebebed');
+    root.style.setProperty('--text', tp.text_color || '#0f0f10');
+    root.style.setProperty('--text-secondary', tp.subtitle_text_color || '#6a6a70');
+    root.style.setProperty('--hint', tp.hint_color || '#8a8a90');
+    root.style.setProperty('--link', tp.link_color || '#2481cc');
+    root.style.setProperty('--button', tp.button_color || '#2481cc');
+    root.style.setProperty('--button-text', tp.button_text_color || '#ffffff');
+    root.style.setProperty('--border', '#e4e4e7');
+    root.style.setProperty('--accent', tp.button_color || '#2481cc');
+    root.style.setProperty('color-scheme', 'light');
+  }
+  try {
+    if (tg?.setHeaderColor) tg.setHeaderColor(isDark ? '#17212b' : '#ffffff');
+    if (tg?.setBackgroundColor) tg.setBackgroundColor(isDark ? '#17212b' : '#ffffff');
+  } catch (e) {}
+}
+
+function t(key) { const lang = detectLang(); return I18N[lang]?.[key] ?? I18N.en[key] ?? key; }
+function applyLang() {
+  document.documentElement.lang = detectLang();
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.getAttribute('data-i18n')); });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => { el.setAttribute('placeholder', t(el.getAttribute('data-i18n-placeholder'))); });
+}
+function currency() { return state.settings.currency || 'USD'; }
+function localizedProduct(p) {
+  const lang = detectLang(); const cur = currency();
+  return {
+    ...p,
+    name: p['name_' + lang] || p.name_ru || p.name_en || '—',
+    desc: p['desc_' + lang] || p.desc_ru || p.desc_en || '',
+    price: cur === 'BYN' ? (p.price_byn ?? 0) : (p.price_usd ?? 0)
+  };
+}
+function formatPrice(price, cur = null) {
+  const c = cur || currency();
+  const lang = detectLang();
+  const locale = lang === 'ru' ? 'ru-RU' : 'en-US';
+  const formatted = new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(price || 0);
+  return c === 'USD' ? `$${formatted}` : `${formatted} BYN`;
+}
+function altCurrency() { return currency() === 'USD' ? 'BYN' : 'USD'; }
+function altPrice(prod) { return altCurrency() === 'USD' ? (prod.price_usd ?? 0) : (prod.price_byn ?? 0); }
+
+function isAdmin() {
+  const u = (tg?.initDataUnsafe?.user?.username || '').toLowerCase();
+  if (!u) return false;
+  return CONFIG.ADMIN_USERNAMES.some(a => a.toLowerCase() === u);
+}
+
+function navigate(page, opts = {}) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  const target = document.getElementById('page-' + page);
+  if (target) target.classList.add('active');
+  document.querySelectorAll('.nav-btn[data-nav]').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('data-nav') === page);
+  });
+  currentPage = page;
+  window.scrollTo({ top: 0, behavior: 'instant' });
+  if (page === 'catalog') renderCatalog();
+  if (page === 'inspiration') renderInspiration();
+  if (page === 'favorites') renderFavorites();
+  if (page === 'cart') renderCart();
+  if (page === 'history') renderHistory();
+  if (page === 'settings') renderSettings();
+  if (page === 'detail' && opts.productId) renderDetail(opts.productId, opts.source || 'catalog');
+  if (page === 'admin') renderAdmin();
+  if (tg?.BackButton) {
+    if (page === 'detail' || page === 'admin') { try { tg.BackButton.show(); } catch (e) {} }
+    else { try { tg.BackButton.hide(); } catch (e) {} }
+  }
+}
+
+function isFav(id) { return state.favorites.includes(id); }
+function toggleFav(id) {
+  const idx = state.favorites.indexOf(id);
+  if (idx >= 0) { state.favorites.splice(idx, 1); showToast(t('removedFromFav')); }
+  else { state.favorites.push(id); showToast(t('addedToFav')); try { tg?.HapticFeedback?.impactOccurred('light'); } catch (e) {} }
+  saveState();
+  updateBadges();
+  if (currentPage === 'favorites') renderFavorites();
+  if (currentPage === 'catalog') renderCatalog();
+  if (currentPage === 'inspiration') renderInspiration();
+  if (currentPage === 'order') renderPromo();
+  if (currentPage === 'detail') {
+    document.querySelectorAll('.detail-fav-btn').forEach(b => {
+      b.classList.toggle('active', isFav(b.getAttribute('data-id')));
+    });
+  }
+}
+
+function cartQty(id) { const it = state.cart.find(c => c.id === id); return it ? it.qty : 0; }
+function cartTotalItems() { return state.cart.reduce((s, c) => s + c.qty, 0); }
+function addToCart(id) {
+  const it = state.cart.find(c => c.id === id);
+  if (it) it.qty += 1; else state.cart.push({ id, qty: 1 });
+  saveState(); updateBadges(); showToast(t('addedToCart'));
+  try { tg?.HapticFeedback?.impactOccurred('light'); } catch (e) {}
+}
+function changeCartQty(id, delta) {
+  const it = state.cart.find(c => c.id === id);
+  if (!it) return;
+  it.qty += delta;
+  if (it.qty <= 0) state.cart = state.cart.filter(c => c.id !== id);
+  saveState(); updateBadges(); renderCart();
+}
+function removeFromCart(id) {
+  state.cart = state.cart.filter(c => c.id !== id);
+  saveState(); updateBadges(); renderCart();
+  showToast(t('removedFromCart'));
+}
+
+function updateBadges() {
+  const favCount = state.favorites.length;
+  const favBadge = document.getElementById('favBadge');
+  favBadge.textContent = favCount;
+  favBadge.style.display = favCount > 0 ? 'flex' : 'none';
+  const cartCount = cartTotalItems();
+  const cartBadge = document.getElementById('cartBadge');
+  cartBadge.textContent = cartCount;
+  cartBadge.style.display = cartCount > 0 ? 'flex' : 'none';
+}
+function updateCurrencyLabel() { document.getElementById('currencyLabel').textContent = currency(); }
+
+function allProducts() { return [...(CATALOG.catalog || []), ...(CATALOG.inspiration || [])]; }
+function productById(id) { return allProducts().find(p => p.id === id); }
+
+function productCard(prod, opts = {}) {
+  const p = localizedProduct(prod);
+  const fav = isFav(p.id);
+  const card = document.createElement('div');
+  card.className = 'product-card';
+  card.innerHTML = `
+    <img class="product-card-img" src="${escapeAttr(p.img)}" alt="" loading="lazy">
+    <button class="product-card-fav ${fav ? 'active' : ''}" data-id="${escapeAttr(p.id)}" aria-label="Favorite">
+      <svg viewBox="0 0 24 24" fill="${fav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+    </button>
+    <div class="product-card-info">
+      <div class="product-card-name">${escapeHtml(p.name)}</div>
+      <div class="product-card-price">${formatPrice(p.price)}</div>
+    </div>`;
+  card.addEventListener('click', (e) => {
+    if (e.target.closest('.product-card-fav')) return;
+    navigate('detail', { productId: p.id, source: opts.source || 'catalog' });
+  });
+  card.querySelector('.product-card-fav').addEventListener('click', (e) => {
+    e.stopPropagation(); toggleFav(p.id);
+  });
+  return card;
+}
+
+function renderCatalog() {
+  const grid = document.getElementById('catalogGrid');
+  const empty = document.getElementById('catalogEmpty');
+  grid.innerHTML = '';
+  const items = CATALOG.catalog || [];
+  if (items.length === 0) { grid.style.display = 'none'; empty.style.display = 'block'; return; }
+  grid.style.display = 'grid'; empty.style.display = 'none';
+  items.forEach(p => grid.appendChild(productCard(p, { source: 'catalog' })));
+}
+function renderInspiration() {
+  const grid = document.getElementById('inspirationGrid');
+  const empty = document.getElementById('inspirationEmpty');
+  grid.innerHTML = '';
+  const items = CATALOG.inspiration || [];
+  if (items.length === 0) { grid.style.display = 'none'; empty.style.display = 'block'; return; }
+  grid.style.display = 'grid'; empty.style.display = 'none';
+  items.forEach(p => grid.appendChild(productCard(p, { source: 'inspiration' })));
+}
+function renderFavorites() {
+  const grid = document.getElementById('favGrid');
+  const empty = document.getElementById('favEmpty');
+  grid.innerHTML = '';
+  const favs = state.favorites.map(id => productById(id)).filter(Boolean);
+  if (favs.length === 0) { grid.style.display = 'none'; empty.style.display = 'block'; return; }
+  grid.style.display = 'grid'; empty.style.display = 'none';
+  favs.forEach(p => grid.appendChild(productCard(p, { source: 'favorites' })));
+}
+function renderPromo() {
+  const wrap = document.getElementById('promoScroll');
+  wrap.innerHTML = '';
+  (CATALOG.catalog || []).slice(0, 6).forEach(prod => {
+    const p = localizedProduct(prod);
+    const card = document.createElement('div');
+    card.className = 'promo-card';
+    card.innerHTML = `
+      <img class="promo-card-img" src="${escapeAttr(p.img)}" alt="" loading="lazy">
+      <div class="promo-card-info">
+        <div class="promo-card-name">${escapeHtml(p.name)}</div>
+        <div class="promo-card-price">${formatPrice(p.price)}</div>
+      </div>`;
+    card.addEventListener('click', () => navigate('detail', { productId: p.id, source: 'order' }));
+    wrap.appendChild(card);
+  });
+}
+
+function renderDetail(id, source = 'catalog') {
+  lastDetailFrom = source; lastDetailId = id;
+  const prod = productById(id);
+  if (!prod) { navigate('catalog'); return; }
+  const p = localizedProduct(prod);
+  const fav = isFav(p.id);
+  const inCart = cartQty(p.id) > 0;
+  const sizesHtml = (prod.sizes && prod.sizes.length) ? `
+    <div class="product-section">
+      <h4>${t('sizeChart')}</h4>
+      <div class="size-grid">
+        ${prod.sizes.map(s => `<div class="size-cell">${escapeHtml(s)}</div>`).join('')}
+      </div>
+    </div>` : '';
+  document.getElementById('detailContent').innerHTML = `
+    <img class="product-detail-img" src="${escapeAttr(p.img)}" alt="">
+    <h2 class="product-detail-name">${escapeHtml(p.name)}</h2>
+    <div class="product-detail-price">${formatPrice(p.price)}</div>
+    <div class="product-detail-price-alt">≈ ${formatPrice(altPrice(prod), altCurrency())}</div>
+    <div class="product-section">
+      <h4>${t('description')}</h4>
+      <p class="product-detail-desc">${escapeHtml(p.desc)}</p>
+    </div>
+    ${sizesHtml}
+    <div class="detail-actions">
+      <button class="primary-btn" id="detailCartBtn">${inCart ? t('inCart') + ' · ' + cartQty(p.id) : t('addToCart')}</button>
+      <button class="detail-fav-btn ${fav ? 'active' : ''}" data-id="${escapeAttr(p.id)}" aria-label="Favorite">
+        <svg viewBox="0 0 24 24" fill="${fav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+      </button>
+    </div>`;
+  document.getElementById('detailCartBtn').onclick = () => {
+    addToCart(p.id);
+    document.getElementById('detailCartBtn').textContent = t('inCart') + ' · ' + cartQty(p.id);
+  };
+  document.querySelector('.detail-fav-btn').onclick = () => toggleFav(p.id);
+}
+
+function renderCart() {
+  const list = document.getElementById('cartList');
+  const empty = document.getElementById('cartEmpty');
+  const footer = document.getElementById('cartFooter');
+  list.innerHTML = '';
+  if (state.cart.length === 0) { empty.style.display = 'block'; footer.style.display = 'none'; return; }
+  empty.style.display = 'none'; footer.style.display = 'block';
+  let total = 0;
+  state.cart.forEach(c => {
+    const prod = productById(c.id);
+    if (!prod) return;
+    const p = localizedProduct(prod);
+    total += p.price * c.qty;
+    const el = document.createElement('div');
+    el.className = 'cart-item';
+    el.innerHTML = `
+      <img src="${escapeAttr(p.img)}" alt="">
+      <div class="cart-item-info">
+        <div class="cart-item-name">${escapeHtml(p.name)}</div>
+        <div class="cart-item-price">${formatPrice(p.price * c.qty)}</div>
+        <div class="cart-item-controls">
+          <button class="qty-btn" data-act="dec" data-id="${escapeAttr(c.id)}">−</button>
+          <span class="qty-val">${c.qty}</span>
+          <button class="qty-btn" data-act="inc" data-id="${escapeAttr(c.id)}">+</button>
+          <button class="remove-btn" data-act="remove" data-id="${escapeAttr(c.id)}" aria-label="Remove">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>
+          </button>
+        </div>
+      </div>`;
+    list.appendChild(el);
+  });
+  list.querySelectorAll('.qty-btn').forEach(b => {
+    b.onclick = () => changeCartQty(b.getAttribute('data-id'), b.getAttribute('data-act') === 'inc' ? 1 : -1);
+  });
+  list.querySelectorAll('.remove-btn').forEach(b => {
+    b.onclick = () => removeFromCart(b.getAttribute('data-id'));
+  });
+  document.getElementById('cartTotalVal').textContent = formatPrice(total);
+}
+
+function renderHistory() {
+  const list = document.getElementById('historyList');
+  const empty = document.getElementById('historyEmpty');
+  list.innerHTML = '';
+  if (state.history.length === 0) { empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  const lang = detectLang();
+  const dtFmt = new Intl.DateTimeFormat(lang === 'ru' ? 'ru-RU' : 'en-US', {
+    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
+  });
+  [...state.history].reverse().forEach(h => {
+    const el = document.createElement('div');
+    el.className = 'history-item';
+    const dateStr = dtFmt.format(new Date(h.date));
+    let body = '';
+    if (h.type === 'request') {
+      const p = h.payload;
+      let parts = [];
+      if (p.text) parts.push(escapeHtml(p.text));
+      if (p.link) parts.push(`<span class="label">${t('link')}</span>${escapeHtml(p.link)}`);
+      if (p.photosCount) parts.push(`<span class="label">${t('photos')}</span>${p.photosCount}`);
+      body = parts.join('<br>');
+    } else {
+      const itemsList = h.payload.items.map(it => {
+        const prod = productById(it.id);
+        const name = prod ? localizedProduct(prod).name : it.id;
+        return `${escapeHtml(name)} × ${it.qty}`;
+      }).join('<br>');
+      const totalCur = h.payload.currency || 'USD';
+      body = `${itemsList}<br><span class="label">${t('cartTotal')}</span>${formatPrice(h.payload.total, totalCur)}`;
+    }
+    el.innerHTML = `
+      <div class="history-item-head">
+        <span class="history-type ${h.type}">${h.type === 'request' ? t('typeRequest') : t('typeOrder')}</span>
+        <span class="history-date">${dateStr}</span>
+      </div>
+      <div class="history-body">${body}</div>`;
+    list.appendChild(el);
+  });
+}
+
+function renderSettings() {
+  document.getElementById('langSelect').value = state.settings.lang;
+  document.getElementById('themeSelect').value = state.settings.theme;
+  document.getElementById('currencySelect').value = state.settings.currency;
+  document.getElementById('adminEntry').style.display = isAdmin() ? 'block' : 'none';
+}
+
+function renderAdmin() {
+  document.querySelectorAll('.admin-tab').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('data-admin-tab') === adminCurrentTab);
+  });
+  const panel = document.getElementById('adminPanel');
+  panel.innerHTML = '';
+  if (adminCurrentTab === 'export') { panel.appendChild(renderAdminExport()); return; }
+  const list = CATALOG[adminCurrentTab] || [];
+  if (adminEditingId !== null) {
+    panel.appendChild(renderAdminForm(adminEditingId === '__new__' ? null : list.find(p => p.id === adminEditingId)));
+    return;
+  }
+  const addBtn = document.createElement('button');
+  addBtn.className = 'primary-btn';
+  addBtn.style.marginTop = '0';
+  addBtn.textContent = t('adminAddProduct');
+  addBtn.onclick = () => { adminEditingId = '__new__'; renderAdmin(); };
+  panel.appendChild(addBtn);
+  const section = document.createElement('div');
+  section.className = 'admin-section';
+  section.style.marginTop = '16px';
+  if (list.length === 0) {
+    section.innerHTML = `<div style="text-align:center;color:var(--text-secondary);padding:20px">${escapeHtml(t('catalogEmptyTitle'))}</div>`;
+  } else {
+    list.forEach(prod => {
+      const p = localizedProduct(prod);
+      const row = document.createElement('div');
+      row.className = 'admin-product-row';
+      row.innerHTML = `
+        <img src="${escapeAttr(p.img)}" alt="">
+        <div class="admin-product-info">
+          <div class="admin-product-name">${escapeHtml(p.name)}</div>
+          <div class="admin-product-price">$${prod.price_usd ?? 0} · ${prod.price_byn ?? 0} BYN</div>
+        </div>
+        <div class="admin-product-actions">
+          <button class="admin-icon-btn" data-act="edit" data-id="${escapeAttr(prod.id)}" aria-label="Edit">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+          <button class="admin-icon-btn danger" data-act="delete" data-id="${escapeAttr(prod.id)}" aria-label="Delete">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>
+          </button>
+        </div>`;
+      section.appendChild(row);
+    });
+    section.querySelectorAll('[data-act="edit"]').forEach(b => {
+      b.onclick = () => { adminEditingId = b.getAttribute('data-id'); renderAdmin(); };
+    });
+    section.querySelectorAll('[data-act="delete"]').forEach(b => {
+      b.onclick = () => {
+        const id = b.getAttribute('data-id');
+        showConfirm({
+          icon: '🗑', title: t('adminConfirmDelete'), text: t('adminConfirmDeleteText'),
+          yes: t('yes'), no: t('cancel'),
+          onYes: () => {
+            CATALOG[adminCurrentTab] = CATALOG[adminCurrentTab].filter(p => p.id !== id);
+            state.favorites = state.favorites.filter(fid => fid !== id);
+            state.cart = state.cart.filter(c => c.id !== id);
+            saveCatalog(); saveState(); updateBadges();
+            renderAdmin();
+            showToast(t('adminProductDeleted'));
+          }
+        });
+      };
+    });
+  }
+  panel.appendChild(section);
+}
+
+function renderAdminForm(prod) {
+  const isNew = !prod;
+  const wrap = document.createElement('div');
+  wrap.className = 'admin-section';
+  wrap.innerHTML = `
+    <h3>${isNew ? t('adminAddProduct') : t('adminEditProduct')}</h3>
+    <div class="form-row">
+      <label>${t('adminFieldNameRu')}</label>
+      <input type="text" id="f_name_ru" value="${escapeAttr(prod?.name_ru || '')}" placeholder="Худи бежевый">
+    </div>
+    <div class="form-row">
+      <label>${t('adminFieldNameEn')}</label>
+      <input type="text" id="f_name_en" value="${escapeAttr(prod?.name_en || '')}" placeholder="Beige hoodie">
+    </div>
+    <div class="form-row-pair">
+      <div class="form-row">
+        <label>${t('adminFieldPriceUsd')}</label>
+        <input type="number" inputmode="decimal" step="0.01" id="f_price_usd" value="${prod?.price_usd ?? ''}" placeholder="49">
+      </div>
+      <div class="form-row">
+        <label>${t('adminFieldPriceByn')}</label>
+        <input type="number" inputmode="decimal" step="0.01" id="f_price_byn" value="${prod?.price_byn ?? ''}" placeholder="159">
+      </div>
+    </div>
+    <div class="form-row">
+      <label>${t('adminFieldImage')}</label>
+      <input type="url" id="f_img" value="${escapeAttr(prod?.img || '')}" placeholder="${escapeAttr(t('adminFieldImagePlaceholder'))}">
+      <img class="image-preview ${prod?.img ? 'show' : ''}" id="f_img_preview" src="${escapeAttr(prod?.img || '')}" alt="">
+    </div>
+    <div class="form-row">
+      <label>${t('adminFieldDescRu')}</label>
+      <textarea id="f_desc_ru" placeholder="Плотный хлопок 380 г/м²...">${escapeHtml(prod?.desc_ru || '')}</textarea>
+    </div>
+    <div class="form-row">
+      <label>${t('adminFieldDescEn')}</label>
+      <textarea id="f_desc_en" placeholder="Heavy cotton 380 gsm...">${escapeHtml(prod?.desc_en || '')}</textarea>
+    </div>
+    <div class="form-row">
+      <label>${t('adminFieldSizes')}</label>
+      <input type="text" id="f_sizes" value="${escapeAttr((prod?.sizes || []).join(', '))}" placeholder="${escapeAttr(t('adminFieldSizesPlaceholder'))}">
+    </div>
+    <div class="admin-form-actions">
+      <button class="secondary-btn" id="f_cancel">${t('cancel')}</button>
+      <button class="primary-btn" id="f_save">${t('adminSave')}</button>
+    </div>`;
+  const imgInput = wrap.querySelector('#f_img');
+  const imgPreview = wrap.querySelector('#f_img_preview');
+  imgInput.addEventListener('input', () => {
+    const v = imgInput.value.trim();
+    if (v) { imgPreview.src = v; imgPreview.classList.add('show'); }
+    else { imgPreview.classList.remove('show'); }
+  });
+  wrap.querySelector('#f_cancel').onclick = () => { adminEditingId = null; renderAdmin(); };
+  wrap.querySelector('#f_save').onclick = () => {
+    const data = {
+      name_ru: wrap.querySelector('#f_name_ru').value.trim(),
+      name_en: wrap.querySelector('#f_name_en').value.trim(),
+      desc_ru: wrap.querySelector('#f_desc_ru').value.trim(),
+      desc_en: wrap.querySelector('#f_desc_en').value.trim(),
+      img: wrap.querySelector('#f_img').value.trim(),
+      price_usd: parseFloat(wrap.querySelector('#f_price_usd').value) || 0,
+      price_byn: parseFloat(wrap.querySelector('#f_price_byn').value) || 0,
+      sizes: wrap.querySelector('#f_sizes').value.split(',').map(s => s.trim()).filter(Boolean),
+    };
+    if (!data.name_ru && !data.name_en) { showToast(t('adminNoName')); return; }
+    if (prod) { Object.assign(prod, data); }
+    else {
+      const prefix = adminCurrentTab === 'catalog' ? 'c' : 'i';
+      const id = prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      CATALOG[adminCurrentTab].push({ id, ...data });
+    }
+    saveCatalog(); adminEditingId = null; renderAdmin();
+    showToast(t('adminProductSaved'));
+  };
+  return wrap;
+}
+
+function renderAdminExport() {
+  const wrap = document.createElement('div');
+  const exp = document.createElement('div');
+  exp.className = 'admin-section';
+  exp.innerHTML = `
+    <h3>${t('adminExportTitle')}</h3>
+    <p style="color:var(--text-secondary);font-size:13px;margin:0 0 12px">${t('adminExportSub')}</p>
+    <button class="primary-btn" id="exportBtn" style="margin-top:0">${t('adminExportBtn')}</button>`;
+  exp.querySelector('#exportBtn').onclick = () => {
+    const json = JSON.stringify(CATALOG, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'catalog.json';
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+  };
+  wrap.appendChild(exp);
+
+  const imp = document.createElement('div');
+  imp.className = 'admin-section';
+  imp.innerHTML = `
+    <h3>${t('adminImportTitle')}</h3>
+    <p style="color:var(--text-secondary);font-size:13px;margin:0 0 12px">${t('adminImportSub')}</p>
+    <label class="primary-btn" style="margin-top:0;display:block;text-align:center">
+      ${t('adminImportBtn')}
+      <input type="file" accept="application/json,.json" id="importInput" style="display:none">
+    </label>`;
+  imp.querySelector('#importInput').addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target.result);
+        if (!parsed || !Array.isArray(parsed.catalog) || !Array.isArray(parsed.inspiration)) throw new Error('Invalid structure');
+        CATALOG = parsed; saveCatalog(); renderAdmin();
+        showToast(t('adminImported'));
+      } catch (err) { showToast(t('adminImportError')); }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  });
+  wrap.appendChild(imp);
+
+  const reset = document.createElement('div');
+  reset.className = 'admin-section';
+  reset.innerHTML = `
+    <h3 style="color:var(--danger)">${t('adminResetTitle')}</h3>
+    <p style="color:var(--text-secondary);font-size:13px;margin:0 0 12px">${t('adminResetSub')}</p>
+    <button class="danger-btn" id="resetBtn">${t('adminResetBtn')}</button>`;
+  reset.querySelector('#resetBtn').onclick = () => {
+    showConfirm({
+      icon: '⚠️', title: t('adminConfirmReset'), text: t('adminConfirmResetText'),
+      yes: t('yes'), no: t('cancel'),
+      onYes: () => {
+        CATALOG = JSON.parse(JSON.stringify(SEED_CATALOG));
+        saveCatalog(); renderAdmin();
+        showToast(t('adminReset'));
+      }
+    });
+  };
+  wrap.appendChild(reset);
+  return wrap;
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+function escapeAttr(s) { return escapeHtml(s); }
+
+let toastTimer = null;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+function showModal({ icon = '✓', title, text, btn = 'OK', onClose }) {
+  document.getElementById('modalIcon').textContent = icon;
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalText').textContent = text;
+  document.getElementById('modalBtn').textContent = btn;
+  const modal = document.getElementById('modal');
+  const inner = modal.querySelector('.modal');
+  const oldCancel = inner.querySelector('.modal-cancel');
+  if (oldCancel) oldCancel.remove();
+  modal.classList.add('show');
+  document.getElementById('modalBtn').onclick = () => {
+    modal.classList.remove('show');
+    if (onClose) onClose();
+  };
+}
+function showConfirm({ icon = '⚠️', title, text, yes, no, onYes }) {
+  document.getElementById('modalIcon').textContent = icon;
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalText').textContent = text;
+  const btn = document.getElementById('modalBtn');
+  btn.textContent = yes;
+  const modal = document.getElementById('modal');
+  const inner = modal.querySelector('.modal');
+  let cancelBtn = inner.querySelector('.modal-cancel');
+  if (!cancelBtn) {
+    cancelBtn = document.createElement('button');
+    cancelBtn.className = 'secondary-btn modal-cancel';
+    cancelBtn.style.marginTop = '8px';
+    inner.appendChild(cancelBtn);
+  }
+  cancelBtn.textContent = no;
+  modal.classList.add('show');
+  btn.onclick = () => { modal.classList.remove('show'); cancelBtn.remove(); if (onYes) onYes(); };
+  cancelBtn.onclick = () => { modal.classList.remove('show'); cancelBtn.remove(); };
+}
+
+function sendToTelegram(payload) {
+  if (tg?.sendData) {
+    try { tg.sendData(JSON.stringify(payload)); }
+    catch (e) { console.warn('sendData failed', e); }
+  } else { console.log('[mock send to manager]', payload); }
+}
+
+function submitRequest() {
+  const text = document.getElementById('orderText').value.trim();
+  const link = document.getElementById('orderLink').value.trim();
+  const photos = state.attachedPhotos;
+  if (!text && !link && photos.length === 0) {
+    showToast(t('enterDescription'));
+    try { tg?.HapticFeedback?.notificationOccurred('warning'); } catch (e) {}
+    return;
+  }
+  const payload = {
+    type: 'request',
+    text, link,
+    photosCount: photos.length,
+    date: new Date().toISOString()
+  };
+  sendToTelegram(payload);
+  state.history.push({
+    id: 'h' + Date.now(), type: 'request', date: payload.date,
+    payload: { text, link, photosCount: photos.length }
+  });
+  saveState();
+  document.getElementById('orderText').value = '';
+  document.getElementById('orderLink').value = '';
+  const hadPhotos = state.attachedPhotos.length > 0;
+  state.attachedPhotos = [];
+  renderAttachedPhotos();
+  try { tg?.HapticFeedback?.notificationOccurred('success'); } catch (e) {}
+  showModal({
+    icon: '📨',
+    title: t('requestSent'),
+    text: hadPhotos ? t('requestSentText') : t('requestSentTextNoPhoto'),
+    onClose: () => {
+      // Если есть фото — закрываем мини-апп, чтобы клиент мог их переслать боту в чат
+      if (hadPhotos && tg?.close) { try { tg.close(); } catch (e) {} }
+    }
+  });
+}
+
+function submitOrder() {
+  if (state.cart.length === 0) return;
+  let total = 0;
+  const items = state.cart.map(c => {
+    const prod = productById(c.id);
+    const p = prod ? localizedProduct(prod) : null;
+    if (p) total += p.price * c.qty;
+    return {
+      id: c.id, qty: c.qty,
+      name_ru: prod?.name_ru || '', name_en: prod?.name_en || '',
+      price_usd: prod?.price_usd ?? 0, price_byn: prod?.price_byn ?? 0
+    };
+  });
+  const payload = {
+    type: 'order', items, total, currency: currency(),
+    date: new Date().toISOString()
+  };
+  sendToTelegram(payload);
+  state.history.push({
+    id: 'h' + Date.now(), type: 'order', date: payload.date,
+    payload: { items: state.cart.map(c => ({ id: c.id, qty: c.qty })), total, currency: currency() }
+  });
+  state.cart = []; saveState(); updateBadges(); renderCart();
+  try { tg?.HapticFeedback?.notificationOccurred('success'); } catch (e) {}
+  showModal({ icon: '🎉', title: t('orderSent'), text: t('orderSentText') });
+}
+
+function renderAttachedPhotos() {
+  const wrap = document.getElementById('attachedPhotos');
+  wrap.innerHTML = '';
+  state.attachedPhotos.forEach((dataUrl, idx) => {
+    const el = document.createElement('div');
+    el.className = 'attached-photo';
+    el.innerHTML = `<img src="${dataUrl}" alt=""><button data-idx="${idx}" aria-label="Remove">×</button>`;
+    el.querySelector('button').onclick = () => { state.attachedPhotos.splice(idx, 1); renderAttachedPhotos(); };
+    wrap.appendChild(el);
+  });
+}
+
+function rerenderCurrencyDependent() {
+  renderPromo();
+  if (currentPage === 'catalog') renderCatalog();
+  if (currentPage === 'inspiration') renderInspiration();
+  if (currentPage === 'favorites') renderFavorites();
+  if (currentPage === 'cart') renderCart();
+  if (currentPage === 'history') renderHistory();
+  if (currentPage === 'detail' && lastDetailId) renderDetail(lastDetailId, lastDetailFrom);
+}
+
+function init() {
+  applyTheme(); applyLang(); updateBadges(); updateCurrencyLabel(); renderPromo();
+
+  if (tg?.onEvent) {
+    try { tg.onEvent('themeChanged', () => { if (state.settings.theme === 'auto') applyTheme(); }); } catch (e) {}
+  }
+  if (window.matchMedia) {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => {
+      if (state.settings.theme === 'auto') applyTheme();
+    });
+  }
+
+  if (tg?.BackButton) {
+    try {
+      tg.BackButton.onClick(() => {
+        if (currentPage === 'detail') navigate(lastDetailFrom || 'catalog');
+        else if (currentPage === 'admin') {
+          if (adminEditingId !== null) { adminEditingId = null; renderAdmin(); }
+          else navigate('settings');
+        }
+      });
+    } catch (e) {}
+  }
+
+  document.querySelectorAll('[data-nav]').forEach(b => {
+    b.addEventListener('click', () => navigate(b.getAttribute('data-nav')));
+  });
+  document.getElementById('favBtn').onclick = () => navigate('favorites');
+  document.getElementById('cartBtn').onclick = () => navigate('cart');
+  document.getElementById('backBtn').onclick = () => navigate(lastDetailFrom || 'catalog');
+
+  document.getElementById('currencyBtn').onclick = () => {
+    state.settings.currency = state.settings.currency === 'USD' ? 'BYN' : 'USD';
+    saveState(); updateCurrencyLabel(); rerenderCurrencyDependent();
+  };
+
+  document.getElementById('sendOrderBtn').onclick = submitRequest;
+  document.getElementById('orderPhoto').addEventListener('change', (e) => {
+    const files = Array.from(e.target.files || []);
+    files.forEach(file => {
+      if (!file.type.startsWith('image/')) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        state.attachedPhotos.push(ev.target.result);
+        renderAttachedPhotos();
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  });
+  document.getElementById('checkoutBtn').onclick = submitOrder;
+
+  document.getElementById('langSelect').addEventListener('change', (e) => {
+    state.settings.lang = e.target.value;
+    saveState(); applyLang(); rerenderCurrencyDependent();
+  });
+  document.getElementById('themeSelect').addEventListener('change', (e) => {
+    state.settings.theme = e.target.value;
+    saveState(); applyTheme();
+  });
+  document.getElementById('currencySelect').addEventListener('change', (e) => {
+    state.settings.currency = e.target.value;
+    saveState(); updateCurrencyLabel(); rerenderCurrencyDependent();
+  });
+
+  document.getElementById('openAdminRow').onclick = () => {
+    adminCurrentTab = 'catalog'; adminEditingId = null;
+    navigate('admin');
+  };
+  document.querySelectorAll('.admin-tab').forEach(b => {
+    b.addEventListener('click', () => {
+      adminCurrentTab = b.getAttribute('data-admin-tab');
+      adminEditingId = null;
+      renderAdmin();
+    });
+  });
+}
+
+loadCatalog().then(() => { init(); renderPromo(); });
+</script>
+</body>
+</html>
