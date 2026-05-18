@@ -50,9 +50,9 @@ export async function renderCart() {
       row.className = 'cart-item';
       const mainImg = (prod.images && prod.images[0]) || prod.img || '';
       row.innerHTML = `
-        <img src="${escapeHtml(mainImg)}" alt="">
+        <img class="cart-item-clickable" src="${escapeHtml(mainImg)}" alt="">
         <div class="cart-item-info">
-          <div class="cart-item-name">${escapeHtml(p.name)}</div>
+          <div class="cart-item-name cart-item-clickable">${escapeHtml(p.name)}</div>
           ${item.size ? `<div class="cart-item-size">${escapeHtml(item.size)}</div>` : ''}
           <div class="cart-item-price">${formatPrice(p.price * item.qty, cur, lang)}</div>
           <div class="cart-item-controls">
@@ -64,6 +64,10 @@ export async function renderCart() {
             </button>
           </div>
         </div>`;
+      // Клик по картинке или названию — открыть детальную страницу товара
+      row.querySelectorAll('.cart-item-clickable').forEach(el => {
+        el.onclick = () => router.navigate('detail', { productId: prod.id, source: 'cart' });
+      });
       row.querySelector('[data-act="dec"]').onclick = () => {
         if (item.qty === 1) {
           showConfirm({

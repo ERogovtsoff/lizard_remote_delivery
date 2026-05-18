@@ -70,11 +70,15 @@ export function isFresh() {
 }
 
 export function setCache(products) {
+  const hadPrev = _cached !== null;
   const same = listsEqual(_cached, products);
   _cached = products.slice();
   _lastFetchAt = Date.now();
   saveToStorage(_cached);
-  if (!same) notify();
+  // notify только если у нас уже был кэш и он реально изменился.
+  // Первая загрузка (hadPrev=false) — это не «изменение», а первичное заполнение,
+  // view сам ждёт ответ через await loadProducts и отрисуется один раз.
+  if (hadPrev && !same) notify();
 }
 
 // Сразу обновить состояние без сравнения (использовать после save/delete в админке)

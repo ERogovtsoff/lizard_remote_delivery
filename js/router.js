@@ -21,16 +21,10 @@ export const router = {
     const target = document.getElementById(`page-${name}`);
     if (target) target.classList.add('active');
 
-    // active в нижней навигации показываем для корневых разделов
-    // Если зашли в детальную с главной — подсвечиваем «Главную»; с каталога — «Каталог»
-    let rootHighlight = ROOT_PAGES.includes(name) ? name : null;
-    if (name === 'detail') {
-      rootHighlight = ROOT_PAGES.includes(detailSource) ? detailSource : 'home';
-    } else if (name === 'favorites' || name === 'cart') {
-      rootHighlight = 'home';
-    } else if (['history', 'settings', 'admin'].includes(name)) {
-      rootHighlight = 'profile';
-    }
+    // Подсветка нижней навигации: только когда мы находимся на одном из её разделов.
+    // На детальной товара / избранном / корзине / истории / настройках / админке
+    // ничего не подсвечиваем — это даёт пользователю понимание «я не в корневом разделе».
+    const rootHighlight = ROOT_PAGES.includes(name) ? name : null;
     document.querySelectorAll('.nav-btn[data-nav]').forEach(b => {
       b.classList.toggle('active', b.getAttribute('data-nav') === rootHighlight);
     });

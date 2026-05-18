@@ -293,16 +293,18 @@ function onTouchEnd(e) {
     return;
   }
 
-  // Все пальцы отпущены — обрабатываем финальный жест
-  if (mode === 'swipe' && e.changedTouches.length === 1) {
+  // Все пальцы отпущены — обрабатываем финальный жест.
+  // Проверка double-tap идёт ПЕРВОЙ и не зависит от режима — иначе
+  // второй double-tap (когда scale > 1 и mode = 'pan') не сработает.
+  if ((mode === 'swipe' || mode === 'pan') && e.changedTouches.length === 1) {
     const p = { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
     const dx = p.x - startPoints[0].x;
     const dy = p.y - startPoints[0].y;
     const moved = Math.max(Math.abs(dx), Math.abs(dy));
     const elapsed = Date.now() - touchStartTime;
 
+    // Это тап (короткое касание без движения) — проверяем double-tap
     if (moved <= TAP_MAX_MOVE && elapsed < 400) {
-      // Это тап. Проверяем double-tap.
       const now = Date.now();
       const local = localPoint(p.x, p.y);
       const dtBetween = now - lastTapTime;
@@ -316,8 +318,8 @@ function onTouchEnd(e) {
         lastTapTime = now;
         lastTapPoint = local;
       }
-    } else if (Math.abs(dx) > SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy)) {
-      // Горизонтальный свайп → следующая/предыдущая
+    } else if (mode === 'swipe' && Math.abs(dx) > SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy)) {
+      // Горизонтальный свайп → следующая/предыдущая (только в режиме swipe, scale=1)
       navigate(dx < 0 ? 1 : -1);
     }
   }
