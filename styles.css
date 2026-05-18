@@ -33,6 +33,16 @@
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+/* При смене темы делаем плавный переход цветов на ключевых элементах.
+   Прибавляем класс theme-transition на html при applyTheme(), убираем через 400мс. */
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *:before,
+html.theme-transition *:after {
+  transition: background-color 200ms ease, color 200ms ease, border-color 200ms ease, fill 200ms ease, stroke 200ms ease !important;
+}
+
 html, body {
   margin: 0; padding: 0;
   background: var(--bg); color: var(--text);
@@ -442,7 +452,6 @@ img { display: block; max-width: 100%; }
 
 .product-detail-name { font-size: 20px; font-weight: 600; margin: 0 0 6px; color: var(--brown); }
 .product-detail-price { font-size: 22px; font-weight: 700; margin: 0 0 4px; color: var(--brown); }
-.product-detail-price-alt { font-size: 14px; color: var(--text-secondary); margin: 0 0 16px; }
 .product-detail-desc {
   color: var(--text-secondary); margin: 0 0 16px;
   font-size: 14px; line-height: 1.5; white-space: pre-wrap;
@@ -620,7 +629,6 @@ img { display: block; max-width: 100%; }
 }
 .cart-total-label { color: var(--text-secondary); font-size: 14px; }
 .cart-total-val { font-size: 20px; font-weight: 700; color: var(--brown); }
-.cart-total-val-alt { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
 
 /* В избранном — карточка с размером */
 .fav-with-size {
@@ -702,7 +710,6 @@ img { display: block; max-width: 100%; }
   display: block; margin-top: 6px;
 }
 .history-total-line { margin-top: 6px; font-weight: 600; color: var(--brown); }
-.history-total-alt { font-size: 12px; color: var(--text-secondary); font-weight: 400; margin-left: 6px; }
 .history-status-badge {
   display: inline-block;
   font-size: 11px; font-weight: 600;
@@ -835,3 +842,36 @@ img { display: block; max-width: 100%; }
 .image-editor-add svg { width: 14px; height: 14px; }
 .admin-form-actions { display: flex; gap: 8px; margin-top: 16px; }
 .admin-form-actions .primary-btn, .admin-form-actions .secondary-btn { margin-top: 0; }
+
+/* ========== Admin: видимость товара ========== */
+.admin-product-row.inactive { opacity: 0.6; }
+.admin-hidden-badge {
+  display: inline-block;
+  font-size: 10px; font-weight: 600;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  padding: 1px 6px; border-radius: 4px;
+  margin-left: 6px; vertical-align: middle;
+  text-transform: uppercase; letter-spacing: 0.3px;
+}
+.admin-active-toggle {
+  background: var(--bg);
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+.admin-checkbox {
+  display: flex; align-items: center; gap: 10px;
+  cursor: pointer;
+  font-size: 14px; font-weight: 500;
+}
+.admin-checkbox input[type="checkbox"] {
+  width: 18px; height: 18px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  margin: 0;
+}
+.admin-checkbox-hint {
+  font-size: 12px; color: var(--text-secondary);
+  margin-top: 6px; margin-left: 28px;
+}

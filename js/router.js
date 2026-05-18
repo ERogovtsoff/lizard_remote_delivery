@@ -1,9 +1,8 @@
-// Простой роутер. Хранит текущую страницу + контекст (для деталки — id товара).
-// Управляет видимостью шапки и нижней навигации.
-// Правка #13: нижняя навигация должна быть на детали тоже.
+// Минимальный роутер. Хранит текущую страницу + контекст (для деталки — id товара),
+// управляет видимостью шапки, нижней навигации и нативной BackButton Telegram.
 import { tg, showBackButton } from './tg.js';
 
-const VIEWS = {};      // name -> render(opts)
+const VIEWS = {};
 const ROOT_PAGES = ['home', 'chat', 'catalog', 'profile'];
 
 let current = null;
@@ -31,7 +30,7 @@ export const router = {
 
     // Шапка — везде кроме онбординга
     document.getElementById('appHeader').classList.toggle('hidden', name === 'onboarding');
-    // Нижняя навигация — везде кроме онбординга (правка #13: на деталке тоже остаётся)
+    // Нижняя навигация видна на всех экранах кроме онбординга
     document.getElementById('bottomNav').classList.toggle('hidden', name === 'onboarding');
 
     document.body.classList.toggle('no-chrome', name === 'onboarding');

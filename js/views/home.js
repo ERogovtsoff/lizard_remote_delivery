@@ -1,4 +1,5 @@
-// Главная страница.
+// Главная страница: hero-блок с CTA «Заказать из Китая», поиск и сетка товаров.
+// Search-state изолирован на уровне модуля — не делится с каталогом.
 import { t } from '../i18n.js';
 import { escapeHtml } from '../utils.js';
 import { api } from '../api/index.js';
@@ -6,7 +7,7 @@ import { router } from '../router.js';
 import { createSearchBar, matches } from '../components/search.js';
 import { createProductCard } from '../components/product-card.js';
 
-let searchQuery = '';  // изолированный для главной (правка #15)
+let searchQuery = '';
 
 export async function renderHome() {
   const page = document.getElementById('page-home');

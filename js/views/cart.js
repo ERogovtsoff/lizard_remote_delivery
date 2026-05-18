@@ -1,4 +1,4 @@
-// Корзина. Подтверждение на удаление (правка #9), сумма в двух валютах.
+// Корзина: список позиций с возможностью править количество, удалять и оформить заказ.
 import { t, getLang, localizedProduct } from '../i18n.js';
 import { escapeHtml, formatPrice } from '../utils.js';
 import { state, changeCartQty, removeFromCart, cartKey, clearLocalCart } from '../state.js';

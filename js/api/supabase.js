@@ -1,24 +1,12 @@
-// Реализация API через Supabase (режим CONFIG.API_MODE === 'supabase').
+// Реализация API через Supabase.
 //
-// ВНИМАНИЕ ПО БЕЗОПАСНОСТИ:
-//   Этот файл работает БЕЗ Row Level Security. Это значит, что любой, кто увидит
-//   ваш SUPABASE_ANON_KEY (а он публичен в JS-коде на GitHub Pages),
-//   может читать и менять данные в БД через DevTools/curl, подменяя tg_id.
-//   Подходит ТОЛЬКО для прототипа/теста с доверенными пользователями.
-//   Перед публичным запуском обязательно:
-//     1. Включите RLS-политики (закомментированы внизу db/schema.sql)
-//     2. Разверните Supabase Edge Function для валидации Telegram initData
-//     3. Замените в коде ниже anon-ключ на полученный JWT
-//
-// Стратегия:
-//   - products: читаем все is_active=true; при первом запуске (пустая БД)
-//                автоматически засеиваем из catalog.json (см. seedIfEmpty).
-//   - customers: при старте upsert по tg_id с данными из Telegram.
-//   - orders + order_items: одна транзакция через insert + дальнейший insert items.
-//   - requests: простая запись.
-//   - history: чтение orders и requests, склейка в общий список (как было в local.js).
-//
-// Все методы должны возвращать те же структуры, что и local.js — UI не знает разницы.
+// ⚠️ БЕЗОПАСНОСТЬ: текущая версия работает БЕЗ Row Level Security.
+//   Анонимный ключ публичен в JS-коде, поэтому через DevTools любой может
+//   читать/менять данные подменяя tg_id. Это режим прототипа.
+//   Для прод-релиза нужно:
+//     1. Включить RLS-политики (закомментированы внизу db/schema.sql)
+//     2. Развернуть Edge Function для валидации Telegram initData
+//     3. Заменить anon-ключ на JWT с tg_id в claims
 
 import { CONFIG } from '../config.js';
 import { getUser } from '../tg.js';
@@ -152,6 +140,23 @@ export async function loadProducts() {
     return fresh || [];
   } catch (e) {
     console.error('[supabase] loadProducts exception:', e);
+    return [];
+  }
+}
+
+// Все товары (включая is_active=false) — для админки.
+// Без кэширования: админ редко открывает список и ему нужна актуальная картина.
+export async function loadAllProducts() {
+  try {
+    const sb = await getClient();
+    const { data, error } = await sb.from('products').select('*').order('id');
+    if (error) {
+      console.error('[supabase] loadAllProducts error:', error.message);
+      return [];
+    }
+    return (data || []).map(rowToProduct);
+  } catch (e) {
+    console.error('[supabase] loadAllProducts exception:', e);
     return [];
   }
 }

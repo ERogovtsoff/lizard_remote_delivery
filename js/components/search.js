@@ -1,6 +1,6 @@
-// Поиск-бар. Каждая страница имеет свой экземпляр с собственным state-полем —
-// поэтому при переходе между «Главной» и «В наличии» запросы не делятся (правка #15).
-import { escapeHtml, debounce } from '../utils.js';
+// Поиск-бар. Каждая страница (home, catalog) держит свой экземпляр с собственным
+// search-state на уровне модуля — поэтому запросы между ними не делятся.
+import { escapeHtml } from '../utils.js';
 import { t } from '../i18n.js';
 
 export function createSearchBar({ initialValue = '', onChange }) {
@@ -28,7 +28,7 @@ export function createSearchBar({ initialValue = '', onChange }) {
   return wrap;
 }
 
-// Помогает найти товары: учитывает русское и английское название (правка #2 из прошлой итерации)
+// Поиск по русскому и английскому названию (case-insensitive substring match)
 export function matches(prod, q) {
   if (!q) return true;
   const norm = q.toLowerCase().trim();

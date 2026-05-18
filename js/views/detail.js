@@ -1,6 +1,4 @@
 // Деталь товара.
-// Правка #1: если у товара один размер — автовыбор.
-// Правка #2: лайтбокс зумит в точку касания (реализовано в lightbox.js).
 import { t, getLang, localizedProduct } from '../i18n.js';
 import { escapeHtml, formatPrice } from '../utils.js';
 import { state, isFavExact, toggleFav, removeFav, addToCart } from '../state.js';
@@ -28,7 +26,7 @@ export async function renderDetail(opts = {}) {
   const p = localizedProduct(prod, cur);
   const images = (prod.images && prod.images.length) ? prod.images : (prod.img ? [prod.img] : []);
 
-  // Правка #1: автовыбор единственного размера
+  // Если размер один — выбираем автоматически
   if (prod.sizes && prod.sizes.length === 1) {
     selectedSize = prod.sizes[0];
   } else {

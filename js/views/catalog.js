@@ -1,4 +1,5 @@
-// Раздел «В наличии». Имеет собственный search-state (правка #15).
+// Раздел «В наличии» — каталог товаров с поиском.
+// Search-state изолирован — не делится с главной.
 import { t } from '../i18n.js';
 import { escapeHtml } from '../utils.js';
 import { api } from '../api/index.js';

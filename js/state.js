@@ -1,15 +1,18 @@
-// Состояние приложения. Хранит то, что нужно прямо в UI:
-// - favorites: [{ productId, size }]  — избранное с размерами (правка #3)
-// - cart: [{ productId, size, qty }]  — корзина с размерами
-// - history: [...]                     — кэш истории (источник правды — БД, если API_MODE='supabase')
-// - settings: { lang, theme, currency }
-// - attached: [...]                    — черновик чата, в localStorage не пишем
+// Локальное состояние приложения.
 //
-// История читается из API. В local-режиме API сам читает/пишет localStorage.
-// В supabase-режиме API будет ходить в БД, а кэш в state нужен только чтобы рендер не моргал.
+// Что хранится:
+//   - favorites: [{ productId, size }]
+//   - cart:      [{ productId, size, qty }]
+//   - settings:  { lang, theme, currency }
 //
-// Онбординг — отдельный флаг, специально вне state: его не нужно
-// синхронизировать между устройствами (каждое устройство показывает приветствие 1 раз).
+// История заказов и запросов в state НЕ хранится — она всегда читается из БД.
+// Онбординг — отдельный флаг по ключу ONBOARD_KEY, не часть state. На каждом
+// устройстве приветствие показывается один раз; синхронизировать смысла нет.
+//
+// Изменения favorites и cart транслируются в БД через зарегистрированные
+// syncer-функции (см. setFavoritesSyncer / setCartSyncer). Это позволяет
+// сохранять разделение: state.js не знает о существовании сети.
+
 import { CONFIG } from './config.js';
 
 const KEY = CONFIG.STORAGE.STATE;
@@ -18,19 +21,17 @@ const ONBOARD_KEY = CONFIG.STORAGE.ONBOARDING;
 const DEFAULT = {
   favorites: [],
   cart: [],
-  history: [],
   settings: { lang: 'auto', theme: 'auto', currency: 'USD' },
-  attached: [],
 };
 
+// Миграция со старых форматов: cart [{id, qty}] -> [{productId, size, qty}],
+// favorites string[] -> [{productId, size}]
 function migrate(parsed) {
-  // Старая корзина была [{id, qty}], потом стала [{id, size, qty}]
   const cart = (parsed.cart || []).map(c => ({
     productId: c.productId || c.id,
     size: c.size || null,
     qty: c.qty || 1,
   }));
-  // Старое избранное было массивом id; теперь массив объектов {productId, size}
   let favorites = parsed.favorites || [];
   if (favorites.length > 0 && typeof favorites[0] === 'string') {
     favorites = favorites.map(id => ({ productId: id, size: null }));
@@ -41,7 +42,6 @@ function migrate(parsed) {
     ...DEFAULT, ...parsed,
     cart, favorites,
     settings: { ...DEFAULT.settings, ...(parsed.settings || {}) },
-    attached: [],
   };
 }
 
@@ -55,42 +55,41 @@ export const state = (() => {
 
 export function saveState() {
   try {
-    const toSave = { ...state };
-    delete toSave.attached;
-    localStorage.setItem(KEY, JSON.stringify(toSave));
+    localStorage.setItem(KEY, JSON.stringify(state));
   } catch (e) {}
 }
 
 export function isOnboarded() {
   try { return !!localStorage.getItem(ONBOARD_KEY); } catch (e) { return false; }
 }
+
 export function setOnboarded() {
   try { localStorage.setItem(ONBOARD_KEY, '1'); } catch (e) {}
 }
 
-// Хелперы по избранному (с учётом размера)
-export function favKey(productId, size) { return productId + '::' + (size || ''); }
+// ============================== FAVORITES ==============================
+
 export function isFavExact(productId, size) {
-  return state.favorites.some(f => f.productId === productId && (f.size || null) === (size || null));
+  return state.favorites.some(f =>
+    f.productId === productId && (f.size || null) === (size || null)
+  );
 }
-// Любой размер этого товара
+
 export function isFavAny(productId) {
   return state.favorites.some(f => f.productId === productId);
 }
 
-// Внешний синхронизатор (регистрируется app.js при старте) — пишет изменения в БД.
-// Сигнатура: ({ action: 'add'|'remove', productId, size }) => Promise<void>
+// Внешний синхронизатор: ({ action: 'add'|'remove', productId, size }) => void
 let _favSync = null;
 export function setFavoritesSyncer(fn) { _favSync = fn; }
-
 function syncFav(action, productId, size) {
   if (!_favSync) return;
   try { _favSync({ action, productId, size: size || null }); } catch (e) {}
 }
 
 export function toggleFav(productId, size) {
-  const idx = state.favorites.findIndex(
-    f => f.productId === productId && (f.size || null) === (size || null)
+  const idx = state.favorites.findIndex(f =>
+    f.productId === productId && (f.size || null) === (size || null)
   );
   if (idx >= 0) {
     state.favorites.splice(idx, 1);
@@ -103,14 +102,15 @@ export function toggleFav(productId, size) {
   syncFav('add', productId, size);
   return true;
 }
+
 export function removeFav(productId, size) {
-  state.favorites = state.favorites.filter(
-    f => !(f.productId === productId && (f.size || null) === (size || null))
+  state.favorites = state.favorites.filter(f =>
+    !(f.productId === productId && (f.size || null) === (size || null))
   );
   saveState();
   syncFav('remove', productId, size);
 }
-// Удалить все варианты товара (используется при удалении карточки без указания размера)
+
 export function removeFavAll(productId) {
   const removed = state.favorites.filter(f => f.productId === productId);
   state.favorites = state.favorites.filter(f => f.productId !== productId);
@@ -118,11 +118,13 @@ export function removeFavAll(productId) {
   removed.forEach(f => syncFav('remove', productId, f.size));
 }
 
-// Корзина
-export function cartKey(productId, size) { return productId + '::' + (size || ''); }
+// ============================== CART ==============================
 
-// Внешний синхронизатор корзины (регистрируется app.js)
-// Сигнатура: ({ action: 'set'|'remove'|'clear', productId?, size?, qty? }) => void
+export function cartKey(productId, size) {
+  return productId + '::' + (size || '');
+}
+
+// Внешний синхронизатор: ({ action, productId?, size?, qty? }) => void
 let _cartSync = null;
 export function setCartSyncer(fn) { _cartSync = fn; }
 function syncCart(action, payload) {
@@ -136,9 +138,10 @@ export function addToCart(productId, size) {
   if (it) it.qty += 1;
   else state.cart.push({ productId, size: size || null, qty: 1 });
   saveState();
-  const newQty = (state.cart.find(c => cartKey(c.productId, c.size) === key) || {}).qty;
+  const newQty = state.cart.find(c => cartKey(c.productId, c.size) === key).qty;
   syncCart('set', { productId, size: size || null, qty: newQty });
 }
+
 export function changeCartQty(productId, size, delta) {
   const key = cartKey(productId, size);
   const it = state.cart.find(c => cartKey(c.productId, c.size) === key);
@@ -153,18 +156,25 @@ export function changeCartQty(productId, size, delta) {
     syncCart('set', { productId, size: size || null, qty: it.qty });
   }
 }
+
 export function removeFromCart(productId, size) {
   const key = cartKey(productId, size);
   state.cart = state.cart.filter(c => cartKey(c.productId, c.size) !== key);
   saveState();
   syncCart('remove', { productId, size: size || null });
 }
+
 export function clearLocalCart() {
   state.cart = [];
   saveState();
   syncCart('clear', {});
 }
-export function cartTotalCount() { return state.cart.reduce((s, c) => s + c.qty, 0); }
+
+export function cartTotalCount() {
+  return state.cart.reduce((s, c) => s + c.qty, 0);
+}
+
+// ============================== SETTINGS ==============================
 
 export function setSettings(patch) {
   state.settings = { ...state.settings, ...patch };

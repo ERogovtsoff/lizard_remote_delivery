@@ -59,9 +59,14 @@ export function applyTheme(settingsTheme) {
   const isDark = theme === 'dark';
   const palette = isDark ? DARK : LIGHT;
   const root = document.documentElement;
+
+  // Включаем плавный transition только на момент смены палитры,
+  // чтобы не тормозить остальные интеракции (наведения, фокусы и т.п.)
+  root.classList.add('theme-transition');
   for (const [k, v] of Object.entries(palette)) {
     root.style.setProperty(k, v);
   }
   root.style.setProperty('color-scheme', isDark ? 'dark' : 'light');
   setHeaderColor(isDark ? '#1c130c' : '#ffffff');
+  setTimeout(() => root.classList.remove('theme-transition'), 400);
 }

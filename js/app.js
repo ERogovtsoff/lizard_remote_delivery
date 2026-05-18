@@ -1,9 +1,24 @@
-// Точка входа: бутстрап, навешивание глобальных обработчиков, регистрация view.
-import { CONFIG } from './config.js';
+// Точка входа. Стратегия первой отрисовки:
+//
+// 1. Применяем локальные настройки (lang/theme) — мгновенно, без сети
+// 2. Запускаем параллельные BD-запросы (customer/favorites/cart)
+// 3. Ждём их с таймаутом 800мс
+// 4. Применяем то что пришло, и только потом делаем router.navigate('home'|'onboarding')
+//
+// Этим избегаем «моргание через секунду» — раньше первый рендер шёл сразу с локальными
+// данными, а через ~500-1000мс приходил ответ из БД с другими настройками или данными,
+// что вызывало router.navigate() и перерисовку. Теперь первый рендер уже учитывает БД.
+//
+// Если 800мс не хватило (медленная сеть) — рендерим с локальными данными и применяем
+// БД-данные через мягкое обновление badges (не через router.navigate).
+
 import { initTelegram, onThemeChanged, onViewportChanged, tg } from './tg.js';
 import { applyTheme } from './theme.js';
-import { setLang, applyI18N, t } from './i18n.js';
-import { state, isOnboarded, cartTotalCount, saveState, setFavoritesSyncer, setCartSyncer } from './state.js';
+import { setLang, applyI18N } from './i18n.js';
+import {
+  state, isOnboarded, cartTotalCount, saveState,
+  setFavoritesSyncer, setCartSyncer,
+} from './state.js';
 import { api } from './api/index.js';
 import { router, registerView } from './router.js';
 import { setupLightbox } from './components/lightbox.js';
@@ -18,6 +33,8 @@ import { renderProfile } from './views/profile.js';
 import { renderHistory } from './views/history.js';
 import { renderSettings } from './views/settings.js';
 import { renderAdmin } from './views/admin.js';
+
+const BOOTSTRAP_TIMEOUT_MS = 800;
 
 function updateBadges() {
   const favBadge = document.getElementById('favBadge');
@@ -34,99 +51,103 @@ function updateBadges() {
   }
 }
 
+// Применяет данные клиента (preferences) к локальному state. Возвращает true,
+// если что-то реально изменилось.
+function applyCustomerData(customer) {
+  const dbPrefs = customer?.preferences;
+  if (!dbPrefs) return false;
+  const changed =
+    (dbPrefs.lang ?? state.settings.lang) !== state.settings.lang ||
+    (dbPrefs.theme ?? state.settings.theme) !== state.settings.theme ||
+    (dbPrefs.currency ?? state.settings.currency) !== state.settings.currency;
+  if (!changed) return false;
+  state.settings = { ...state.settings, ...dbPrefs };
+  saveState();
+  setLang(state.settings.lang);
+  applyTheme(state.settings.theme);
+  applyI18N();
+  return true;
+}
+
+function mergeFavorites(dbFavs) {
+  if (!Array.isArray(dbFavs) || dbFavs.length === 0) return false;
+  const key = f => f.productId + '::' + (f.size || '');
+  const merged = new Map();
+  dbFavs.forEach(f => merged.set(key(f), f));
+  state.favorites.forEach(f => merged.set(key(f), f));
+  const newFavs = Array.from(merged.values());
+  if (newFavs.length === state.favorites.length) return false;
+  state.favorites = newFavs;
+  saveState();
+  return true;
+}
+
+// Корзина: при merge берём максимум qty, не «сумму» — пользователь видел эти товары
+// на каком-то устройстве и не отменял их, значит должны остаться.
+function mergeCart(dbCart) {
+  if (!Array.isArray(dbCart) || dbCart.length === 0) return false;
+  const key = c => c.productId + '::' + (c.size || '');
+  const merged = new Map();
+  dbCart.forEach(c => merged.set(key(c), { ...c }));
+  state.cart.forEach(c => {
+    const k = key(c);
+    if (merged.has(k)) merged.get(k).qty = Math.max(merged.get(k).qty, c.qty);
+    else merged.set(k, { ...c });
+  });
+  const newCart = Array.from(merged.values());
+  // Записываем merged-результат в БД, чтобы устройства синхронизировались
+  newCart.forEach(c => api.setCartItem(c.productId, c.size, c.qty));
+  if (newCart.length === state.cart.length &&
+      newCart.every((c, i) => state.cart[i] && state.cart[i].qty === c.qty)) return false;
+  state.cart = newCart;
+  saveState();
+  return true;
+}
+
+// Запускает BD-загрузку, ждёт максимум timeout мс, применяет всё что успело прийти.
+// Возвращает Promise<void>.
+async function bootstrapDataWithTimeout(timeoutMs) {
+  // Запускаем все запросы параллельно
+  const customerP = api.loadCustomer().catch(() => null);
+  const favsP = api.loadFavorites().catch(() => null);
+  const cartP = api.loadCart().catch(() => null);
+
+  // Race с таймаутом
+  const all = Promise.all([customerP, favsP, cartP]);
+  const timeout = new Promise(resolve => setTimeout(resolve, timeoutMs));
+  const result = await Promise.race([all, timeout]);
+
+  if (Array.isArray(result)) {
+    // Все запросы успели — применяем синхронно
+    const [customer, favs, cart] = result;
+    applyCustomerData(customer);
+    mergeFavorites(favs);
+    mergeCart(cart);
+    return;
+  }
+
+  // Таймаут — применяем то что придёт, без перерисовки страницы.
+  // Списки favorites/cart мягко обновятся через badges (setInterval);
+  // settings — применятся через applyTheme/applyI18N, которые меняют CSS-переменные
+  // и DOM-атрибуты без полной перерисовки страницы.
+  all.then(([customer, favs, cart]) => {
+    applyCustomerData(customer);
+    mergeFavorites(favs);
+    mergeCart(cart);
+    updateBadges();
+  });
+}
+
 async function bootstrap() {
   initTelegram();
 
-  // Применяем локальные настройки сразу — чтобы первая отрисовка не ждала сеть
+  // 1. Локальные настройки сразу (для случая когда сеть медленная — пользователь
+  //    хотя бы увидит правильный язык/тему мгновенно)
   setLang(state.settings.lang);
   applyTheme(state.settings.theme);
   applyI18N();
 
-  // Регистрируем синхронизатор избранного: state.js дёргает его при каждой мутации,
-  // мы пишем в БД через API.
-  setFavoritesSyncer(({ action, productId, size }) => {
-    if (action === 'add') api.addFavorite(productId, size);
-    else if (action === 'remove') api.removeFavorite(productId, size);
-  });
-
-  // Аналогично для корзины. state.js при каждой мутации сообщает что произошло,
-  // мы транслируем в API.
-  setCartSyncer(({ action, productId, size, qty }) => {
-    if (action === 'set') api.setCartItem(productId, size, qty);
-    else if (action === 'remove') api.removeCartItem(productId, size);
-    else if (action === 'clear') api.clearCart();
-  });
-
-  // Подтягиваем настройки клиента, избранное и корзину из БД в фоне.
-  (async () => {
-    try {
-      const customer = await api.loadCustomer();
-      const dbPrefs = customer?.preferences;
-      let needRerender = false;
-      if (dbPrefs) {
-        const changed =
-          dbPrefs.lang !== state.settings.lang ||
-          dbPrefs.theme !== state.settings.theme ||
-          dbPrefs.currency !== state.settings.currency;
-        if (changed) {
-          state.settings = { ...state.settings, ...dbPrefs };
-          setLang(state.settings.lang);
-          applyTheme(state.settings.theme);
-          applyI18N();
-          needRerender = true;
-        }
-      }
-
-      // Избранное из БД, merge с локальным.
-      const dbFavs = await api.loadFavorites();
-      if (Array.isArray(dbFavs) && dbFavs.length > 0) {
-        const key = f => f.productId + '::' + (f.size || '');
-        const merged = new Map();
-        dbFavs.forEach(f => merged.set(key(f), f));
-        state.favorites.forEach(f => merged.set(key(f), f));
-        state.favorites = Array.from(merged.values());
-        saveState();
-        needRerender = true;
-      }
-
-      // Корзина из БД. Merge-стратегия:
-      //   - Если позиция есть и в БД и локально (одинаковый productId+size)
-      //     → берём максимум qty (например, на одном устройстве клиент
-      //     добавил 2 шт., на другом — 1, значит хотел иметь как минимум 2)
-      //   - Иначе — объединяем
-      const dbCart = await api.loadCart();
-      if (Array.isArray(dbCart) && dbCart.length > 0) {
-        const key = c => c.productId + '::' + (c.size || '');
-        const merged = new Map();
-        dbCart.forEach(c => merged.set(key(c), { ...c }));
-        state.cart.forEach(c => {
-          const k = key(c);
-          if (merged.has(k)) {
-            merged.get(k).qty = Math.max(merged.get(k).qty, c.qty);
-          } else {
-            merged.set(k, { ...c });
-          }
-        });
-        state.cart = Array.from(merged.values());
-        saveState();
-        // Записываем merged-результат обратно в БД, чтобы все устройства имели одинаковую корзину.
-        // Без syncer'а — напрямую через api, иначе будет цикл.
-        state.cart.forEach(c => {
-          api.setCartItem(c.productId, c.size, c.qty);
-        });
-        needRerender = true;
-      }
-
-      if (needRerender) {
-        const cur = router.current();
-        if (cur) router.navigate(cur, router.lastContext());
-      }
-    } catch (e) {
-      console.warn('[bootstrap] background load skipped:', e);
-    }
-  })();
-
-  // Регистрируем view
+  // 2. Регистрируем view
   registerView('onboarding', renderOnboarding);
   registerView('home',       renderHome);
   registerView('chat',       () => { resetChat(); renderChat(); });
@@ -139,10 +160,57 @@ async function bootstrap() {
   registerView('settings',   renderSettings);
   registerView('admin',      renderAdmin);
 
-  // Подписка на обновление каталога (фоновое stale-while-revalidate).
-  // Если открыта главная/каталог/деталь/избранное/корзина — перерисуем,
-  // чтобы пользователь увидел свежие данные без ручной перезагрузки.
-  const VIEWS_WITH_PRODUCTS = new Set(['home', 'catalog', 'detail', 'favorites', 'cart', 'admin', 'history']);
+  // 3. Регистрируем синхронизаторы — без них любая мутация favorites/cart
+  //    перестанет писать в БД
+  setFavoritesSyncer(({ action, productId, size }) => {
+    if (action === 'add') api.addFavorite(productId, size);
+    else if (action === 'remove') api.removeFavorite(productId, size);
+  });
+  setCartSyncer(({ action, productId, size, qty }) => {
+    if (action === 'set') api.setCartItem(productId, size, qty);
+    else if (action === 'remove') api.removeCartItem(productId, size);
+    else if (action === 'clear') api.clearCart();
+  });
+
+  // 4. Глобальные обработчики UI
+  setupLightbox();
+  setupOnboarding();
+
+  document.getElementById('headerLogo').onclick = () => router.navigate('home');
+  document.getElementById('favBtn').onclick = () => router.navigate('favorites');
+  document.getElementById('cartBtn').onclick = () => router.navigate('cart');
+  document.querySelectorAll('.nav-btn[data-nav]').forEach(b => {
+    b.onclick = () => router.navigate(b.getAttribute('data-nav'));
+  });
+
+  // Бейджи в шапке
+  window.addEventListener('cart:changed', updateBadges);
+  setInterval(updateBadges, 500);
+  updateBadges();
+
+  // Закрытие клавиатуры при тапе вне поля ввода
+  const KEEP_FOCUS_SELECTOR = 'input, textarea, select, label, button, a, [contenteditable="true"]';
+  document.addEventListener('pointerdown', (e) => {
+    const active = document.activeElement;
+    if (!active?.matches?.('input, textarea, [contenteditable="true"]')) return;
+    let n = e.target;
+    while (n && n !== document.body) {
+      if (n.matches?.(KEEP_FOCUS_SELECTOR)) return;
+      n = n.parentNode;
+    }
+    try { active.blur(); } catch (_) {}
+  }, true);
+
+  // Telegram-события
+  onViewportChanged(() => {
+    try { tg?.disableVerticalSwipes?.(); } catch (_) {}
+  });
+  onThemeChanged(() => applyTheme(state.settings.theme));
+
+  // Подписка на обновления каталога (фоновое stale-while-revalidate).
+  // Перерисовываем текущую страницу только если она показывает товары —
+  // и только если кэш реально изменился (это проверяется в cache/products.js).
+  const VIEWS_WITH_PRODUCTS = new Set(['home', 'catalog', 'detail', 'favorites', 'cart', 'admin']);
   api.onProductsChange(() => {
     const cur = router.current();
     if (VIEWS_WITH_PRODUCTS.has(cur)) {
@@ -150,55 +218,13 @@ async function bootstrap() {
     }
   });
 
-  // Лайтбокс
-  setupLightbox();
-
-  // Онбординг
-  setupOnboarding();
-
-  // Шапка
-  document.getElementById('headerLogo').onclick = () => router.navigate('home');
-  document.getElementById('favBtn').onclick = () => router.navigate('favorites');
-  document.getElementById('cartBtn').onclick = () => router.navigate('cart');
-
-  // Нижняя навигация
-  document.querySelectorAll('.nav-btn[data-nav]').forEach(b => {
-    b.onclick = () => router.navigate(b.getAttribute('data-nav'));
-  });
-
-  // Бейджи: обновляем после любого перехода и по событию из корзины/избранного
-  const refreshBadges = () => updateBadges();
-  window.addEventListener('cart:changed', refreshBadges);
-  setInterval(refreshBadges, 300);
-  refreshBadges();
-
-  // Тап в любое место мини-аппа закрывает экранную клавиатуру.
-  const KEEP_FOCUS_SELECTOR = 'input, textarea, select, label, button, a, [contenteditable="true"]';
-  function shouldKeepFocus(el) {
-    let n = el;
-    while (n && n !== document.body) {
-      if (n.matches && n.matches(KEEP_FOCUS_SELECTOR)) return true;
-      n = n.parentNode;
-    }
-    return false;
+  // 5. Подгружаем данные клиента с таймаутом, чтобы первая отрисовка
+  //    уже была с актуальной информацией. Если таймаут — рендер с локальными.
+  if (isOnboarded()) {
+    await bootstrapDataWithTimeout(BOOTSTRAP_TIMEOUT_MS);
   }
-  document.addEventListener('pointerdown', (e) => {
-    const active = document.activeElement;
-    if (!active) return;
-    const isTextField = active.matches?.('input, textarea, [contenteditable="true"]');
-    if (!isTextField) return;
-    if (shouldKeepFocus(e.target)) return;
-    try { active.blur(); } catch (err) {}
-  }, true);
 
-  // При смене viewport заново отключаем вертикальные свайпы
-  onViewportChanged(() => {
-    try { tg?.disableVerticalSwipes?.(); } catch (e) {}
-  });
-  // При смене темы Telegram переоцениваем тему, если у нас auto
-  onThemeChanged(() => applyTheme(state.settings.theme));
-
-  // Стартовый экран
+  // 6. Стартовый экран
   if (!isOnboarded()) router.navigate('onboarding');
   else router.navigate('home');
 }

@@ -7,7 +7,6 @@ import { showToast } from '../components/toast.js';
 import { showConfirm } from '../components/modal.js';
 import { isAdmin } from '../tg.js';
 import { state } from '../state.js';
-import { CONFIG } from '../config.js';
 
 let activeTab = 'catalog';
 let editingId = null;
@@ -16,12 +15,11 @@ let workingProducts = [];
 export async function renderAdmin() {
   if (!isAdmin()) { router.navigate('home'); return; }
 
-  workingProducts = await api.loadProducts();
-  const subText = CONFIG.API_MODE === 'supabase' ? t('adminSubSupabase') : t('adminSub');
+  workingProducts = await api.loadAllProducts();
   const page = document.getElementById('page-admin');
   page.innerHTML = `
     <h2>${escapeHtml(t('adminTitle'))}</h2>
-    <p class="page-sub">${escapeHtml(subText)}</p>
+    <p class="page-sub">${escapeHtml(t('adminSub'))}</p>
     <div class="admin-tabs">
       <button class="admin-tab ${activeTab === 'catalog' ? 'active' : ''}" data-tab="catalog">${escapeHtml(t('adminTabCatalog'))}</button>
       <button class="admin-tab ${activeTab === 'export' ? 'active' : ''}" data-tab="export">${escapeHtml(t('adminTabExport'))}</button>
@@ -51,12 +49,15 @@ function renderCatalogTab() {
   workingProducts.forEach(prod => {
     const p = localizedProduct(prod, cur);
     const row = document.createElement('div');
-    row.className = 'admin-product-row';
+    row.className = 'admin-product-row' + (prod.is_active === false ? ' inactive' : '');
     const img = (prod.images && prod.images[0]) || prod.img || '';
+    const hiddenBadge = prod.is_active === false
+      ? `<span class="admin-hidden-badge">${escapeHtml(t('adminHidden'))}</span>`
+      : '';
     row.innerHTML = `
       <img src="${escapeAttr(img)}" alt="">
       <div class="admin-product-info">
-        <div class="admin-product-name">${escapeHtml(p.name)}</div>
+        <div class="admin-product-name">${escapeHtml(p.name)}${hiddenBadge}</div>
         <div class="admin-product-price">${escapeHtml(formatPrice(p.price, cur, lang))}</div>
       </div>
       <div class="admin-product-actions">
@@ -91,9 +92,11 @@ function renderEditor() {
   const body = document.getElementById('adminBody');
   const isNew = editingId === 'new';
   const prod = isNew
-    ? { id: makeId('p'), name_ru: '', name_en: '', desc_ru: '', desc_en: '', price_usd: 0, price_byn: 0, images: [], sizes: [] }
+    ? { id: makeId('p'), name_ru: '', name_en: '', desc_ru: '', desc_en: '',
+        price_usd: 0, price_byn: 0, images: [], sizes: [], is_active: true }
     : { ...workingProducts.find(p => p.id === editingId) };
   if (!prod.images) prod.images = prod.img ? [prod.img] : [];
+  if (prod.is_active === undefined) prod.is_active = true;
 
   body.innerHTML = `
     <div class="admin-section">
@@ -135,6 +138,13 @@ function renderEditor() {
       <div class="form-row">
         <label>${escapeHtml(t('adminFieldDescEn'))}</label>
         <textarea id="fDescEn">${escapeHtml(prod.desc_en || '')}</textarea>
+      </div>
+      <div class="form-row admin-active-toggle">
+        <label class="admin-checkbox">
+          <input type="checkbox" id="fIsActive" ${prod.is_active ? 'checked' : ''}>
+          <span>${escapeHtml(t('adminFieldIsActive'))}</span>
+        </label>
+        <div class="admin-checkbox-hint">${escapeHtml(t('adminFieldIsActiveHint'))}</div>
       </div>
       <div class="admin-form-actions">
         <button class="secondary-btn" id="cancelEditBtn">${escapeHtml(t('cancel'))}</button>
@@ -184,6 +194,7 @@ function renderEditor() {
       price_byn: Number(document.getElementById('fPriceByn').value) || 0,
       images: draft.images.filter(Boolean),
       sizes,
+      is_active: document.getElementById('fIsActive').checked,
     };
     if (isNew) workingProducts.push(obj);
     else {
