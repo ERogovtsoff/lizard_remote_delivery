@@ -1,40 +1,74 @@
 {
   "catalog": [
     {
-      "id": "c_mp9q1l414xa1",
-      "name_ru": "SHEEN KELLY LONELINESS Square Colorful Sunglasses #23022",
-      "name_en": "SHEEN KELLY LONELINESS Square Colorful Sunglasses #23022",
-      "desc_ru": "Материал: Пластиковая оправа\nЗащита от UV400\n\nШирина линзы: 54 мм\nВысота линзы: 38 мм\nШирина переносицы: 21 мм\nДлина виска: 140 мм",
-      "desc_en": "Material: Plastic frame\nUV400 Protction\n\nLens Width: 54 mm\nLens Height: 38 mm\nBridge Width: 21 mm\nTemple Length: 140 mm",
+      "id": "c1",
+      "name_ru": "Оверсайз худи бежевый",
+      "name_en": "Beige oversize hoodie",
+      "price_usd": 49,
+      "price_byn": 159,
       "images": [
-        "https://www.sheenkelly.com/cdn/shop/files/image_1_b7093572-8b63-446c-8be5-37d72252fdcd.jpg?v=1718759174&width=1440",
-        "https://www.sheenkelly.com/cdn/shop/files/23022-2_1_1.png?v=1739266136&width=600",
-        "https://www.sheenkelly.com/cdn/shop/files/image00013_6bd722ba-a491-43a3-bab2-b2e5b02b6f93.jpg?v=1739266136&width=1440",
-        "https://www.sheenkelly.com/cdn/shop/files/3EAA737DFBC9C47E3AE623D3527FFE39.jpg?v=1748057793&width=720"
+        "https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=800",
+        "https://images.unsplash.com/photo-1620799140408-edc6dcb6d633?w=800",
+        "https://images.unsplash.com/photo-1571945153237-4929e783af4a?w=800"
       ],
-      "price_usd": 25,
-      "price_byn": 69,
-      "sizes": [
-        "One size"
-      ]
+      "desc_ru": "Плотный хлопок 380 г/м². Свободный крой. Капюшон на шнурках.",
+      "desc_en": "Heavy cotton 380 gsm. Relaxed fit. Drawstring hood.",
+      "sizes": ["XS", "S", "M", "L", "XL"]
     },
     {
-      "id": "c_mp9rwolvjwoy",
-      "name_ru": "Dickies Moreauville cross body bag in black",
-      "name_en": "Dickies Moreauville cross body bag in black",
-      "desc_ru": "",
-      "desc_en": "",
-      "images": [
-        "https://images.asos-media.com/products/dickies-moreauville-cross-body-bag-in-black/204477277-1-black?$n_640w$&wid=513&fit=constrain",
-        "https://images.asos-media.com/products/dickies-moreauville-cross-body-bag-in-black/204477277-2?$n_640w$&wid=513&fit=constrain",
-        "https://images.asos-media.com/products/dickies-moreauville-cross-body-bag-in-black/204477277-3?$n_640w$&wid=513&fit=constrain",
-        "https://images.asos-media.com/products/dickies-moreauville-cross-body-bag-in-black/204477277-4?$n_640w$&wid=513&fit=constrain"
-      ],
-      "price_usd": 11,
-      "price_byn": 30,
-      "sizes": [
-        "One size"
-      ]
+      "id": "c2",
+      "name_ru": "Карго-брюки чёрные",
+      "name_en": "Black cargo pants",
+      "price_usd": 55,
+      "price_byn": 179,
+      "images": ["https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?w=800"],
+      "desc_ru": "Универсальные карго с большими карманами. Эластичный пояс.",
+      "desc_en": "Versatile cargo with large pockets. Elastic waist.",
+      "sizes": ["S", "M", "L", "XL"]
+    },
+    {
+      "id": "c3",
+      "name_ru": "Базовая футболка белая",
+      "name_en": "Basic white tee",
+      "price_usd": 15,
+      "price_byn": 49,
+      "images": ["https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?w=800"],
+      "desc_ru": "Хлопок 220 г/м². Прямой крой. Без принтов.",
+      "desc_en": "Cotton 220 gsm. Straight cut. No prints.",
+      "sizes": ["XS", "S", "M", "L", "XL", "XXL"]
+    },
+    {
+      "id": "c4",
+      "name_ru": "Бомбер демисезонный",
+      "name_en": "Light bomber jacket",
+      "price_usd": 79,
+      "price_byn": 259,
+      "images": ["https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=800"],
+      "desc_ru": "Лёгкий бомбер на молнии. Подойдёт на весну и осень.",
+      "desc_en": "Lightweight zip-up bomber. Great for spring and fall.",
+      "sizes": ["S", "M", "L", "XL"]
+    },
+    {
+      "id": "c5",
+      "name_ru": "Джинсы прямого кроя",
+      "name_en": "Straight-leg jeans",
+      "price_usd": 42,
+      "price_byn": 139,
+      "images": ["https://images.unsplash.com/photo-1542272604-787c3835535d?w=800"],
+      "desc_ru": "Классический деним. Прямой крой, средняя посадка.",
+      "desc_en": "Classic denim. Straight cut, mid-rise.",
+      "sizes": ["28", "30", "32", "34", "36"]
+    },
+    {
+      "id": "c6",
+      "name_ru": "Кроссовки белые",
+      "name_en": "White sneakers",
+      "price_usd": 65,
+      "price_byn": 209,
+      "images": ["https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=800"],
+      "desc_ru": "Минималистичные кроссовки на каждый день.",
+      "desc_en": "Minimal everyday sneakers.",
+      "sizes": ["38", "39", "40", "41", "42", "43", "44", "45"]
     }
   ]
 }

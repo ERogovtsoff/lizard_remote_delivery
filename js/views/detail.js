@@ -1,0 +1,147 @@
+// Деталь товара.
+// Правка #1: если у товара один размер — автовыбор.
+// Правка #2: лайтбокс зумит в точку касания (реализовано в lightbox.js).
+import { t, getLang, localizedProduct, altCurrency } from '../i18n.js';
+import { escapeHtml, formatPrice } from '../utils.js';
+import { state, isFavExact, toggleFav, removeFav, addToCart } from '../state.js';
+import { api } from '../api/index.js';
+import { router } from '../router.js';
+import { createCarousel } from '../components/carousel.js';
+import { openLightbox } from '../components/lightbox.js';
+import { showConfirm } from '../components/modal.js';
+import { showToast } from '../components/toast.js';
+import { haptic, openManagerChat } from '../tg.js';
+
+let selectedSize = null;
+
+export async function renderDetail(opts = {}) {
+  const productId = opts.productId;
+  const products = await api.loadProducts();
+  const prod = products.find(p => p.id === productId);
+  const page = document.getElementById('page-detail');
+  if (!prod) {
+    page.innerHTML = `<p>Product not found.</p>`;
+    return;
+  }
+  const lang = getLang();
+  const cur = state.settings.currency;
+  const alt = altCurrency(cur);
+  const p = localizedProduct(prod, cur);
+  const images = (prod.images && prod.images.length) ? prod.images : (prod.img ? [prod.img] : []);
+
+  // Правка #1: автовыбор единственного размера
+  if (prod.sizes && prod.sizes.length === 1) {
+    selectedSize = prod.sizes[0];
+  } else {
+    selectedSize = null;
+  }
+
+  page.innerHTML = `
+    <div id="detailCarouselSlot"></div>
+    <h2 class="product-detail-name">${escapeHtml(p.name)}</h2>
+    <div class="product-detail-price">${escapeHtml(formatPrice(p.price, cur, lang))}</div>
+    <div class="product-detail-price-alt">${escapeHtml(formatPrice(p.altPrice, alt, lang))}</div>
+    ${p.desc ? `<p class="product-detail-desc">${escapeHtml(p.desc)}</p>` : ''}
+    ${prod.sizes && prod.sizes.length > 0 ? `
+      <div class="product-section">
+        <h4>${escapeHtml(t('sizeChart'))}</h4>
+        <div class="size-picker" id="sizePicker"></div>
+        <button class="size-ask-btn" id="askSizesBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span>${escapeHtml(t('askOtherSizes'))}</span>
+        </button>
+      </div>
+    ` : ''}
+    <div class="detail-actions">
+      <button class="detail-fav-btn" id="detailFavBtn" aria-label="Favorite">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+      </button>
+      <button class="primary-btn" id="addToCartBtn">${escapeHtml(t('addToCart'))}</button>
+    </div>
+  `;
+
+  // Карусель + лайтбокс
+  const carousel = createCarousel({
+    images, variant: 'full',
+    onSlideClick: (idx) => openLightbox(images, idx),
+  });
+  document.getElementById('detailCarouselSlot').appendChild(carousel);
+
+  // Размеры
+  if (prod.sizes && prod.sizes.length > 0) {
+    renderSizes(prod);
+    document.getElementById('askSizesBtn').onclick = async () => {
+      const msg = `${t('askOtherSizesMsg')} "${p.name}"?`;
+      const result = await openManagerChat(msg);
+      if (result === 'opened') showToast(t('msgCopied'), 3500);
+      else if (result === 'opened-no-copy') showToast(t('openingChat'));
+      else showToast(t('cannotOpenChat'));
+    };
+  }
+
+  // Кнопка избранного
+  updateFavBtn(prod);
+  document.getElementById('detailFavBtn').onclick = () => {
+    // если избранное для выбранного размера уже стоит — спрашиваем подтверждение
+    const sizeKey = selectedSize || null;
+    if (isFavExact(prod.id, sizeKey)) {
+      showConfirm({
+        icon: '❤️',
+        title: t('confirmRemoveFavTitle'),
+        text: t('confirmRemoveFavText'),
+        yes: t('confirmYes'), no: t('confirmNo'), danger: true,
+        onYes: () => {
+          removeFav(prod.id, sizeKey);
+          haptic('light');
+          showToast(t('removedFromFav'));
+          updateFavBtn(prod);
+        }
+      });
+    } else {
+      toggleFav(prod.id, sizeKey);
+      haptic('light');
+      showToast(t('addedToFav'));
+      updateFavBtn(prod);
+    }
+  };
+
+  // Добавить в корзину
+  document.getElementById('addToCartBtn').onclick = () => {
+    if (prod.sizes && prod.sizes.length > 0 && !selectedSize) {
+      showToast(t('selectSize'));
+      haptic('warning');
+      return;
+    }
+    addToCart(prod.id, selectedSize);
+    haptic('success');
+    showToast(t('addedToCart'));
+    // обновим бейдж — это делает app.js через слушатель
+    window.dispatchEvent(new CustomEvent('cart:changed'));
+  };
+}
+
+function renderSizes(prod) {
+  const wrap = document.getElementById('sizePicker');
+  wrap.innerHTML = '';
+  prod.sizes.forEach(sz => {
+    const cell = document.createElement('div');
+    cell.className = 'size-cell' + (selectedSize === sz ? ' selected' : '');
+    cell.textContent = sz;
+    cell.onclick = () => {
+      selectedSize = sz;
+      renderSizes(prod);
+      updateFavBtn(prod);
+    };
+    wrap.appendChild(cell);
+  });
+}
+
+function updateFavBtn(prod) {
+  const btn = document.getElementById('detailFavBtn');
+  if (!btn) return;
+  const sizeKey = selectedSize || null;
+  const fav = isFavExact(prod.id, sizeKey);
+  btn.classList.toggle('active', fav);
+  const svg = btn.querySelector('svg');
+  svg.setAttribute('fill', fav ? 'currentColor' : 'none');
+}
