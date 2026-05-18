@@ -1,104 +1,393 @@
-// Заглушка Supabase API. Не активна, пока CONFIG.API_MODE === 'local'.
+// Реализация API через Supabase (режим CONFIG.API_MODE === 'supabase').
 //
-// Чтобы её включить:
-//   1. Создайте проект на supabase.com
-//   2. В SQL Editor выполните содержимое db/schema.sql
-//   3. Откройте Project Settings → API, скопируйте:
-//        - Project URL  → CONFIG.SUPABASE_URL
-//        - anon public key → CONFIG.SUPABASE_ANON_KEY
-//   4. Замените CONFIG.API_MODE = 'supabase'
-//   5. (Когда будет готов бэк) Разверните Edge Function для валидации initData
-//      и хранения JWT; здесь нужно будет добавить заголовок Authorization.
+// ВНИМАНИЕ ПО БЕЗОПАСНОСТИ:
+//   Этот файл работает БЕЗ Row Level Security. Это значит, что любой, кто увидит
+//   ваш SUPABASE_ANON_KEY (а он публичен в JS-коде на GitHub Pages),
+//   может читать и менять данные в БД через DevTools/curl, подменяя tg_id.
+//   Подходит ТОЛЬКО для прототипа/теста с доверенными пользователями.
+//   Перед публичным запуском обязательно:
+//     1. Включите RLS-политики (закомментированы внизу db/schema.sql)
+//     2. Разверните Supabase Edge Function для валидации Telegram initData
+//     3. Замените в коде ниже anon-ключ на полученный JWT
 //
-// ВАЖНО ПО БЕЗОПАСНОСТИ:
-//   - tg.initDataUnsafe.user НЕЛЬЗЯ доверять. Это публичная информация, её можно подделать.
-//   - До появления Edge Function валидации, режим 'supabase' будет работать только для
-//     демонстрации (запись/чтение по tg_id без проверки). Не публикуйте секретные данные
-//     до настройки Row Level Security и валидации initData.
+// Стратегия:
+//   - products: читаем все is_active=true; при первом запуске (пустая БД)
+//                автоматически засеиваем из catalog.json (см. seedIfEmpty).
+//   - customers: при старте upsert по tg_id с данными из Telegram.
+//   - orders + order_items: одна транзакция через insert + дальнейший insert items.
+//   - requests: простая запись.
+//   - history: чтение orders и requests, склейка в общий список (как было в local.js).
 //
-// API сам не подгружает supabase-js. В реальной интеграции:
-//   import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-//   const sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY)
+// Все методы должны возвращать те же структуры, что и local.js — UI не знает разницы.
 
 import { CONFIG } from '../config.js';
 import { getUser } from '../tg.js';
+import { state } from '../state.js';
 
-function notImplemented(method) {
-  console.warn(`[supabase api] ${method} ещё не реализован. Переключитесь на CONFIG.API_MODE='local'.`);
+// Подгружаем supabase-js через ESM CDN. Один экземпляр клиента на всё приложение.
+let _client = null;
+let _clientPromise = null;
+
+async function getClient() {
+  if (_client) return _client;
+  if (_clientPromise) return _clientPromise;
+
+  _clientPromise = (async () => {
+    if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON_KEY) {
+      throw new Error('[supabase] SUPABASE_URL и SUPABASE_ANON_KEY не заполнены в config.js');
+    }
+    const mod = await import('https://esm.sh/@supabase/supabase-js@2.45.4');
+    _client = mod.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    return _client;
+  })();
+  return _clientPromise;
+}
+
+// ============================== ПРОДУКТЫ ==============================
+
+function rowToProduct(row) {
+  return {
+    id: row.id,
+    name_ru: row.name_ru || '',
+    name_en: row.name_en || '',
+    desc_ru: row.desc_ru || '',
+    desc_en: row.desc_en || '',
+    price_usd: Number(row.price_usd) || 0,
+    price_byn: Number(row.price_byn) || 0,
+    images: Array.isArray(row.images) ? row.images : [],
+    sizes: Array.isArray(row.sizes) ? row.sizes : [],
+    is_active: row.is_active !== false,
+  };
+}
+
+function productToRow(p) {
+  return {
+    id: p.id,
+    name_ru: p.name_ru || '',
+    name_en: p.name_en || '',
+    desc_ru: p.desc_ru || '',
+    desc_en: p.desc_en || '',
+    price_usd: Number(p.price_usd) || 0,
+    price_byn: Number(p.price_byn) || 0,
+    images: Array.isArray(p.images) ? p.images : (p.img ? [p.img] : []),
+    sizes: Array.isArray(p.sizes) ? p.sizes : [],
+    is_active: p.is_active !== false,
+  };
+}
+
+let _seedAttempted = false;
+
+async function seedIfEmpty(sb) {
+  if (_seedAttempted) return;
+  _seedAttempted = true;
+  try {
+    const r = await fetch(CONFIG.CATALOG_URL, { cache: 'no-store' });
+    if (!r.ok) return;
+    const j = await r.json();
+    if (!Array.isArray(j?.catalog) || j.catalog.length === 0) return;
+    const rows = j.catalog.map(productToRow);
+    const { error } = await sb.from('products').insert(rows);
+    if (error) {
+      console.warn('[supabase] seed products failed:', error.message);
+    } else {
+      console.log('[supabase] seeded products from catalog.json:', rows.length);
+    }
+  } catch (e) {
+    console.warn('[supabase] seed fetch failed:', e);
+  }
 }
 
 export async function loadProducts() {
-  notImplemented('loadProducts');
-  // TODO:
-  //   const { data, error } = await sb.from('products').select('*').eq('is_active', true);
-  //   return data;
-  return [];
+  try {
+    const sb = await getClient();
+    let { data, error } = await sb.from('products').select('*').eq('is_active', true).order('id');
+    if (error) {
+      console.error('[supabase] loadProducts error:', error.message);
+      return [];
+    }
+    if (!data || data.length === 0) {
+      await seedIfEmpty(sb);
+      const res2 = await sb.from('products').select('*').eq('is_active', true).order('id');
+      data = res2.data || [];
+    }
+    return data.map(rowToProduct);
+  } catch (e) {
+    console.error('[supabase] loadProducts exception:', e);
+    return [];
+  }
 }
 
+// Полная синхронизация каталога:
+// 1. Получаем текущие id в БД
+// 2. Делаем upsert переданных
+// 3. Удаляем те id, которые есть в БД но отсутствуют в переданных
 export async function saveProducts(products) {
-  notImplemented('saveProducts');
-  // TODO: upsert по id; в проде делать через Edge Function с проверкой админ-прав
+  try {
+    const sb = await getClient();
+    const rows = products.map(productToRow);
+    const newIds = rows.map(r => r.id);
+
+    const { data: existing, error: e1 } = await sb.from('products').select('id');
+    if (e1) {
+      console.error('[supabase] saveProducts: read ids error:', e1.message);
+      throw e1;
+    }
+    const existingIds = (existing || []).map(r => r.id);
+
+    if (rows.length > 0) {
+      const { error: e2 } = await sb.from('products').upsert(rows, { onConflict: 'id' });
+      if (e2) {
+        console.error('[supabase] saveProducts: upsert error:', e2.message);
+        throw e2;
+      }
+    }
+
+    const toDelete = existingIds.filter(id => !newIds.includes(id));
+    if (toDelete.length > 0) {
+      const { error: e3 } = await sb.from('products').delete().in('id', toDelete);
+      if (e3) {
+        console.error('[supabase] saveProducts: delete error:', e3.message);
+      }
+    }
+  } catch (e) {
+    console.error('[supabase] saveProducts exception:', e);
+    throw e;
+  }
 }
 
-export async function loadHistory() {
-  notImplemented('loadHistory');
-  // TODO:
-  //   const user = getUser();
-  //   const { data: orders } = await sb.from('orders')
-  //     .select('*, order_items(*)')
-  //     .eq('customer_tg_id', user.id)
-  //     .order('created_at', { ascending: false });
-  //   const { data: reqs } = await sb.from('requests')
-  //     .select('*').eq('customer_tg_id', user.id).order('created_at', { ascending: false });
-  //   // объединить и отсортировать по дате, привести к виду HistoryItem
-  return [];
-}
+// ============================== КЛИЕНТ ==============================
 
-export async function addOrder(order) {
-  notImplemented('addOrder');
-  // TODO:
-  //   const user = getUser();
-  //   const { data: newOrder } = await sb.from('orders').insert({
-  //     customer_tg_id: user.id,
-  //     total_usd: order.total_usd,
-  //     total_byn: order.total_byn,
-  //     currency: order.currency,
-  //     status: 'processing',
-  //     is_paid: false,
-  //   }).select().single();
-  //   await sb.from('order_items').insert(
-  //     order.items.map(i => ({ order_id: newOrder.id, product_id: i.productId, size: i.size, qty: i.qty }))
-  //   );
-  //   return newOrder;
-  return null;
-}
+async function ensureCustomer(sb) {
+  const u = getUser();
+  if (!u) return null;
 
-export async function addRequest(req) {
-  notImplemented('addRequest');
-  // TODO:
-  //   const user = getUser();
-  //   const { data } = await sb.from('requests').insert({
-  //     customer_tg_id: user.id, text: req.text, photos_count: req.photosCount
-  //   }).select().single();
-  //   return data;
-  return null;
+  const baseFields = {
+    tg_id: u.id,
+    first_name: u.first_name || '',
+    last_name: u.last_name || '',
+    username: u.username || '',
+    photo_url: u.photo_url || '',
+  };
+
+  const { data: existing, error: selErr } = await sb
+    .from('customers').select('*').eq('tg_id', u.id).maybeSingle();
+  if (selErr) {
+    console.error('[supabase] ensureCustomer select error:', selErr.message);
+  }
+
+  if (!existing) {
+    const insert = { ...baseFields, preferences: state.settings || {} };
+    const { data, error } = await sb.from('customers').insert(insert).select().single();
+    if (error) {
+      console.error('[supabase] ensureCustomer insert error:', error.message);
+      return null;
+    }
+    return data;
+  }
+
+  const { data, error } = await sb
+    .from('customers').update(baseFields).eq('tg_id', u.id).select().single();
+  if (error) {
+    console.error('[supabase] ensureCustomer update error:', error.message);
+    return existing;
+  }
+  return data;
 }
 
 export async function loadCustomer() {
-  notImplemented('loadCustomer');
-  // TODO:
-  //   const user = getUser();
-  //   await sb.from('customers').upsert({
-  //     tg_id: user.id, first_name: user.first_name, last_name: user.last_name,
-  //     username: user.username, photo_url: user.photo_url,
-  //   }, { onConflict: 'tg_id' });
-  //   const { data } = await sb.from('customers').select('*').eq('tg_id', user.id).single();
-  //   return data;
-  return null;
+  try {
+    const u = getUser();
+    if (!u) return null;
+    const sb = await getClient();
+    return await ensureCustomer(sb);
+  } catch (e) {
+    console.error('[supabase] loadCustomer exception:', e);
+    return null;
+  }
 }
 
 export async function upsertCustomer(patch) {
-  notImplemented('upsertCustomer');
-  // TODO: sb.from('customers').update(patch).eq('tg_id', getUser().id)
-  return null;
+  try {
+    const u = getUser();
+    if (!u) return null;
+    const sb = await getClient();
+
+    const update = {};
+    if (patch.preferences !== undefined) {
+      const { data: cur } = await sb.from('customers')
+        .select('preferences').eq('tg_id', u.id).maybeSingle();
+      const merged = { ...(cur?.preferences || {}), ...patch.preferences };
+      update.preferences = merged;
+    }
+    for (const k of ['first_name', 'last_name', 'username', 'photo_url', 'phone', 'birth_date']) {
+      if (patch[k] !== undefined) update[k] = patch[k];
+    }
+    if (Object.keys(update).length === 0) {
+      return await ensureCustomer(sb);
+    }
+    const { data, error } = await sb.from('customers')
+      .update(update).eq('tg_id', u.id).select().single();
+    if (error) {
+      console.error('[supabase] upsertCustomer error:', error.message);
+      return null;
+    }
+    return data;
+  } catch (e) {
+    console.error('[supabase] upsertCustomer exception:', e);
+    return null;
+  }
+}
+
+// ============================== ИСТОРИЯ ==============================
+
+export async function loadHistory() {
+  try {
+    const u = getUser();
+    if (!u) return [];
+    const sb = await getClient();
+
+    const [ordersRes, reqsRes] = await Promise.all([
+      sb.from('orders').select('*, order_items(*)')
+        .eq('customer_tg_id', u.id).order('created_at', { ascending: false }),
+      sb.from('requests').select('*')
+        .eq('customer_tg_id', u.id).order('created_at', { ascending: false }),
+    ]);
+
+    if (ordersRes.error) console.error('[supabase] loadHistory orders:', ordersRes.error.message);
+    if (reqsRes.error) console.error('[supabase] loadHistory requests:', reqsRes.error.message);
+
+    const orders = (ordersRes.data || []).map(o => ({
+      id: 'o' + o.id,
+      type: 'order',
+      date: o.created_at,
+      status: o.status,
+      isPaid: !!o.is_paid,
+      eta: o.eta,
+      payload: {
+        items: (o.order_items || []).map(it => ({
+          productId: it.product_id,
+          size: it.size,
+          qty: it.qty,
+        })),
+        total_usd: Number(o.total_usd) || 0,
+        total_byn: Number(o.total_byn) || 0,
+        currency: o.currency || 'USD',
+      },
+    }));
+
+    const requests = (reqsRes.data || []).map(r => ({
+      id: 'r' + r.id,
+      type: 'request',
+      date: r.created_at,
+      payload: {
+        text: r.text || '',
+        photosCount: r.photos_count || 0,
+      },
+    }));
+
+    const all = [...orders, ...requests];
+    all.sort((a, b) => new Date(b.date) - new Date(a.date));
+    return all;
+  } catch (e) {
+    console.error('[supabase] loadHistory exception:', e);
+    return [];
+  }
+}
+
+// ============================== ЗАКАЗЫ ==============================
+
+export async function addOrder(order) {
+  try {
+    const u = getUser();
+    if (!u) throw new Error('No Telegram user');
+    const sb = await getClient();
+
+    // FK requires customer present
+    await ensureCustomer(sb);
+
+    // Снапшоты цен товаров
+    const products = await loadProducts();
+    const productMap = new Map(products.map(p => [p.id, p]));
+
+    const { data: newOrder, error: e1 } = await sb.from('orders').insert({
+      customer_tg_id: u.id,
+      total_usd: order.total_usd || 0,
+      total_byn: order.total_byn || 0,
+      currency: order.currency || 'USD',
+      status: 'processing',
+      is_paid: false,
+    }).select().single();
+
+    if (e1) {
+      console.error('[supabase] addOrder: orders insert error:', e1.message);
+      throw e1;
+    }
+
+    const itemRows = (order.items || []).map(it => {
+      const prod = productMap.get(it.productId);
+      return {
+        order_id: newOrder.id,
+        product_id: it.productId,
+        size: it.size,
+        qty: it.qty || 1,
+        price_usd_snapshot: prod?.price_usd || 0,
+        price_byn_snapshot: prod?.price_byn || 0,
+      };
+    });
+    if (itemRows.length > 0) {
+      const { error: e2 } = await sb.from('order_items').insert(itemRows);
+      if (e2) console.error('[supabase] addOrder: order_items insert error:', e2.message);
+    }
+
+    return {
+      id: 'o' + newOrder.id,
+      type: 'order',
+      date: newOrder.created_at,
+      status: newOrder.status,
+      isPaid: !!newOrder.is_paid,
+      eta: newOrder.eta,
+      payload: {
+        items: order.items || [],
+        total_usd: Number(newOrder.total_usd) || 0,
+        total_byn: Number(newOrder.total_byn) || 0,
+        currency: newOrder.currency || 'USD',
+      },
+    };
+  } catch (e) {
+    console.error('[supabase] addOrder exception:', e);
+    throw e;
+  }
+}
+
+// ============================== ЗАПРОСЫ ==============================
+
+export async function addRequest(req) {
+  try {
+    const u = getUser();
+    if (!u) throw new Error('No Telegram user');
+    const sb = await getClient();
+    await ensureCustomer(sb);
+
+    const { data, error } = await sb.from('requests').insert({
+      customer_tg_id: u.id,
+      text: req.text || '',
+      photos_count: req.photosCount || 0,
+    }).select().single();
+
+    if (error) {
+      console.error('[supabase] addRequest error:', error.message);
+      throw error;
+    }
+    return {
+      id: 'r' + data.id,
+      type: 'request',
+      date: data.created_at,
+      payload: { text: data.text, photosCount: data.photos_count || 0 },
+    };
+  } catch (e) {
+    console.error('[supabase] addRequest exception:', e);
+    throw e;
+  }
 }

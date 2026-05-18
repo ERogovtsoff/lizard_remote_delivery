@@ -37,18 +37,35 @@ function updateBadges() {
 async function bootstrap() {
   initTelegram();
 
-  // Сначала пробуем загрузить настройки клиента из API (в local-режиме это просто state)
-  try {
-    const customer = await api.loadCustomer();
-    if (customer?.preferences) {
-      // Если БД отдала пользовательские настройки — применяем их к локальному state
-      state.settings = { ...state.settings, ...customer.preferences };
-    }
-  } catch (e) {}
-
+  // Применяем локальные настройки сразу — чтобы первая отрисовка не ждала сеть
   setLang(state.settings.lang);
   applyTheme(state.settings.theme);
   applyI18N();
+
+  // Подтягиваем настройки клиента из API в фоне.
+  // Если БД отдала отличные настройки — применим и перерисуем текущую страницу.
+  // В local-режиме это мгновенно; в supabase — асинхронно (без блокировки UI).
+  (async () => {
+    try {
+      const customer = await api.loadCustomer();
+      const dbPrefs = customer?.preferences;
+      if (!dbPrefs) return;
+      const changed =
+        dbPrefs.lang !== state.settings.lang ||
+        dbPrefs.theme !== state.settings.theme ||
+        dbPrefs.currency !== state.settings.currency;
+      if (!changed) return;
+      state.settings = { ...state.settings, ...dbPrefs };
+      setLang(state.settings.lang);
+      applyTheme(state.settings.theme);
+      applyI18N();
+      // Перерисуем текущую страницу, чтобы применились язык/валюта/тема
+      const cur = router.current();
+      if (cur) router.navigate(cur, router.lastContext());
+    } catch (e) {
+      console.warn('[bootstrap] customer load skipped:', e);
+    }
+  })();
 
   // Регистрируем view
   registerView('onboarding', renderOnboarding);

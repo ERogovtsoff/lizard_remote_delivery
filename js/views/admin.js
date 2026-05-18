@@ -7,6 +7,7 @@ import { showToast } from '../components/toast.js';
 import { showConfirm } from '../components/modal.js';
 import { isAdmin } from '../tg.js';
 import { state } from '../state.js';
+import { CONFIG } from '../config.js';
 
 let activeTab = 'catalog';
 let editingId = null;
@@ -16,10 +17,11 @@ export async function renderAdmin() {
   if (!isAdmin()) { router.navigate('home'); return; }
 
   workingProducts = await api.loadProducts();
+  const subText = CONFIG.API_MODE === 'supabase' ? t('adminSubSupabase') : t('adminSub');
   const page = document.getElementById('page-admin');
   page.innerHTML = `
     <h2>${escapeHtml(t('adminTitle'))}</h2>
-    <p class="page-sub">${escapeHtml(t('adminSub'))}</p>
+    <p class="page-sub">${escapeHtml(subText)}</p>
     <div class="admin-tabs">
       <button class="admin-tab ${activeTab === 'catalog' ? 'active' : ''}" data-tab="catalog">${escapeHtml(t('adminTabCatalog'))}</button>
       <button class="admin-tab ${activeTab === 'export' ? 'active' : ''}" data-tab="export">${escapeHtml(t('adminTabExport'))}</button>

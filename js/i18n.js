@@ -79,6 +79,7 @@ const STRINGS = {
     // Админка
     adminTitle: 'Управление каталогом',
     adminSub: 'Изменения сохраняются локально. Не забудьте экспортировать JSON и загрузить на хостинг.',
+    adminSubSupabase: 'Изменения сохраняются в базу данных и сразу видны всем клиентам.',
     adminTabCatalog: 'Товары', adminTabExport: 'Экспорт/Импорт',
     adminAddProduct: 'Добавить товар', adminEditProduct: 'Редактировать товар',
     adminFieldNameRu: 'Название (рус)', adminFieldNameEn: 'Название (англ)',
@@ -177,6 +178,7 @@ const STRINGS = {
 
     adminTitle: 'Catalog management',
     adminSub: 'Changes are saved locally. Export the JSON and upload it to your hosting.',
+    adminSubSupabase: 'Changes are saved to the database and visible to all clients immediately.',
     adminTabCatalog: 'Products', adminTabExport: 'Export/Import',
     adminAddProduct: 'Add product', adminEditProduct: 'Edit product',
     adminFieldNameRu: 'Name (RU)', adminFieldNameEn: 'Name (EN)',
