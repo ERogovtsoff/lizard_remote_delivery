@@ -5,7 +5,8 @@ import { state, changeCartQty, removeFromCart, cartKey, saveState } from '../sta
 import { api } from '../api/index.js';
 import { router } from '../router.js';
 import { showConfirm } from '../components/modal.js';
-import { haptic, openManagerChat } from '../tg.js';
+import { showToast } from '../components/toast.js';
+import { haptic, sendToBot } from '../tg.js';
 
 export async function renderCart() {
   const page = document.getElementById('page-cart');
@@ -122,7 +123,23 @@ async function checkout(productsMap, totalUsd, totalByn) {
     currency: cur,
   });
 
-  // Текст для менеджера
+  // Полные позиции для бота (бот ожидает name_ru/name_en/price_usd/price_byn/qty/size)
+  const itemsForBot = state.cart.map(c => {
+    const prod = productsMap.get(c.productId);
+    return {
+      id: c.productId,
+      name_ru: prod?.name_ru || '',
+      name_en: prod?.name_en || '',
+      size: c.size || null,
+      qty: c.qty,
+      price_usd: prod?.price_usd || 0,
+      price_byn: prod?.price_byn || 0,
+    };
+  });
+
+  const mainTotal = cur === 'USD' ? totalUsd : totalByn;
+
+  // Текст для fallback-режима (когда бот недоступен)
   const lines = [t('orderMsgHeader'), ''];
   state.cart.forEach(c => {
     const prod = productsMap.get(c.productId);
@@ -132,16 +149,32 @@ async function checkout(productsMap, totalUsd, totalByn) {
     lines.push(`• ${p.name}${sz} × ${c.qty} — ${formatPrice(p.price * c.qty, cur, lang)}`);
   });
   lines.push('');
-  const mainTotal = cur === 'USD' ? totalUsd : totalByn;
   lines.push(`${t('orderMsgTotal')}: ${formatPrice(mainTotal, cur, lang)}`);
-  const message = lines.join('\n');
+  const fallbackText = lines.join('\n');
 
-  // Чистим корзину локально (заказ уже зафиксирован)
+  // Чистим корзину локально (заказ уже зафиксирован в истории)
   state.cart = [];
   saveState();
   haptic('success');
 
-  openManagerChat(message);
+  // Контракт payload — то, что ожидает bot.py (см. handle_order)
+  const payload = {
+    type: 'order',
+    items: itemsForBot,
+    total: mainTotal,
+    currency: cur,
+  };
+  const result = await sendToBot(payload, fallbackText);
+
+  if (result.mode === 'sent') {
+    // Telegram закроет мини-апп
+    return;
+  }
+  if (result.mode === 'fallback') {
+    showToast(t('msgSentFallback'), 5000);
+  } else {
+    showToast(t('msgSentFailed'), 4000);
+  }
 
   // Через секунду вернёмся в историю
   setTimeout(() => router.navigate('history'), 800);
