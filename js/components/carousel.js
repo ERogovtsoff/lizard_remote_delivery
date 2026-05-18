@@ -1,10 +1,16 @@
 // Карусель изображений. Используется в карточке товара (mini) и на деталке (full).
-// Параметры:
-//   images: string[]
-//   variant: 'mini' (без счётчика, маленькие точки) | 'full' (счётчик + большие точки)
-//   onSlideClick: (index) => void   (опционально — открыть лайтбокс)
-// Возвращает корневой DOM элемент.
+//
+// Поведение свайпа:
+//   - 1 картинка → touch-обработчики НЕ навешиваются, точек и счётчика нет
+//   - попытка свайпнуть влево от первой / вправо от последней — резистивное движение
+//     (rubber band: палец двигается, картинка следует только на ~25% дельты, потом
+//     отпружинивает в исходное)
+//
+// onSlideClick(index): открыть лайтбокс при тапе на слайд
 import { escapeAttr } from '../utils.js';
+
+const SWIPE_THRESHOLD_RATIO = 0.2;   // палец прошёл > 20% ширины — листаем
+const RUBBER_BAND_RATIO = 0.25;      // на границе следуем только 25% движения пальца
 
 export function createCarousel({ images, variant = 'full', onSlideClick }) {
   const root = document.createElement('div');
@@ -23,7 +29,7 @@ export function createCarousel({ images, variant = 'full', onSlideClick }) {
   ).join('');
   root.appendChild(track);
 
-  // Индикаторы
+  // Индикаторы — только если картинок больше одной
   let dots = null, counter = null;
   if (images.length > 1) {
     if (variant === 'full') {
@@ -43,8 +49,6 @@ export function createCarousel({ images, variant = 'full', onSlideClick }) {
   }
 
   let index = 0;
-  let startX = 0, startY = 0, currentX = 0, dragging = false, isHorizontal = false;
-  let trackWidth = 0;
 
   function update() {
     track.style.transform = `translateX(${-index * 100}%)`;
@@ -55,48 +59,63 @@ export function createCarousel({ images, variant = 'full', onSlideClick }) {
     if (counter) counter.textContent = `${index + 1} / ${images.length}`;
   }
 
-  function onStart(e) {
-    const touch = e.touches[0];
-    startX = touch.clientX; startY = touch.clientY; currentX = 0;
-    dragging = true; isHorizontal = false;
-    trackWidth = track.offsetWidth;
-    track.classList.add('dragging');
-  }
-  function onMove(e) {
-    if (!dragging) return;
-    const touch = e.touches[0];
-    const dx = touch.clientX - startX;
-    const dy = touch.clientY - startY;
-    if (!isHorizontal) {
-      if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
-        isHorizontal = Math.abs(dx) > Math.abs(dy);
+  // Свайп активируется только при > 1 картинке. Иначе слайдинг невозможен.
+  if (images.length > 1) {
+    let startX = 0, startY = 0, currentX = 0, dragging = false, isHorizontal = false;
+    let trackWidth = 0;
+
+    function onStart(e) {
+      const touch = e.touches[0];
+      startX = touch.clientX; startY = touch.clientY; currentX = 0;
+      dragging = true; isHorizontal = false;
+      trackWidth = track.offsetWidth;
+      track.classList.add('dragging');
+    }
+    function onMove(e) {
+      if (!dragging) return;
+      const touch = e.touches[0];
+      const dx = touch.clientX - startX;
+      const dy = touch.clientY - startY;
+      if (!isHorizontal) {
+        if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
+          isHorizontal = Math.abs(dx) > Math.abs(dy);
+        }
+      }
+      if (isHorizontal) {
+        if (e.cancelable) e.preventDefault();
+        currentX = dx;
+        // Rubber band на границах: если пытаемся свайпнуть туда, где нет картинок —
+        // следуем только частично, и палец «упирается» в границу
+        let effectiveDx = dx;
+        const atFirst = index === 0;
+        const atLast = index === images.length - 1;
+        if ((atFirst && dx > 0) || (atLast && dx < 0)) {
+          effectiveDx = dx * RUBBER_BAND_RATIO;
+        }
+        const offset = -index * trackWidth + effectiveDx;
+        track.style.transform = `translateX(${offset}px)`;
       }
     }
-    if (isHorizontal) {
-      if (e.cancelable) e.preventDefault();
-      currentX = dx;
-      const offset = (-index * trackWidth + dx);
-      track.style.transform = `translateX(${offset}px)`;
+    function onEnd() {
+      if (!dragging) return;
+      dragging = false;
+      track.classList.remove('dragging');
+      if (isHorizontal) {
+        const threshold = trackWidth * SWIPE_THRESHOLD_RATIO;
+        if (currentX < -threshold && index < images.length - 1) index++;
+        else if (currentX > threshold && index > 0) index--;
+      }
+      // CSS-transition вернёт track в позицию (или зафиксирует новую) плавно
+      update();
     }
-  }
-  function onEnd() {
-    if (!dragging) return;
-    dragging = false;
-    track.classList.remove('dragging');
-    if (isHorizontal) {
-      const threshold = trackWidth * 0.2;
-      if (currentX < -threshold && index < images.length - 1) index++;
-      else if (currentX > threshold && index > 0) index--;
-    }
-    update();
+
+    track.addEventListener('touchstart', onStart, { passive: true });
+    track.addEventListener('touchmove', onMove, { passive: false });
+    track.addEventListener('touchend', onEnd);
+    track.addEventListener('touchcancel', onEnd);
   }
 
-  track.addEventListener('touchstart', onStart, { passive: true });
-  track.addEventListener('touchmove', onMove, { passive: false });
-  track.addEventListener('touchend', onEnd);
-  track.addEventListener('touchcancel', onEnd);
-
-  // Клик/тап по слайду
+  // Клик/тап по слайду (всегда, даже если картинка одна)
   if (onSlideClick) {
     const slides = track.querySelectorAll(variant === 'mini' ? '.product-card-slide' : '.carousel-slide');
     slides.forEach((slide) => {
@@ -112,8 +131,7 @@ export function createCarousel({ images, variant = 'full', onSlideClick }) {
         const elapsed = Date.now() - downT;
         if (dx < 8 && dy < 8 && elapsed < 400) onSlideClick(index);
       });
-      slide.addEventListener('click', (e) => {
-        // десктоп
+      slide.addEventListener('click', () => {
         if (!('ontouchstart' in window)) onSlideClick(index);
       });
     });

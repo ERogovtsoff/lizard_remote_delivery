@@ -3,7 +3,7 @@ import { CONFIG } from './config.js';
 import { initTelegram, onThemeChanged, onViewportChanged, tg } from './tg.js';
 import { applyTheme } from './theme.js';
 import { setLang, applyI18N, t } from './i18n.js';
-import { state, isOnboarded, cartTotalCount, saveState, setFavoritesSyncer } from './state.js';
+import { state, isOnboarded, cartTotalCount, saveState, setFavoritesSyncer, setCartSyncer } from './state.js';
 import { api } from './api/index.js';
 import { router, registerView } from './router.js';
 import { setupLightbox } from './components/lightbox.js';
@@ -49,8 +49,15 @@ async function bootstrap() {
     else if (action === 'remove') api.removeFavorite(productId, size);
   });
 
-  // Подтягиваем настройки клиента и избранное из БД в фоне.
-  // Если БД отдала отличные настройки — применим и перерисуем текущую страницу.
+  // Аналогично для корзины. state.js при каждой мутации сообщает что произошло,
+  // мы транслируем в API.
+  setCartSyncer(({ action, productId, size, qty }) => {
+    if (action === 'set') api.setCartItem(productId, size, qty);
+    else if (action === 'remove') api.removeCartItem(productId, size);
+    else if (action === 'clear') api.clearCart();
+  });
+
+  // Подтягиваем настройки клиента, избранное и корзину из БД в фоне.
   (async () => {
     try {
       const customer = await api.loadCustomer();
@@ -70,19 +77,43 @@ async function bootstrap() {
         }
       }
 
-      // Загружаем избранное из БД и сливаем с локальным.
-      // Стратегия: если в БД что-то есть — БД это «источник правды» (между устройствами).
-      // Локальные изменения, сделанные в этой сессии до прихода БД, останутся
-      // — мы их добавляем к серверному списку.
+      // Избранное из БД, merge с локальным.
       const dbFavs = await api.loadFavorites();
       if (Array.isArray(dbFavs) && dbFavs.length > 0) {
-        // merge: уникальные по {productId, size}
         const key = f => f.productId + '::' + (f.size || '');
         const merged = new Map();
         dbFavs.forEach(f => merged.set(key(f), f));
         state.favorites.forEach(f => merged.set(key(f), f));
         state.favorites = Array.from(merged.values());
         saveState();
+        needRerender = true;
+      }
+
+      // Корзина из БД. Merge-стратегия:
+      //   - Если позиция есть и в БД и локально (одинаковый productId+size)
+      //     → берём максимум qty (например, на одном устройстве клиент
+      //     добавил 2 шт., на другом — 1, значит хотел иметь как минимум 2)
+      //   - Иначе — объединяем
+      const dbCart = await api.loadCart();
+      if (Array.isArray(dbCart) && dbCart.length > 0) {
+        const key = c => c.productId + '::' + (c.size || '');
+        const merged = new Map();
+        dbCart.forEach(c => merged.set(key(c), { ...c }));
+        state.cart.forEach(c => {
+          const k = key(c);
+          if (merged.has(k)) {
+            merged.get(k).qty = Math.max(merged.get(k).qty, c.qty);
+          } else {
+            merged.set(k, { ...c });
+          }
+        });
+        state.cart = Array.from(merged.values());
+        saveState();
+        // Записываем merged-результат обратно в БД, чтобы все устройства имели одинаковую корзину.
+        // Без syncer'а — напрямую через api, иначе будет цикл.
+        state.cart.forEach(c => {
+          api.setCartItem(c.productId, c.size, c.qty);
+        });
         needRerender = true;
       }
 

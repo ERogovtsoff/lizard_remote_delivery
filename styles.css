@@ -279,11 +279,19 @@ img { display: block; max-width: 100%; }
 #page-chat {
   display: none;
   padding: 0; max-width: 720px; margin: 0 auto;
-  height: calc(100vh - var(--header-h) - var(--nav-h));
-  height: calc(100dvh - var(--header-h) - var(--nav-h));
+  /* Полная высота окна минус шапка. nav-bar спрятан в chat-mode, поэтому не вычитаем.
+     При фокусе на textarea и появлении клавиатуры interactive-widget=resizes-content
+     заставляет браузер уменьшить dvh — лента сообщений сама ужмётся, композер останется
+     прижатым к нижней границе видимой области. На iOS Safari это поведение поддержано
+     с версии 16; в Telegram WebView работает корректно. */
+  height: calc(100dvh - var(--header-h));
   flex-direction: column;
+  /* Защита от bounce-эффекта на iOS, который дёргает страницу при появлении клавиатуры */
+  overscroll-behavior: contain;
 }
 #page-chat.active { display: flex; }
+/* В chat-mode скрываем нижнюю навигацию — композер занимает её место */
+body.chat-mode .bottom-nav { display: none; }
 .chat-scroll {
   flex: 1 1 auto; overflow-y: auto;
   padding: 16px 16px 12px;

@@ -40,5 +40,9 @@ export const api = {
   loadFavorites: (...a) => (impl().loadFavorites ? impl().loadFavorites(...a) : Promise.resolve(null)),
   addFavorite: (...a) => (impl().addFavorite ? impl().addFavorite(...a) : Promise.resolve()),
   removeFavorite: (...a) => (impl().removeFavorite ? impl().removeFavorite(...a) : Promise.resolve()),
+  loadCart: (...a) => (impl().loadCart ? impl().loadCart(...a) : Promise.resolve(null)),
+  setCartItem: (...a) => (impl().setCartItem ? impl().setCartItem(...a) : Promise.resolve()),
+  removeCartItem: (...a) => (impl().removeCartItem ? impl().removeCartItem(...a) : Promise.resolve()),
+  clearCart: (...a) => (impl().clearCart ? impl().clearCart(...a) : Promise.resolve()),
   onProductsChange: (cb) => (impl().onProductsChange ? impl().onProductsChange(cb) : noop),
 };

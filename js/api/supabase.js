@@ -498,3 +498,90 @@ export async function removeFavorite(productId, size) {
     console.error('[supabase] removeFavorite exception:', e);
   }
 }
+
+// ============================== CART ==============================
+//
+// Схема: cart_items(customer_tg_id, product_id, size, qty)
+// Композитный PK по (customer_tg_id, product_id, size) — один и тот же товар
+// с одним и тем же размером не может появиться дважды, qty увеличивается.
+
+export async function loadCart() {
+  try {
+    const u = getUser();
+    if (!u) return [];
+    const sb = await getClient();
+    await ensureCustomer(sb);
+
+    const { data, error } = await sb.from('cart_items')
+      .select('product_id, size, qty')
+      .eq('customer_tg_id', u.id);
+    if (error) {
+      console.error('[supabase] loadCart error:', error.message);
+      return [];
+    }
+    return (data || []).map(r => ({
+      productId: r.product_id,
+      size: r.size || null,
+      qty: r.qty || 1,
+    }));
+  } catch (e) {
+    console.error('[supabase] loadCart exception:', e);
+    return [];
+  }
+}
+
+// Записать одну позицию (upsert: создаст или обновит qty)
+export async function setCartItem(productId, size, qty) {
+  try {
+    const u = getUser();
+    if (!u) return;
+    const sb = await getClient();
+    await ensureCustomer(sb);
+    if (qty <= 0) {
+      const { error } = await sb.from('cart_items').delete()
+        .eq('customer_tg_id', u.id)
+        .eq('product_id', productId)
+        .eq('size', size || '');
+      if (error) console.error('[supabase] setCartItem delete error:', error.message);
+      return;
+    }
+    const { error } = await sb.from('cart_items').upsert({
+      customer_tg_id: u.id,
+      product_id: productId,
+      size: size || '',
+      qty,
+    }, { onConflict: 'customer_tg_id,product_id,size' });
+    if (error) console.error('[supabase] setCartItem upsert error:', error.message);
+  } catch (e) {
+    console.error('[supabase] setCartItem exception:', e);
+  }
+}
+
+export async function removeCartItem(productId, size) {
+  try {
+    const u = getUser();
+    if (!u) return;
+    const sb = await getClient();
+    const { error } = await sb.from('cart_items').delete()
+      .eq('customer_tg_id', u.id)
+      .eq('product_id', productId)
+      .eq('size', size || '');
+    if (error) console.error('[supabase] removeCartItem error:', error.message);
+  } catch (e) {
+    console.error('[supabase] removeCartItem exception:', e);
+  }
+}
+
+// Очистить всю корзину клиента (после checkout)
+export async function clearCart() {
+  try {
+    const u = getUser();
+    if (!u) return;
+    const sb = await getClient();
+    const { error } = await sb.from('cart_items').delete()
+      .eq('customer_tg_id', u.id);
+    if (error) console.error('[supabase] clearCart error:', error.message);
+  } catch (e) {
+    console.error('[supabase] clearCart exception:', e);
+  }
+}

@@ -1,7 +1,7 @@
 // Корзина. Подтверждение на удаление (правка #9), сумма в двух валютах.
-import { t, getLang, localizedProduct, altCurrency } from '../i18n.js';
+import { t, getLang, localizedProduct } from '../i18n.js';
 import { escapeHtml, formatPrice } from '../utils.js';
-import { state, changeCartQty, removeFromCart, cartKey, saveState } from '../state.js';
+import { state, changeCartQty, removeFromCart, cartKey, clearLocalCart } from '../state.js';
 import { api } from '../api/index.js';
 import { router } from '../router.js';
 import { showConfirm } from '../components/modal.js';
@@ -30,7 +30,6 @@ export async function renderCart() {
     const empty = document.getElementById('cartEmpty');
     const lang = getLang();
     const cur = state.settings.currency;
-    const alt = altCurrency(cur);
 
     list.innerHTML = ''; totalBox.innerHTML = '';
     if (state.cart.length === 0) {
@@ -94,13 +93,9 @@ export async function renderCart() {
     });
 
     const mainTotal = cur === 'USD' ? totalUsd : totalByn;
-    const altTotal  = cur === 'USD' ? totalByn : totalUsd;
     totalBox.innerHTML = `
       <div class="cart-total">
-        <div>
-          <div class="cart-total-label">${escapeHtml(t('cartTotal'))}</div>
-          <div class="cart-total-val-alt">${escapeHtml(formatPrice(altTotal, alt, lang))}</div>
-        </div>
+        <div class="cart-total-label">${escapeHtml(t('cartTotal'))}</div>
         <div class="cart-total-val">${escapeHtml(formatPrice(mainTotal, cur, lang))}</div>
       </div>
       <button class="primary-btn" id="checkoutBtn">${escapeHtml(t('checkout'))}</button>
@@ -152,9 +147,8 @@ async function checkout(productsMap, totalUsd, totalByn) {
   lines.push(`${t('orderMsgTotal')}: ${formatPrice(mainTotal, cur, lang)}`);
   const fallbackText = lines.join('\n');
 
-  // Чистим корзину локально (заказ уже зафиксирован в истории)
-  state.cart = [];
-  saveState();
+  // Чистим корзину локально + в БД одной операцией (через syncer).
+  clearLocalCart();
   haptic('success');
 
   // Сразу даём пользователю фидбек и уводим в историю, чтобы он видел свой заказ.

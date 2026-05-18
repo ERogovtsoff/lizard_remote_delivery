@@ -18,6 +18,38 @@ import { sendToBot, haptic } from '../tg.js';
 import { showToast } from '../components/toast.js';
 
 let rendered = false;
+let viewportSyncInstalled = false;
+
+// Динамическая подгонка высоты #page-chat под visualViewport.
+// На устройствах где interactive-widget=resizes-content работает (Chrome 108+, Safari 16+)
+// dvh пересчитывается сам, и наша подгонка совпадает; в более старых WebView это
+// единственный путь избежать «провала» вёрстки при появлении клавиатуры.
+function setupViewportSync() {
+  if (viewportSyncInstalled) return;
+  viewportSyncInstalled = true;
+  const vv = window.visualViewport;
+  if (!vv) return;
+
+  const page = document.getElementById('page-chat');
+  if (!page) return;
+
+  // Высота шапки берётся из CSS-переменной --header-h (56px)
+  const HEADER_H = 56;
+
+  function sync() {
+    // Применяем только если чат активен — иначе зачем
+    if (!page.classList.contains('active')) return;
+    // visualViewport.height = высота видимой области (за вычетом клавиатуры)
+    // Учитываем что шапка всегда сверху, поэтому вычитаем её высоту.
+    const h = vv.height - HEADER_H;
+    page.style.height = `${Math.max(h, 100)}px`;
+  }
+
+  vv.addEventListener('resize', sync);
+  vv.addEventListener('scroll', sync);
+  // Стартовая синхронизация
+  sync();
+}
 
 export function resetChat() { rendered = false; }
 
@@ -65,6 +97,13 @@ function setupChatHandlers() {
     input.style.height = Math.min(input.scrollHeight, 100) + 'px';
     updateSendBtn();
   });
+
+  // Страховка для динамической высоты чата при появлении/скрытии клавиатуры.
+  // На современных WebView (где работает interactive-widget=resizes-content)
+  // эта подписка просто не понадобится — dvh пересчитается сам, и нашу высоту
+  // мы по-прежнему ставим через style.height, которая совпадёт с dvh-вариантом.
+  // На старых — это даст плавность вместо «скачка».
+  setupViewportSync();
 
   // Скрепка: показывает информационный тост.
   // Реализация надёжная для iOS/Android Telegram WebView:

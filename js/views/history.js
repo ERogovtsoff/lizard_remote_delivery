@@ -1,8 +1,11 @@
-// История заказов. Двойная валюта (правка #6), статусы заказов, прокрутка
-// при превышении высоты экрана (правка #14 — за это отвечает padding-bottom у body).
-import { t, getLang, altCurrency, localizedProduct } from '../i18n.js';
+// История заказов и запросов.
+//
+// Правка: цена и сумма всегда отображаются в валюте, в которой был оформлен
+// заказ (h.payload.currency), независимо от текущей настройки клиента.
+// То есть если клиент оформил в USD, а потом переключился на BYN — в истории
+// останется USD. Это корректное поведение с точки зрения учёта.
+import { t, getLang, localizedProduct } from '../i18n.js';
 import { escapeHtml, formatPrice, formatDate } from '../utils.js';
-import { state } from '../state.js';
 import { api } from '../api/index.js';
 
 export async function renderHistory() {
@@ -22,8 +25,6 @@ export async function renderHistory() {
   const products = await api.loadProducts();
   const map = new Map(products.map(p => [p.id, p]));
   const lang = getLang();
-  const cur = state.settings.currency;
-  const alt = altCurrency(cur);
 
   const list = document.getElementById('historyList');
   const empty = document.getElementById('historyEmpty');
@@ -33,7 +34,7 @@ export async function renderHistory() {
     return;
   }
   const sorted = [...items].sort((a, b) => new Date(b.date) - new Date(a.date));
-  sorted.forEach(h => list.appendChild(buildItem(h, map, cur, alt, lang)));
+  sorted.forEach(h => list.appendChild(buildItem(h, map, lang)));
 }
 
 function statusLabel(status) {
@@ -46,7 +47,7 @@ function statusLabel(status) {
   })[status] || status;
 }
 
-function buildItem(h, productsMap, cur, alt, lang) {
+function buildItem(h, productsMap, lang) {
   const el = document.createElement('div');
   el.className = 'history-item';
 
@@ -66,19 +67,19 @@ function buildItem(h, productsMap, cur, alt, lang) {
     if (h.payload?.text) body += `<div>${escapeHtml(h.payload.text)}</div>`;
     if (h.payload?.photosCount) body += `<div class="label">${escapeHtml(t('photos'))}: ${h.payload.photosCount}</div>`;
   } else if (h.type === 'order') {
+    // ВСЕГДА используем валюту заказа, а не текущую настройку клиента
+    const orderCur = h.payload?.currency || 'USD';
+    const orderTotal = orderCur === 'USD' ? h.payload?.total_usd : h.payload?.total_byn;
+
     const items = h.payload?.items || [];
     items.forEach(it => {
       const prod = productsMap.get(it.productId);
       if (!prod) return;
-      const p = localizedProduct(prod, cur);
+      const p = localizedProduct(prod, orderCur);
       const sz = it.size ? ` (${escapeHtml(it.size)})` : '';
       body += `<div>• ${escapeHtml(p.name)}${sz} × ${it.qty}</div>`;
     });
-    const orderCur = h.payload?.currency || cur;
-    const orderAlt = altCurrency(orderCur);
-    const mainTotal = orderCur === 'USD' ? h.payload?.total_usd : h.payload?.total_byn;
-    const altTotal  = orderCur === 'USD' ? h.payload?.total_byn : h.payload?.total_usd;
-    body += `<div class="history-total-line">${escapeHtml(t('cartTotal'))}: ${escapeHtml(formatPrice(mainTotal || 0, orderCur, lang))}<span class="history-total-alt">${escapeHtml(formatPrice(altTotal || 0, orderAlt, lang))}</span></div>`;
+    body += `<div class="history-total-line">${escapeHtml(t('cartTotal'))}: ${escapeHtml(formatPrice(orderTotal || 0, orderCur, lang))}</div>`;
     if (h.status === 'shipping' && h.eta) {
       body += `<div class="label">${escapeHtml(t('eta'))}: ${escapeHtml(formatDate(h.eta, lang))}</div>`;
     }

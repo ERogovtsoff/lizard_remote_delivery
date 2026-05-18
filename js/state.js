@@ -120,25 +120,49 @@ export function removeFavAll(productId) {
 
 // Корзина
 export function cartKey(productId, size) { return productId + '::' + (size || ''); }
+
+// Внешний синхронизатор корзины (регистрируется app.js)
+// Сигнатура: ({ action: 'set'|'remove'|'clear', productId?, size?, qty? }) => void
+let _cartSync = null;
+export function setCartSyncer(fn) { _cartSync = fn; }
+function syncCart(action, payload) {
+  if (!_cartSync) return;
+  try { _cartSync({ action, ...payload }); } catch (e) {}
+}
+
 export function addToCart(productId, size) {
   const key = cartKey(productId, size);
   const it = state.cart.find(c => cartKey(c.productId, c.size) === key);
   if (it) it.qty += 1;
   else state.cart.push({ productId, size: size || null, qty: 1 });
   saveState();
+  const newQty = (state.cart.find(c => cartKey(c.productId, c.size) === key) || {}).qty;
+  syncCart('set', { productId, size: size || null, qty: newQty });
 }
 export function changeCartQty(productId, size, delta) {
   const key = cartKey(productId, size);
   const it = state.cart.find(c => cartKey(c.productId, c.size) === key);
   if (!it) return;
   it.qty += delta;
-  if (it.qty <= 0) state.cart = state.cart.filter(c => cartKey(c.productId, c.size) !== key);
-  saveState();
+  if (it.qty <= 0) {
+    state.cart = state.cart.filter(c => cartKey(c.productId, c.size) !== key);
+    saveState();
+    syncCart('remove', { productId, size: size || null });
+  } else {
+    saveState();
+    syncCart('set', { productId, size: size || null, qty: it.qty });
+  }
 }
 export function removeFromCart(productId, size) {
   const key = cartKey(productId, size);
   state.cart = state.cart.filter(c => cartKey(c.productId, c.size) !== key);
   saveState();
+  syncCart('remove', { productId, size: size || null });
+}
+export function clearLocalCart() {
+  state.cart = [];
+  saveState();
+  syncCart('clear', {});
 }
 export function cartTotalCount() { return state.cart.reduce((s, c) => s + c.qty, 0); }
 

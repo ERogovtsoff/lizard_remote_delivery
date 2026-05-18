@@ -122,6 +122,18 @@ CREATE TABLE IF NOT EXISTS favorites (
   PRIMARY KEY (customer_tg_id, product_id, size)
 );
 
+-- 7b. CART_ITEMS — корзина (до оформления заказа).
+-- При checkout содержимое корзины превращается в order + order_items,
+-- а записи отсюда удаляются.
+CREATE TABLE IF NOT EXISTS cart_items (
+  customer_tg_id BIGINT NOT NULL REFERENCES customers(tg_id) ON DELETE CASCADE,
+  product_id     TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  size           TEXT NOT NULL DEFAULT '',
+  qty            INTEGER NOT NULL DEFAULT 1 CHECK (qty > 0),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (customer_tg_id, product_id, size)
+);
+
 -- 8. ТРИГГЕР: пересчёт purchases_total при оплате
 CREATE OR REPLACE FUNCTION update_purchases_total() RETURNS TRIGGER AS $$
 BEGIN
@@ -173,6 +185,7 @@ ALTER TABLE orders      DISABLE ROW LEVEL SECURITY;
 ALTER TABLE order_items DISABLE ROW LEVEL SECURITY;
 ALTER TABLE requests    DISABLE ROW LEVEL SECURITY;
 ALTER TABLE favorites   DISABLE ROW LEVEL SECURITY;
+ALTER TABLE cart_items  DISABLE ROW LEVEL SECURITY;
 
 -- РЕЖИМ Б (для прод-релиза, требует Edge Function для валидации Telegram initData):
 -- 1. Закомментируйте все ALTER TABLE ... DISABLE ROW LEVEL SECURITY выше

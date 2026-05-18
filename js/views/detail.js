@@ -1,7 +1,7 @@
 // Деталь товара.
 // Правка #1: если у товара один размер — автовыбор.
 // Правка #2: лайтбокс зумит в точку касания (реализовано в lightbox.js).
-import { t, getLang, localizedProduct, altCurrency } from '../i18n.js';
+import { t, getLang, localizedProduct } from '../i18n.js';
 import { escapeHtml, formatPrice } from '../utils.js';
 import { state, isFavExact, toggleFav, removeFav, addToCart } from '../state.js';
 import { api } from '../api/index.js';
@@ -25,7 +25,6 @@ export async function renderDetail(opts = {}) {
   }
   const lang = getLang();
   const cur = state.settings.currency;
-  const alt = altCurrency(cur);
   const p = localizedProduct(prod, cur);
   const images = (prod.images && prod.images.length) ? prod.images : (prod.img ? [prod.img] : []);
 
@@ -40,7 +39,6 @@ export async function renderDetail(opts = {}) {
     <div id="detailCarouselSlot"></div>
     <h2 class="product-detail-name">${escapeHtml(p.name)}</h2>
     <div class="product-detail-price">${escapeHtml(formatPrice(p.price, cur, lang))}</div>
-    <div class="product-detail-price-alt">${escapeHtml(formatPrice(p.altPrice, alt, lang))}</div>
     ${p.desc ? `<p class="product-detail-desc">${escapeHtml(p.desc)}</p>` : ''}
     ${prod.sizes && prod.sizes.length > 0 ? `
       <div class="product-section">

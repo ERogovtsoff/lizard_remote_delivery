@@ -176,3 +176,11 @@ export async function removeFavorite() { /* state.js уже сделал это 
 
 // Каталог в local-режиме статичный (catalog.json), подписка не нужна.
 export function onProductsChange() { return () => {}; }
+
+// Корзина в local-режиме живёт в state.cart. Эти методы — заглушки для контракта.
+export async function loadCart() {
+  return state.cart.slice();
+}
+export async function setCartItem() { /* state.js делает это */ }
+export async function removeCartItem() { /* state.js делает это */ }
+export async function clearCart() { /* state.js делает это */ }
