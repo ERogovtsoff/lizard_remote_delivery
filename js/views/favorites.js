@@ -1,47 +1,61 @@
-// Избранное. Каждая карточка хранит productId + size (если выбран);
-// при удалении показывается подтверждение.
+// Избранное. Каждая запись = {productId, size}; один и тот же товар может
+// появиться несколько раз с разными размерами. При удалении показывается подтверждение.
 import { t } from '../i18n.js';
 import { escapeHtml } from '../utils.js';
 import { state } from '../state.js';
 import { api } from '../api/index.js';
-import { router } from '../router.js';
-import { createProductCard } from '../components/product-card.js';
+import { createProductGrid } from '../components/product-grid.js';
+
+let grid = null;
+let productsMap = new Map();
 
 export async function renderFavorites() {
   const page = document.getElementById('page-favorites');
   page.innerHTML = `
     <h2>${escapeHtml(t('favTitle'))}</h2>
     <p class="page-sub">${escapeHtml(t('favSub'))}</p>
-    <div class="products-grid" id="favGrid"></div>
+    <div id="favGridContainer"></div>
     <div class="empty-state" id="favEmpty" style="display:none">
       <div class="icon">❤️</div>
       <h3>${escapeHtml(t('favEmptyTitle'))}</h3>
       <p>${escapeHtml(t('favEmptyText'))}</p>
     </div>
   `;
+
+  const container = document.getElementById('favGridContainer');
+  // Карточка избранного передаёт favSize в опции — grid использует это для key
+  grid = createProductGrid({
+    source: 'favorites',
+    favSizeBy: item => item.__favSize ?? null,
+    onCardChange: refreshGrid,
+  });
+  container.appendChild(grid.element);
+
   const products = await api.loadProducts();
-  const map = new Map(products.map(p => [p.id, p]));
+  productsMap = new Map(products.map(p => [p.id, p]));
+  refreshGrid();
+}
 
-  function renderGrid() {
-    const grid = document.getElementById('favGrid');
-    const empty = document.getElementById('favEmpty');
-    grid.innerHTML = '';
-    if (state.favorites.length === 0) {
-      grid.style.display = 'none'; empty.style.display = 'block'; return;
-    }
-    grid.style.display = 'grid'; empty.style.display = 'none';
+function refreshGrid() {
+  if (!grid) return;
+  const empty = document.getElementById('favEmpty');
 
-    state.favorites.forEach(fav => {
-      const prod = map.get(fav.productId);
-      if (!prod) return;
-      const card = createProductCard(prod, {
-        source: 'favorites',
-        showSize: fav.size || undefined,
-        favSize: fav.size,           // тоггл будет работать с этим конкретным размером
-        onChange: renderGrid,
-      });
-      grid.appendChild(card);
-    });
+  if (state.favorites.length === 0) {
+    grid.clear();
+    empty.style.display = 'block';
+    return;
   }
-  renderGrid();
+  empty.style.display = 'none';
+
+  // Для grid нам нужны «продукты» — но в избранном они с привязкой к size.
+  // Делаем расширенный объект на лету: { ...product, __favSize: size }
+  const items = state.favorites
+    .map(fav => {
+      const prod = productsMap.get(fav.productId);
+      if (!prod) return null;
+      return { ...prod, __favSize: fav.size };
+    })
+    .filter(Boolean);
+
+  grid.update(items);
 }

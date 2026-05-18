@@ -1,16 +1,17 @@
-// Точка входа. Стратегия первой отрисовки:
+// Точка входа.
 //
-// 1. Применяем локальные настройки (lang/theme) — мгновенно, без сети
-// 2. Запускаем параллельные BD-запросы (customer/favorites/cart)
-// 3. Ждём их с таймаутом 800мс
-// 4. Применяем то что пришло, и только потом делаем router.navigate('home'|'onboarding')
-//
-// Этим избегаем «моргание через секунду» — раньше первый рендер шёл сразу с локальными
-// данными, а через ~500-1000мс приходил ответ из БД с другими настройками или данными,
-// что вызывало router.navigate() и перерисовку. Теперь первый рендер уже учитывает БД.
-//
-// Если 800мс не хватило (медленная сеть) — рендерим с локальными данными и применяем
-// БД-данные через мягкое обновление badges (не через router.navigate).
+// Стратегия первой отрисовки: НЕ блокируем рендер на сетевых запросах.
+// Локальные настройки применяем сразу, страницу рендерим сразу с тем что есть в
+// localStorage-кэше (или со skeleton, если кэша нет). БД-запросы идут в фоне:
+//   - Каталог: при приходе свежих данных view получает их через api.onProductsChange
+//     и обновляет grid в режиме diff — никаких полных перерисовок страницы.
+//   - Клиент: настройки (lang/theme/currency) применяются тихо через applyTheme/applyI18N.
+//     Если они отличаются от локальных — текущая страница перерисуется через router.navigate,
+//     но это редкий случай (только первое открытие на новом устройстве или после смены
+//     настроек на другом устройстве).
+//   - Избранное/корзина: после merge обновляются badges; на странице избранного/корзины
+//     refreshGrid() сработает через подписку на каталог (он гарантированно отрабатывает
+//     после первой загрузки данных).
 
 import { initTelegram, onThemeChanged, onViewportChanged, tg } from './tg.js';
 import { applyTheme } from './theme.js';
@@ -23,9 +24,9 @@ import { api } from './api/index.js';
 import { router, registerView } from './router.js';
 import { setupLightbox } from './components/lightbox.js';
 import { setupOnboarding, renderOnboarding } from './views/onboarding.js';
-import { renderHome } from './views/home.js';
+import { renderHome, onCatalogChanged as onHomeCatalogChanged } from './views/home.js';
 import { renderChat, resetChat } from './views/chat.js';
-import { renderCatalog } from './views/catalog.js';
+import { renderCatalog, onCatalogChanged as onCatalogCatalogChanged } from './views/catalog.js';
 import { renderFavorites } from './views/favorites.js';
 import { renderCart } from './views/cart.js';
 import { renderDetail } from './views/detail.js';
@@ -33,8 +34,6 @@ import { renderProfile } from './views/profile.js';
 import { renderHistory } from './views/history.js';
 import { renderSettings } from './views/settings.js';
 import { renderAdmin } from './views/admin.js';
-
-const BOOTSTRAP_TIMEOUT_MS = 800;
 
 function updateBadges() {
   const favBadge = document.getElementById('favBadge');
@@ -51,8 +50,6 @@ function updateBadges() {
   }
 }
 
-// Применяет данные клиента (preferences) к локальному state. Возвращает true,
-// если что-то реально изменилось.
 function applyCustomerData(customer) {
   const dbPrefs = customer?.preferences;
   if (!dbPrefs) return false;
@@ -76,14 +73,15 @@ function mergeFavorites(dbFavs) {
   dbFavs.forEach(f => merged.set(key(f), f));
   state.favorites.forEach(f => merged.set(key(f), f));
   const newFavs = Array.from(merged.values());
-  if (newFavs.length === state.favorites.length) return false;
+  if (newFavs.length === state.favorites.length &&
+      newFavs.every(f => state.favorites.some(s => key(s) === key(f)))) {
+    return false;
+  }
   state.favorites = newFavs;
   saveState();
   return true;
 }
 
-// Корзина: при merge берём максимум qty, не «сумму» — пользователь видел эти товары
-// на каком-то устройстве и не отменял их, значит должны остаться.
 function mergeCart(dbCart) {
   if (!Array.isArray(dbCart) || dbCart.length === 0) return false;
   const key = c => c.productId + '::' + (c.size || '');
@@ -95,59 +93,56 @@ function mergeCart(dbCart) {
     else merged.set(k, { ...c });
   });
   const newCart = Array.from(merged.values());
-  // Записываем merged-результат в БД, чтобы устройства синхронизировались
+  // Синхронизируем merged в БД (на случай если устройства расходились)
   newCart.forEach(c => api.setCartItem(c.productId, c.size, c.qty));
-  if (newCart.length === state.cart.length &&
-      newCart.every((c, i) => state.cart[i] && state.cart[i].qty === c.qty)) return false;
+  // Сравниваем: если состав и количества те же — не считаем изменением
+  if (newCart.length === state.cart.length) {
+    const same = newCart.every(c => {
+      const existing = state.cart.find(s => key(s) === key(c));
+      return existing && existing.qty === c.qty;
+    });
+    if (same) return false;
+  }
   state.cart = newCart;
   saveState();
   return true;
 }
 
-// Запускает BD-загрузку, ждёт максимум timeout мс, применяет всё что успело прийти.
-// Возвращает Promise<void>.
-async function bootstrapDataWithTimeout(timeoutMs) {
-  // Запускаем все запросы параллельно
-  const customerP = api.loadCustomer().catch(() => null);
-  const favsP = api.loadFavorites().catch(() => null);
-  const cartP = api.loadCart().catch(() => null);
+async function loadCustomerData() {
+  try {
+    const [customer, favs, cart] = await Promise.all([
+      api.loadCustomer().catch(() => null),
+      api.loadFavorites().catch(() => null),
+      api.loadCart().catch(() => null),
+    ]);
+    const prefsChanged = applyCustomerData(customer);
+    const favsChanged = mergeFavorites(favs);
+    const cartChanged = mergeCart(cart);
 
-  // Race с таймаутом
-  const all = Promise.all([customerP, favsP, cartP]);
-  const timeout = new Promise(resolve => setTimeout(resolve, timeoutMs));
-  const result = await Promise.race([all, timeout]);
-
-  if (Array.isArray(result)) {
-    // Все запросы успели — применяем синхронно
-    const [customer, favs, cart] = result;
-    applyCustomerData(customer);
-    mergeFavorites(favs);
-    mergeCart(cart);
-    return;
+    if (favsChanged || cartChanged) {
+      updateBadges();
+    }
+    // Только если изменились preferences (тема/язык/валюта) — перерисуем текущую
+    // страницу, потому что их применение требует пересчёта верстки. На главной/каталоге
+    // grid сам обновится через onCatalogChanged когда придут товары.
+    if (prefsChanged) {
+      const cur = router.current();
+      if (cur && cur !== 'detail') router.navigate(cur, router.lastContext());
+    }
+  } catch (e) {
+    console.warn('[bootstrap] customer load skipped:', e);
   }
-
-  // Таймаут — применяем то что придёт, без перерисовки страницы.
-  // Списки favorites/cart мягко обновятся через badges (setInterval);
-  // settings — применятся через applyTheme/applyI18N, которые меняют CSS-переменные
-  // и DOM-атрибуты без полной перерисовки страницы.
-  all.then(([customer, favs, cart]) => {
-    applyCustomerData(customer);
-    mergeFavorites(favs);
-    mergeCart(cart);
-    updateBadges();
-  });
 }
 
 async function bootstrap() {
   initTelegram();
 
-  // 1. Локальные настройки сразу (для случая когда сеть медленная — пользователь
-  //    хотя бы увидит правильный язык/тему мгновенно)
+  // Локальные настройки сразу
   setLang(state.settings.lang);
   applyTheme(state.settings.theme);
   applyI18N();
 
-  // 2. Регистрируем view
+  // Регистрируем view
   registerView('onboarding', renderOnboarding);
   registerView('home',       renderHome);
   registerView('chat',       () => { resetChat(); renderChat(); });
@@ -160,8 +155,7 @@ async function bootstrap() {
   registerView('settings',   renderSettings);
   registerView('admin',      renderAdmin);
 
-  // 3. Регистрируем синхронизаторы — без них любая мутация favorites/cart
-  //    перестанет писать в БД
+  // Синхронизаторы favorites/cart с БД
   setFavoritesSyncer(({ action, productId, size }) => {
     if (action === 'add') api.addFavorite(productId, size);
     else if (action === 'remove') api.removeFavorite(productId, size);
@@ -172,10 +166,9 @@ async function bootstrap() {
     else if (action === 'clear') api.clearCart();
   });
 
-  // 4. Глобальные обработчики UI
+  // Глобальные обработчики UI
   setupLightbox();
   setupOnboarding();
-
   document.getElementById('headerLogo').onclick = () => router.navigate('home');
   document.getElementById('favBtn').onclick = () => router.navigate('favorites');
   document.getElementById('cartBtn').onclick = () => router.navigate('cart');
@@ -183,7 +176,7 @@ async function bootstrap() {
     b.onclick = () => router.navigate(b.getAttribute('data-nav'));
   });
 
-  // Бейджи в шапке
+  // Бейджи
   window.addEventListener('cart:changed', updateBadges);
   setInterval(updateBadges, 500);
   updateBadges();
@@ -201,32 +194,27 @@ async function bootstrap() {
     try { active.blur(); } catch (_) {}
   }, true);
 
-  // Telegram-события
   onViewportChanged(() => {
     try { tg?.disableVerticalSwipes?.(); } catch (_) {}
   });
   onThemeChanged(() => applyTheme(state.settings.theme));
 
-  // Подписка на обновления каталога (фоновое stale-while-revalidate).
-  // Перерисовываем текущую страницу только если она показывает товары —
-  // и только если кэш реально изменился (это проверяется в cache/products.js).
-  const VIEWS_WITH_PRODUCTS = new Set(['home', 'catalog', 'detail', 'favorites', 'cart', 'admin']);
+  // Подписка на обновление каталога — обновляем grid НА ТЕКУЩЕЙ странице
+  // без полной перерисовки. Это убирает моргание картинок.
   api.onProductsChange(() => {
     const cur = router.current();
-    if (VIEWS_WITH_PRODUCTS.has(cur)) {
-      router.navigate(cur, router.lastContext());
-    }
+    if (cur === 'home') onHomeCatalogChanged();
+    else if (cur === 'catalog') onCatalogCatalogChanged();
+    // На favorites/cart/detail сетки нет — не трогаем
+    // На admin/history — обычно нужна полная перерисовка, но это редкий случай
   });
 
-  // 5. Подгружаем данные клиента с таймаутом, чтобы первая отрисовка
-  //    уже была с актуальной информацией. Если таймаут — рендер с локальными.
-  if (isOnboarded()) {
-    await bootstrapDataWithTimeout(BOOTSTRAP_TIMEOUT_MS);
-  }
-
-  // 6. Стартовый экран
+  // Стартовый экран сразу — без блокирующего ожидания
   if (!isOnboarded()) router.navigate('onboarding');
   else router.navigate('home');
+
+  // Подгружаем БД-данные в фоне
+  if (isOnboarded()) loadCustomerData();
 }
 
 bootstrap();

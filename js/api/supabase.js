@@ -161,6 +161,14 @@ export async function loadAllProducts() {
   }
 }
 
+// Принудительное обновление каталога из БД, минуя TTL.
+// Используется pull-to-refresh.
+export async function refreshProducts() {
+  productsCache.invalidate();
+  const fresh = await refreshFromDb();
+  return fresh || [];
+}
+
 // Экспортируем подписку — чтобы view могли реагировать на обновление каталога.
 export const onProductsChange = productsCache.subscribe;
 

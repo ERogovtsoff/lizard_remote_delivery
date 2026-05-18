@@ -1,13 +1,24 @@
-// Главная страница: hero-блок с CTA «Заказать из Китая», поиск и сетка товаров.
-// Search-state изолирован на уровне модуля — не делится с каталогом.
+// Главная страница: hero-блок, поиск, сетка товаров.
+//
+// Особенности:
+//   - Если каталог уже подгружен (есть в кэше) — рисуем сразу, без skeleton
+//   - Если кэша нет — показываем skeleton-сетку, пока придут данные
+//   - Сетка использует diff-rendering — повторные рендеры не дёргают <img>
+//   - Pull-to-refresh форсирует обновление каталога из БД
+//
+// Search-state хранится на модуле — изолирован от каталога.
 import { t } from '../i18n.js';
 import { escapeHtml } from '../utils.js';
 import { api } from '../api/index.js';
 import { router } from '../router.js';
 import { createSearchBar, matches } from '../components/search.js';
-import { createProductCard } from '../components/product-card.js';
+import { createProductGrid } from '../components/product-grid.js';
+import { createSkeletonGrid } from '../components/skeleton.js';
+import { attachPullToRefresh } from '../components/pull-to-refresh.js';
 
 let searchQuery = '';
+let grid = null;
+let allProducts = [];
 
 export async function renderHome() {
   const page = document.getElementById('page-home');
@@ -25,7 +36,7 @@ export async function renderHome() {
     </div>
     <div class="section-header"><h3>${escapeHtml(t('inStock'))}</h3></div>
     <div id="homeSearchSlot"></div>
-    <div class="products-grid" id="homeGrid"></div>
+    <div id="homeGridContainer"></div>
     <div class="empty-state" id="homeEmpty" style="display:none">
       <div class="icon">📦</div>
       <h3>${escapeHtml(t('catalogEmptyTitle'))}</h3>
@@ -42,34 +53,63 @@ export async function renderHome() {
 
   const searchBar = createSearchBar({
     initialValue: searchQuery,
-    onChange: (v) => { searchQuery = v; renderGrid(); }
+    onChange: v => { searchQuery = v; refreshGrid(); }
   });
   document.getElementById('homeSearchSlot').appendChild(searchBar);
 
-  const products = await api.loadProducts();
+  const container = document.getElementById('homeGridContainer');
 
-  function renderGrid() {
-    const grid = document.getElementById('homeGrid');
-    const empty = document.getElementById('homeEmpty');
-    const emptySearch = document.getElementById('homeSearchEmpty');
-    grid.innerHTML = '';
-    if (products.length === 0) {
-      grid.style.display = 'none';
-      empty.style.display = 'block';
-      emptySearch.style.display = 'none';
-      return;
-    }
-    const filtered = products.filter(p => matches(p, searchQuery));
-    if (filtered.length === 0) {
-      grid.style.display = 'none';
-      empty.style.display = 'none';
-      emptySearch.style.display = 'block';
-      return;
-    }
-    grid.style.display = 'grid';
-    empty.style.display = 'none';
-    emptySearch.style.display = 'none';
-    filtered.forEach(p => grid.appendChild(createProductCard(p, { source: 'home' })));
+  // Создаём grid единожды (между рендерами он переиспользует свои карточки)
+  grid = createProductGrid({ source: 'home' });
+  container.appendChild(grid.element);
+
+  // Pull-to-refresh
+  attachPullToRefresh(page, async () => {
+    allProducts = await api.refreshProducts();
+    refreshGrid();
+  });
+
+  // Если в кэше ничего нет — показываем skeleton до прихода данных
+  const cached = await api.loadProducts();
+  if (!cached || cached.length === 0) {
+    container.replaceChild(createSkeletonGrid(6), grid.element);
+    // Подгружаем фактические данные (если только что засеялись — будут уже здесь)
+    allProducts = await api.loadProducts();
+    container.replaceChild(grid.element, container.firstChild);
+  } else {
+    allProducts = cached;
   }
-  renderGrid();
+
+  refreshGrid();
+}
+
+function refreshGrid() {
+  if (!grid) return;
+  const empty = document.getElementById('homeEmpty');
+  const emptySearch = document.getElementById('homeSearchEmpty');
+
+  if (!allProducts || allProducts.length === 0) {
+    grid.clear();
+    empty.style.display = 'block';
+    emptySearch.style.display = 'none';
+    return;
+  }
+  const filtered = allProducts.filter(p => matches(p, searchQuery));
+  if (filtered.length === 0) {
+    grid.clear();
+    empty.style.display = 'none';
+    emptySearch.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  emptySearch.style.display = 'none';
+  grid.update(filtered);
+}
+
+// Вызывается извне при обновлении каталога (через api.onProductsChange)
+// — мягко обновляет grid без полной перерисовки страницы.
+export async function onCatalogChanged() {
+  if (!grid) return;
+  allProducts = await api.loadProducts();
+  refreshGrid();
 }
