@@ -157,7 +157,26 @@ CREATE TRIGGER products_touch BEFORE UPDATE ON products FOR EACH ROW EXECUTE FUN
 DROP TRIGGER IF EXISTS orders_touch ON orders;
 CREATE TRIGGER orders_touch BEFORE UPDATE ON orders FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
--- 9. ROW LEVEL SECURITY (расскоментируйте и адаптируйте под Edge Function-авторизацию)
+-- 9. ROW LEVEL SECURITY
+--
+-- Supabase ВКЛЮЧАЕТ RLS на новых таблицах по умолчанию (зависит от способа создания).
+-- Если RLS включён, а политик нет — ВСЕ запросы блокируются с ошибкой
+--   "new row violates row-level security policy"
+-- или "permission denied for table ...".
+--
+-- РЕЖИМ A (текущий, для теста — без RLS, без Edge Function):
+--   Явно ВЫКЛЮЧАЕМ RLS на всех таблицах. ANY клиент с anon-ключом сможет читать
+--   и писать всё. Это нормально для теста; для прода переходите на режим Б.
+ALTER TABLE customers   DISABLE ROW LEVEL SECURITY;
+ALTER TABLE products    DISABLE ROW LEVEL SECURITY;
+ALTER TABLE orders      DISABLE ROW LEVEL SECURITY;
+ALTER TABLE order_items DISABLE ROW LEVEL SECURITY;
+ALTER TABLE requests    DISABLE ROW LEVEL SECURITY;
+ALTER TABLE favorites   DISABLE ROW LEVEL SECURITY;
+
+-- РЕЖИМ Б (для прод-релиза, требует Edge Function для валидации Telegram initData):
+-- 1. Закомментируйте все ALTER TABLE ... DISABLE ROW LEVEL SECURITY выше
+-- 2. Раскомментируйте блок ниже и адаптируйте под вашу Edge Function-авторизацию
 --
 -- ALTER TABLE customers   ENABLE ROW LEVEL SECURITY;
 -- ALTER TABLE orders      ENABLE ROW LEVEL SECURITY;
@@ -170,7 +189,6 @@ CREATE TRIGGER orders_touch BEFORE UPDATE ON orders FOR EACH ROW EXECUTE FUNCTIO
 -- CREATE POLICY "products are public" ON products FOR SELECT USING (TRUE);
 --
 -- -- ВАЖНО: Эти политики работают только если вы передаёте tg_id в JWT через Edge Function.
--- -- Без неё используйте service_role на бэке, либо не включайте RLS до настройки.
 -- CREATE POLICY "customer sees own profile" ON customers
 --   FOR SELECT USING (tg_id = (auth.jwt() ->> 'tg_id')::BIGINT);
 -- CREATE POLICY "customer updates own profile" ON customers
