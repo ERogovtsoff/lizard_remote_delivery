@@ -1,16 +1,25 @@
-// Карточка товара. С каруселью в превью (правка #8).
-// Опционально показывает выбранный размер (для избранного, правка #3).
-import { escapeHtml, escapeAttr, formatPrice } from '../utils.js';
+// Карточка товара с каруселью.
+//
+// Правка #5: кнопка-сердечко перерисовывается через одну функцию paintFavButton
+// — после любого изменения (add/remove). Так не залипает «active»-состояние.
+//
+// opts:
+//   source       — откуда пришёл клик (для возврата)
+//   showSize     — подпись с размером (для карточек в избранном)
+//   favSize      — если задан, кнопка тоггл-яет именно этот размер; иначе любой
+//   onChange     — callback после изменения избранного (parent перерисует список)
+
+import { escapeHtml, formatPrice } from '../utils.js';
 import { localizedProduct, getLang, t } from '../i18n.js';
-import { state, isFavAny, isFavExact, removeFav, toggleFav, saveState } from '../state.js';
+import { state, isFavAny, isFavExact, removeFav, toggleFav, removeFavAll } from '../state.js';
 import { showConfirm } from './modal.js';
 import { showToast } from './toast.js';
 import { createCarousel } from './carousel.js';
-import { openLightbox } from './lightbox.js';
 import { haptic } from '../tg.js';
 import { router } from '../router.js';
 
-// opts: { source, showSize: 'size to display in badge', favSize: 'size to use for fav-toggle' }
+const HEART_SVG = '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
+
 export function createProductCard(prod, opts = {}) {
   const lang = getLang();
   const cur = state.settings.currency;
@@ -20,16 +29,15 @@ export function createProductCard(prod, opts = {}) {
   const card = document.createElement('div');
   card.className = 'product-card' + (opts.showSize ? ' fav-with-size' : '');
 
-  // Карусель (или просто фон если картинок нет)
+  // Карусель
   const carousel = createCarousel({
     images,
     variant: 'mini',
-    // Клик по слайду — открывает карточку (как обычный клик), не лайтбокс
     onSlideClick: () => router.navigate('detail', { productId: prod.id, source: opts.source || 'home' }),
   });
   card.appendChild(carousel);
 
-  // Размер-бейдж (для избранного)
+  // Бейдж с размером (для страницы «Избранное»)
   if (opts.showSize) {
     const badge = document.createElement('div');
     badge.className = 'product-card-size';
@@ -37,17 +45,27 @@ export function createProductCard(prod, opts = {}) {
     carousel.appendChild(badge);
   }
 
-  // Сердечко
-  const fav = opts.favSize !== undefined
-    ? isFavExact(prod.id, opts.favSize)
-    : isFavAny(prod.id);
+  // Кнопка избранного
   const favBtn = document.createElement('button');
-  favBtn.className = 'product-card-fav' + (fav ? ' active' : '');
+  favBtn.className = 'product-card-fav';
   favBtn.setAttribute('aria-label', 'Favorite');
-  favBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="${fav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`;
+  favBtn.innerHTML = HEART_SVG;
+
+  // Единая функция перерисовки иконки. Вызывается при создании и после каждого тоггла.
+  function paintFavButton() {
+    const active = opts.favSize !== undefined
+      ? isFavExact(prod.id, opts.favSize)
+      : isFavAny(prod.id);
+    favBtn.classList.toggle('active', active);
+    const svg = favBtn.querySelector('svg');
+    if (svg) svg.setAttribute('fill', active ? 'currentColor' : 'none');
+  }
+  paintFavButton();
+
   favBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    // Если карточка показывает конкретный размер из избранного — снимаем именно его.
+
+    // Удаление конкретного варианта (на странице «Избранное» с известным размером)
     if (opts.favSize !== undefined && isFavExact(prod.id, opts.favSize)) {
       showConfirm({
         icon: '❤️',
@@ -58,12 +76,14 @@ export function createProductCard(prod, opts = {}) {
           removeFav(prod.id, opts.favSize);
           haptic('light');
           showToast(t('removedFromFav'));
+          paintFavButton();
           if (opts.onChange) opts.onChange();
         }
       });
       return;
     }
-    // На карточке без явного размера — удаление всех вариантов товара из избранного
+
+    // Удаление всех вариантов товара (на главной/в каталоге, без выбранного размера)
     if (isFavAny(prod.id)) {
       showConfirm({
         icon: '❤️',
@@ -71,21 +91,22 @@ export function createProductCard(prod, opts = {}) {
         text: t('confirmRemoveFavText'),
         yes: t('confirmYes'), no: t('confirmNo'), danger: true,
         onYes: () => {
-          state.favorites = state.favorites.filter(f => f.productId !== prod.id);
-          saveState();
+          removeFavAll(prod.id);
           haptic('light');
           showToast(t('removedFromFav'));
+          paintFavButton();
           if (opts.onChange) opts.onChange();
         }
       });
-    } else {
-      toggleFav(prod.id, opts.favSize || null);
-      haptic('light');
-      showToast(t('addedToFav'));
-      favBtn.classList.add('active');
-      favBtn.querySelector('svg').setAttribute('fill', 'currentColor');
-      if (opts.onChange) opts.onChange();
+      return;
     }
+
+    // Добавление в избранное (без размера, если карточка на списке)
+    toggleFav(prod.id, opts.favSize || null);
+    haptic('light');
+    showToast(t('addedToFav'));
+    paintFavButton();
+    if (opts.onChange) opts.onChange();
   });
   card.appendChild(favBtn);
 

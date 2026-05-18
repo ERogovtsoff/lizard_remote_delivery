@@ -164,3 +164,15 @@ export async function upsertCustomer(patch) {
   }
   return loadCustomer();
 }
+
+// В local-режиме избранное полностью живёт в state.favorites (это и есть «БД»).
+// Эти методы — заглушки для соответствия контракту фасада. UI работает напрямую
+// со state.favorites через хелперы из state.js.
+export async function loadFavorites() {
+  return state.favorites.slice();
+}
+export async function addFavorite() { /* state.js уже сделал это */ }
+export async function removeFavorite() { /* state.js уже сделал это */ }
+
+// Каталог в local-режиме статичный (catalog.json), подписка не нужна.
+export function onProductsChange() { return () => {}; }

@@ -23,6 +23,7 @@
 import { CONFIG } from '../config.js';
 import { getUser } from '../tg.js';
 import { state } from '../state.js';
+import * as productsCache from '../cache/products.js';
 
 // Подгружаем supabase-js через ESM CDN. Один экземпляр клиента на всё приложение.
 let _client = null;
@@ -59,6 +60,7 @@ function rowToProduct(row) {
     images: Array.isArray(row.images) ? row.images : [],
     sizes: Array.isArray(row.sizes) ? row.sizes : [],
     is_active: row.is_active !== false,
+    updated_at: row.updated_at || null,  // используется для сравнения в кэше
   };
 }
 
@@ -99,30 +101,69 @@ async function seedIfEmpty(sb) {
   }
 }
 
+// Внутренний метод: реально идёт в БД.
+async function fetchProductsFromDb() {
+  const sb = await getClient();
+  let { data, error } = await sb.from('products').select('*').eq('is_active', true).order('id');
+  if (error) {
+    console.error('[supabase] loadProducts error:', error.message);
+    return null;
+  }
+  if (!data || data.length === 0) {
+    await seedIfEmpty(sb);
+    const res2 = await sb.from('products').select('*').eq('is_active', true).order('id');
+    data = res2.data || [];
+  }
+  return data.map(rowToProduct);
+}
+
+// Промис «текущий идущий fetch» — чтобы параллельные вызовы не плодили запросов.
+let _inFlight = null;
+
+async function refreshFromDb() {
+  if (_inFlight) return _inFlight;
+  _inFlight = (async () => {
+    try {
+      const fresh = await fetchProductsFromDb();
+      if (fresh) productsCache.setCache(fresh);
+      return fresh;
+    } finally {
+      _inFlight = null;
+    }
+  })();
+  return _inFlight;
+}
+
 export async function loadProducts() {
+  const cached = productsCache.getCached();
+
+  // 1. Есть кэш — отдаём моментально. Если он «свежий» (TTL не истёк) — не идём в сеть.
+  if (cached) {
+    if (!productsCache.isFresh()) {
+      // Фоновое обновление без await — view получит обновлённый список через подписку.
+      refreshFromDb().catch(e => console.warn('[supabase] background refresh failed:', e));
+    }
+    return cached;
+  }
+
+  // 2. Кэша нет — придётся подождать сеть.
   try {
-    const sb = await getClient();
-    let { data, error } = await sb.from('products').select('*').eq('is_active', true).order('id');
-    if (error) {
-      console.error('[supabase] loadProducts error:', error.message);
-      return [];
-    }
-    if (!data || data.length === 0) {
-      await seedIfEmpty(sb);
-      const res2 = await sb.from('products').select('*').eq('is_active', true).order('id');
-      data = res2.data || [];
-    }
-    return data.map(rowToProduct);
+    const fresh = await refreshFromDb();
+    return fresh || [];
   } catch (e) {
     console.error('[supabase] loadProducts exception:', e);
     return [];
   }
 }
 
+// Экспортируем подписку — чтобы view могли реагировать на обновление каталога.
+export const onProductsChange = productsCache.subscribe;
+
 // Полная синхронизация каталога:
 // 1. Получаем текущие id в БД
 // 2. Делаем upsert переданных
 // 3. Удаляем те id, которые есть в БД но отсутствуют в переданных
+// После — обновляем кэш свежими данными из БД (чтобы updated_at был актуальным).
 export async function saveProducts(products) {
   try {
     const sb = await getClient();
@@ -151,6 +192,10 @@ export async function saveProducts(products) {
         console.error('[supabase] saveProducts: delete error:', e3.message);
       }
     }
+
+    // Сразу обновим кэш свежими данными
+    productsCache.invalidate();
+    await refreshFromDb();
   } catch (e) {
     console.error('[supabase] saveProducts exception:', e);
     throw e;
@@ -389,5 +434,67 @@ export async function addRequest(req) {
   } catch (e) {
     console.error('[supabase] addRequest exception:', e);
     throw e;
+  }
+}
+
+// ============================== FAVORITES ==============================
+//
+// Схема: favorites(customer_tg_id, product_id, size) с композитным PK.
+// size '' = «без размера» (например, товар у которого только 1 размер,
+// или клиент добавил в избранное со страницы списка без выбора размера).
+
+export async function loadFavorites() {
+  try {
+    const u = getUser();
+    if (!u) return [];
+    const sb = await getClient();
+    await ensureCustomer(sb);
+
+    const { data, error } = await sb.from('favorites')
+      .select('product_id, size')
+      .eq('customer_tg_id', u.id);
+    if (error) {
+      console.error('[supabase] loadFavorites error:', error.message);
+      return [];
+    }
+    return (data || []).map(r => ({
+      productId: r.product_id,
+      size: r.size || null,   // нормализуем пустую строку в null для удобства state.js
+    }));
+  } catch (e) {
+    console.error('[supabase] loadFavorites exception:', e);
+    return [];
+  }
+}
+
+export async function addFavorite(productId, size) {
+  try {
+    const u = getUser();
+    if (!u) return;
+    const sb = await getClient();
+    await ensureCustomer(sb);
+    const { error } = await sb.from('favorites').upsert({
+      customer_tg_id: u.id,
+      product_id: productId,
+      size: size || '',
+    }, { onConflict: 'customer_tg_id,product_id,size' });
+    if (error) console.error('[supabase] addFavorite error:', error.message);
+  } catch (e) {
+    console.error('[supabase] addFavorite exception:', e);
+  }
+}
+
+export async function removeFavorite(productId, size) {
+  try {
+    const u = getUser();
+    if (!u) return;
+    const sb = await getClient();
+    const { error } = await sb.from('favorites').delete()
+      .eq('customer_tg_id', u.id)
+      .eq('product_id', productId)
+      .eq('size', size || '');
+    if (error) console.error('[supabase] removeFavorite error:', error.message);
+  } catch (e) {
+    console.error('[supabase] removeFavorite exception:', e);
   }
 }

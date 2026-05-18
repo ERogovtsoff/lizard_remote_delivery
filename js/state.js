@@ -77,19 +77,45 @@ export function isFavExact(productId, size) {
 export function isFavAny(productId) {
   return state.favorites.some(f => f.productId === productId);
 }
+
+// Внешний синхронизатор (регистрируется app.js при старте) — пишет изменения в БД.
+// Сигнатура: ({ action: 'add'|'remove', productId, size }) => Promise<void>
+let _favSync = null;
+export function setFavoritesSyncer(fn) { _favSync = fn; }
+
+function syncFav(action, productId, size) {
+  if (!_favSync) return;
+  try { _favSync({ action, productId, size: size || null }); } catch (e) {}
+}
+
 export function toggleFav(productId, size) {
   const idx = state.favorites.findIndex(
     f => f.productId === productId && (f.size || null) === (size || null)
   );
-  if (idx >= 0) { state.favorites.splice(idx, 1); saveState(); return false; }
+  if (idx >= 0) {
+    state.favorites.splice(idx, 1);
+    saveState();
+    syncFav('remove', productId, size);
+    return false;
+  }
   state.favorites.push({ productId, size: size || null });
-  saveState(); return true;
+  saveState();
+  syncFav('add', productId, size);
+  return true;
 }
 export function removeFav(productId, size) {
   state.favorites = state.favorites.filter(
     f => !(f.productId === productId && (f.size || null) === (size || null))
   );
   saveState();
+  syncFav('remove', productId, size);
+}
+// Удалить все варианты товара (используется при удалении карточки без указания размера)
+export function removeFavAll(productId) {
+  const removed = state.favorites.filter(f => f.productId === productId);
+  state.favorites = state.favorites.filter(f => f.productId !== productId);
+  saveState();
+  removed.forEach(f => syncFav('remove', productId, f.size));
 }
 
 // Корзина

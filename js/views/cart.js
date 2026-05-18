@@ -157,6 +157,15 @@ async function checkout(productsMap, totalUsd, totalByn) {
   saveState();
   haptic('success');
 
+  // Сразу даём пользователю фидбек и уводим в историю, чтобы он видел свой заказ.
+  // Это работает одинаково независимо от того, сработает sendData или нет:
+  //   - Если sendData сработает → Telegram сам закроет апку поверх (наш переход
+  //     в историю в этом случае не виден, но и не мешает)
+  //   - Если нет → пользователь остаётся в апке на странице «История» и видит
+  //     свой только что созданный заказ
+  showToast(t('orderPlaced'), 3000);
+  router.navigate('history');
+
   // Контракт payload — то, что ожидает bot.py (см. handle_order)
   const payload = {
     type: 'order',
@@ -166,16 +175,10 @@ async function checkout(productsMap, totalUsd, totalByn) {
   };
   const result = await sendToBot(payload, fallbackText);
 
-  if (result.mode === 'sent') {
-    // Telegram закроет мини-апп
-    return;
-  }
   if (result.mode === 'fallback') {
     showToast(t('msgSentFallback'), 5000);
-  } else {
+  } else if (result.mode === 'failed') {
     showToast(t('msgSentFailed'), 4000);
   }
-
-  // Через секунду вернёмся в историю
-  setTimeout(() => router.navigate('history'), 800);
+  // mode === 'sent' → Telegram закроет апку, ничего больше не делаем
 }

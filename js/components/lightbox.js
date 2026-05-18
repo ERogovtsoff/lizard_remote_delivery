@@ -1,29 +1,53 @@
-// Полноэкранный лайтбокс с pinch-zoom и double-tap zoom.
-// Правка #2: зум должен происходить в точку касания/щипка, а не в левый верхний угол.
+// Лайтбокс с pinch-zoom и double-tap.
 //
-// Математика:
-//   Если мы хотим, чтобы точка изображения, находившаяся под пальцем (fx, fy в координатах wrap),
-//   осталась под пальцем после изменения масштаба k -> k', нужно:
-//     newTx = fx - (fx - tx) * k' / k
-//     newTy = fy - (fy - ty) * k' / k
-//   где tx, ty — текущий transform.translate, k/k' — старый/новый scale.
+// Модель состояния:
+//   tx, ty       — текущий transform.translate (в пикселях контейнера)
+//   scale        — текущий масштаб (от 1 до MAX_SCALE)
+//   imgW, imgH   — реальные размеры изображения (видимая часть при scale=1)
+//   wrapW, wrapH — размеры контейнера
 //
-//   transform-origin у нас 0 0, поэтому формула применима в чистом виде.
-
-import { t } from '../i18n.js';
+// transform-origin = 0 0. Формула pinch-zoom-в-точку:
+//   tx' = fx - (fx - tx) * scale' / scale
+//   ty' = fy - (fy - ty) * scale' / scale
+// Эта формула гарантирует, что точка изображения под пальцем останется под пальцем
+// после изменения масштаба.
+//
+// Pan-constraints: картинку нельзя унести так, чтобы появились пустоты по краям
+// (кроме случая, когда изображение по этому измерению меньше контейнера — тогда центрируем).
+//
+// Режимы взаимоисключающие. На touchstart выбираем режим один раз и не меняем,
+// пока все пальцы не отпущены:
+//   1 палец, scale=1   → swipe (между картинками)
+//   1 палец, scale>1   → pan (картинка не перемещается между фото)
+//   2 пальца           → pinch
+// Double-tap обрабатывается отдельно через touchend по таймингам.
 
 const MAX_SCALE = 4;
 const MIN_SCALE = 1;
+const DOUBLE_TAP_DELAY = 300;     // мс между тапами
+const DOUBLE_TAP_DIST = 30;       // px между точками двух тапов
+const SWIPE_THRESHOLD = 50;       // px горизонтального движения для перехода между фото
+const TAP_MAX_MOVE = 10;          // px движения, после которого тап не считается тапом
 
-const state = {
-  images: [],
-  index: 0,
-  scale: 1,
-  tx: 0,
-  ty: 0,
-};
+let lightbox, wrap, img, counterEl, prevBtn, nextBtn;
+let images = [];
+let index = 0;
 
-let wrap, img, counterEl, prevBtn, nextBtn, lightbox;
+// Transform state
+let scale = 1, tx = 0, ty = 0;
+// Размеры изображения и контейнера для constraints
+let imgW = 0, imgH = 0, wrapW = 0, wrapH = 0;
+
+// Per-gesture state
+let mode = 'idle';                // 'idle' | 'swipe' | 'pan' | 'pinch'
+let touchStartTime = 0;
+let startPoints = [];             // [{x, y}] на начало жеста
+let startTx = 0, startTy = 0;
+let startDist = 0;
+let startScale = 1;
+let pinchCenter = { x: 0, y: 0 };
+let lastTapTime = 0;
+let lastTapPoint = { x: 0, y: 0 };
 
 export function setupLightbox() {
   lightbox = document.getElementById('lightbox');
@@ -37,12 +61,10 @@ export function setupLightbox() {
   prevBtn.onclick = () => navigate(-1);
   nextBtn.onclick = () => navigate(1);
 
-  // Восстановим оригинальные размеры после смены картинки
-  img.addEventListener('load', () => {
-    // Сброс трансформа при смене картинки уже произведён в showImage()
-  });
+  img.addEventListener('load', onImageLoaded);
 
   setupGestures();
+  setupMouse();
 
   document.addEventListener('keydown', (e) => {
     if (!lightbox.classList.contains('show')) return;
@@ -52,9 +74,9 @@ export function setupLightbox() {
   });
 }
 
-export function openLightbox(images, startIndex = 0) {
-  state.images = images;
-  state.index = startIndex;
+export function openLightbox(imgs, startIndex = 0) {
+  images = imgs;
+  index = startIndex;
   lightbox.classList.add('show');
   showImage();
 }
@@ -64,146 +86,279 @@ function closeLightbox() {
 }
 
 function showImage() {
-  img.src = state.images[state.index];
-  counterEl.textContent = `${state.index + 1} / ${state.images.length}`;
-  prevBtn.disabled = state.index === 0;
-  nextBtn.disabled = state.index === state.images.length - 1;
   resetTransform();
+  img.src = images[index];
+  counterEl.textContent = `${index + 1} / ${images.length}`;
+  prevBtn.disabled = index === 0;
+  nextBtn.disabled = index === images.length - 1;
 }
 
-function navigate(delta) {
-  const next = state.index + delta;
-  if (next < 0 || next >= state.images.length) return;
-  state.index = next;
-  showImage();
+function onImageLoaded() {
+  // После загрузки определяем реальные отображаемые размеры (с учётом object-fit аналогии)
+  recalcDimensions();
+  centerImage();
+}
+
+function recalcDimensions() {
+  const wrapRect = wrap.getBoundingClientRect();
+  wrapW = wrapRect.width;
+  wrapH = wrapRect.height;
+
+  // img — обычный <img> внутри wrap. Из-за max-width/height: 100% реальный размер
+  // на экране = getBoundingClientRect (но до transform).
+  // Чтобы получить размер без учёта текущего scale — временно сбросим transform.
+  const prevTransform = img.style.transform;
+  img.style.transform = '';
+  const rect = img.getBoundingClientRect();
+  // Координаты могут зависеть от tx/ty — но мы только что сбросили; чтобы получить «базовый» размер
+  // достаточно посчитать через naturalSize и ограничения wrap.
+  imgW = rect.width;
+  imgH = rect.height;
+  img.style.transform = prevTransform;
+}
+
+function centerImage() {
+  // При scale = 1 и transform-origin 0 0 картинка по умолчанию находится в (0,0) wrap.
+  // Чтобы центрировать (если imgW < wrapW), смещаем на (wrapW-imgW)/2.
+  // Но object-fit-аналогия здесь обеспечивается CSS (max-width/max-height 100%),
+  // поэтому при scale=1 картинка уже центрирована средствами flex (`align/justify-center`),
+  // а transform применяется поверх. Значит для нашего transform базовая позиция = (0,0).
+  scale = 1; tx = 0; ty = 0;
+  applyTransform();
 }
 
 function resetTransform() {
-  state.scale = 1; state.tx = 0; state.ty = 0;
+  scale = 1; tx = 0; ty = 0;
   applyTransform();
 }
 
 function applyTransform() {
-  img.style.transform = `translate(${state.tx}px, ${state.ty}px) scale(${state.scale})`;
+  img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
 }
 
-// Получает координаты точки относительно wrap (учёт его размещения на экране и border).
-function getLocalPoint(clientX, clientY) {
+function navigate(delta) {
+  const next = index + delta;
+  if (next < 0 || next >= images.length) return;
+  index = next;
+  showImage();
+}
+
+// Получить координаты точки относительно wrap
+function localPoint(clientX, clientY) {
   const rect = wrap.getBoundingClientRect();
   return { x: clientX - rect.left, y: clientY - rect.top };
 }
 
-// Изменяет масштаб с центром в точке (fx, fy) — координаты относительно wrap.
+// Зум в точку (fx, fy относительно wrap). Применяет constraints.
 function zoomAt(newScale, fx, fy) {
   newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
-  if (newScale === state.scale) return;
-  const k = state.scale;
-  const kPrime = newScale;
-  state.tx = fx - (fx - state.tx) * (kPrime / k);
-  state.ty = fy - (fy - state.ty) * (kPrime / k);
-  state.scale = newScale;
-  if (state.scale === MIN_SCALE) { state.tx = 0; state.ty = 0; }
+  if (Math.abs(newScale - scale) < 0.001) return;
+  const k = scale, kPrime = newScale;
+  tx = fx - (fx - tx) * (kPrime / k);
+  ty = fy - (fy - ty) * (kPrime / k);
+  scale = newScale;
+  applyConstraints();
   applyTransform();
 }
 
+// Constraints: картинку нельзя унести так, чтобы появились пустоты по краям
+function applyConstraints() {
+  if (!imgW || !imgH) return;
+  const scaledW = imgW * scale;
+  const scaledH = imgH * scale;
+
+  // Картинка позиционируется через transform от своего базового положения (центр wrap, для CSS).
+  // Однако у нас transform-origin: 0 0 → translate работает от верх-лев угла img.
+  // Базовая позиция img (при scale=1, tx=0, ty=0): img выровнен по центру wrap благодаря CSS flex.
+  // То есть «видимое» положение img = (centerX - imgW/2 + tx, centerY - imgH/2 + ty).
+  // При scale > 1 картинка расширяется от своего origin (0,0 = верх-лев угла img),
+  // то есть фактически рисуется от (centerX - imgW/2 + tx) до (centerX - imgW/2 + tx + scaledW).
+
+  const baseX = (wrapW - imgW) / 2;   // позиция img-угла без transform
+  const baseY = (wrapH - imgH) / 2;
+
+  // Левая граница картинки (с учётом transform): baseX + tx
+  // Правая граница: baseX + tx + scaledW
+  // Допустимый диапазон tx: чтобы при scaledW > wrapW не было щели по краям;
+  //                         при scaledW <= wrapW — центрируем.
+
+  // По X
+  if (scaledW <= wrapW) {
+    tx = 0; // центрировано по умолчанию
+  } else {
+    const minTx = wrapW - baseX - scaledW;   // правый край не должен уходить левее правого края wrap
+    const maxTx = -baseX;                     // левый край не должен уходить правее левого края wrap
+    if (tx < minTx) tx = minTx;
+    if (tx > maxTx) tx = maxTx;
+  }
+  // По Y
+  if (scaledH <= wrapH) {
+    ty = 0;
+  } else {
+    const minTy = wrapH - baseY - scaledH;
+    const maxTy = -baseY;
+    if (ty < minTy) ty = minTy;
+    if (ty > maxTy) ty = maxTy;
+  }
+}
+
+// =========== GESTURES ===========
+
 function setupGestures() {
-  let mode = 'idle';     // 'idle' | 'pan' | 'pinch' | 'swipe'
-  let pinchStartDist = 0;
-  let pinchStartScale = 1;
-  let pinchCenter = { x: 0, y: 0 };
-  let panStartTx = 0, panStartTy = 0;
-  let panStartClient = { x: 0, y: 0 };
-  let swipeStart = { x: 0, y: 0 };
-  let lastTapTime = 0;
-  let lastTapPoint = { x: 0, y: 0 };
+  wrap.addEventListener('touchstart', onTouchStart, { passive: false });
+  wrap.addEventListener('touchmove', onTouchMove, { passive: false });
+  wrap.addEventListener('touchend', onTouchEnd);
+  wrap.addEventListener('touchcancel', onTouchEnd);
+}
 
-  function distance(a, b) { return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); }
-  function midpoint(a, b) { return { clientX: (a.clientX + b.clientX) / 2, clientY: (a.clientY + b.clientY) / 2 }; }
+function distance(p1, p2) {
+  return Math.hypot(p1.x - p2.x, p1.y - p2.y);
+}
 
-  wrap.addEventListener('touchstart', (e) => {
-    const ts = e.touches;
-    if (ts.length === 2) {
-      mode = 'pinch';
-      pinchStartDist = distance(ts[0], ts[1]);
-      pinchStartScale = state.scale;
-      const mid = midpoint(ts[0], ts[1]);
-      pinchCenter = getLocalPoint(mid.clientX, mid.clientY);
-    } else if (ts.length === 1) {
-      const t0 = ts[0];
+function onTouchStart(e) {
+  if (e.touches.length === 2) {
+    // Pinch
+    mode = 'pinch';
+    const p1 = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    const p2 = { x: e.touches[1].clientX, y: e.touches[1].clientY };
+    startPoints = [p1, p2];
+    startDist = distance(p1, p2);
+    startScale = scale;
+    const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+    pinchCenter = localPoint(mid.x, mid.y);
+    if (e.cancelable) e.preventDefault();
+    return;
+  }
+  if (e.touches.length === 1) {
+    const p = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    startPoints = [p];
+    touchStartTime = Date.now();
+
+    if (scale > 1) {
+      // Pan
+      mode = 'pan';
+      startTx = tx; startTy = ty;
+    } else {
+      // Swipe между картинками. Не активируем pan/swipe пока не было движения —
+      // touchend по короткому жесту даст double-tap или просто закрытие.
+      mode = 'swipe';
+      startTx = tx; startTy = ty;
+    }
+  }
+}
+
+function onTouchMove(e) {
+  if (mode === 'pinch' && e.touches.length === 2) {
+    const p1 = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    const p2 = { x: e.touches[1].clientX, y: e.touches[1].clientY };
+    const d = distance(p1, p2);
+    const newScale = startScale * (d / startDist);
+    // Применяем pinch относительно начального center'а — это даёт стабильный зум,
+    // даже если пальцы немного дрейфуют
+    zoomAt(newScale, pinchCenter.x, pinchCenter.y);
+    if (e.cancelable) e.preventDefault();
+    return;
+  }
+
+  if (mode === 'pan' && e.touches.length === 1) {
+    const p = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    tx = startTx + (p.x - startPoints[0].x);
+    ty = startTy + (p.y - startPoints[0].y);
+    applyConstraints();
+    applyTransform();
+    if (e.cancelable) e.preventDefault();
+    return;
+  }
+
+  if (mode === 'swipe' && e.touches.length === 1) {
+    // Для swipe просто блокируем дефолтное поведение по горизонтали;
+    // переход между картинками сделаем на touchend
+    const p = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    const dx = p.x - startPoints[0].x;
+    const dy = p.y - startPoints[0].y;
+    if (Math.abs(dx) > Math.abs(dy) && e.cancelable) e.preventDefault();
+  }
+}
+
+function onTouchEnd(e) {
+  if (e.touches.length > 0) {
+    // Остался ещё палец на экране — переключим режим
+    if (mode === 'pinch' && e.touches.length === 1) {
+      // pinch → pan: фиксируем новую базовую точку
+      const p = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      startPoints = [p];
+      startTx = tx; startTy = ty;
+      mode = scale > 1 ? 'pan' : 'swipe';
+    }
+    return;
+  }
+
+  // Все пальцы отпущены — обрабатываем финальный жест
+  if (mode === 'swipe' && e.changedTouches.length === 1) {
+    const p = { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+    const dx = p.x - startPoints[0].x;
+    const dy = p.y - startPoints[0].y;
+    const moved = Math.max(Math.abs(dx), Math.abs(dy));
+    const elapsed = Date.now() - touchStartTime;
+
+    if (moved <= TAP_MAX_MOVE && elapsed < 400) {
+      // Это тап. Проверяем double-tap.
       const now = Date.now();
-      const local = getLocalPoint(t0.clientX, t0.clientY);
-
-      // Двойной тап: тапы близко по времени и по координате
-      if (now - lastTapTime < 300
-          && Math.abs(local.x - lastTapPoint.x) < 30
-          && Math.abs(local.y - lastTapPoint.y) < 30) {
-        if (state.scale > 1) {
-          resetTransform();
-        } else {
-          zoomAt(2.5, local.x, local.y);
-        }
+      const local = localPoint(p.x, p.y);
+      const dtBetween = now - lastTapTime;
+      const distBetween = Math.hypot(local.x - lastTapPoint.x, local.y - lastTapPoint.y);
+      if (dtBetween < DOUBLE_TAP_DELAY && distBetween < DOUBLE_TAP_DIST) {
+        // Double tap → toggle zoom
+        if (scale > 1) resetTransform();
+        else zoomAt(2.5, local.x, local.y);
         lastTapTime = 0;
-        return;
-      }
-      lastTapTime = now;
-      lastTapPoint = local;
-
-      if (state.scale > 1) {
-        mode = 'pan';
-        panStartTx = state.tx; panStartTy = state.ty;
-        panStartClient = { x: t0.clientX, y: t0.clientY };
       } else {
-        mode = 'swipe';
-        swipeStart = { x: t0.clientX, y: t0.clientY };
+        lastTapTime = now;
+        lastTapPoint = local;
       }
+    } else if (Math.abs(dx) > SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy)) {
+      // Горизонтальный свайп → следующая/предыдущая
+      navigate(dx < 0 ? 1 : -1);
     }
-  }, { passive: true });
+  }
+  mode = 'idle';
+}
 
-  wrap.addEventListener('touchmove', (e) => {
-    if (mode === 'pinch' && e.touches.length === 2) {
-      const d = distance(e.touches[0], e.touches[1]);
-      const newScale = pinchStartScale * (d / pinchStartDist);
-      zoomAt(newScale, pinchCenter.x, pinchCenter.y);
-      if (e.cancelable) e.preventDefault();
-    } else if (mode === 'pan' && e.touches.length === 1) {
-      const t0 = e.touches[0];
-      state.tx = panStartTx + (t0.clientX - panStartClient.x);
-      state.ty = panStartTy + (t0.clientY - panStartClient.y);
-      applyTransform();
-      if (e.cancelable) e.preventDefault();
-    } else if (mode === 'swipe' && e.touches.length === 1) {
-      const t0 = e.touches[0];
-      const dx = t0.clientX - swipeStart.x;
-      const dy = t0.clientY - swipeStart.y;
-      if (Math.abs(dx) > Math.abs(dy) && e.cancelable) e.preventDefault();
-    }
-  }, { passive: false });
+// =========== MOUSE (десктоп) ===========
 
-  wrap.addEventListener('touchend', (e) => {
-    if (mode === 'swipe' && e.changedTouches.length === 1) {
-      const t0 = e.changedTouches[0];
-      const dx = t0.clientX - swipeStart.x;
-      if (Math.abs(dx) > 50) {
-        navigate(dx < 0 ? 1 : -1);
-      }
-    }
-    if (e.touches.length === 0) mode = 'idle';
-    else if (e.touches.length === 1 && mode === 'pinch') mode = 'pan';
-  });
-
-  // Десктоп — колесо мыши = зум в точку курсора
+function setupMouse() {
   wrap.addEventListener('wheel', (e) => {
     if (!lightbox.classList.contains('show')) return;
     e.preventDefault();
-    const local = getLocalPoint(e.clientX, e.clientY);
-    const k = e.deltaY < 0 ? 1.2 : 1 / 1.2;
-    zoomAt(state.scale * k, local.x, local.y);
+    const local = localPoint(e.clientX, e.clientY);
+    const factor = e.deltaY < 0 ? 1.2 : 1 / 1.2;
+    zoomAt(scale * factor, local.x, local.y);
   }, { passive: false });
 
-  // Двойной клик мышью
   wrap.addEventListener('dblclick', (e) => {
-    const local = getLocalPoint(e.clientX, e.clientY);
-    if (state.scale > 1) resetTransform();
+    const local = localPoint(e.clientX, e.clientY);
+    if (scale > 1) resetTransform();
     else zoomAt(2.5, local.x, local.y);
   });
+
+  // Drag мышкой при scale > 1
+  let mouseDown = false;
+  let mouseStart = { x: 0, y: 0 };
+  let mouseStartTx = 0, mouseStartTy = 0;
+  wrap.addEventListener('mousedown', (e) => {
+    if (scale <= 1) return;
+    mouseDown = true;
+    mouseStart = { x: e.clientX, y: e.clientY };
+    mouseStartTx = tx;
+    mouseStartTy = ty;
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!mouseDown) return;
+    tx = mouseStartTx + (e.clientX - mouseStart.x);
+    ty = mouseStartTy + (e.clientY - mouseStart.y);
+    applyConstraints();
+    applyTransform();
+  });
+  document.addEventListener('mouseup', () => { mouseDown = false; });
 }

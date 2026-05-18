@@ -4,15 +4,17 @@
 //   loadProducts()                     -> Promise<Product[]>
 //   saveProducts(products)             -> Promise<void>            (только в local — admin export)
 //   loadHistory()                      -> Promise<HistoryItem[]>
-//   addOrder(order)                    -> Promise<Order>           // создаёт заказ с status='processing', isPaid=false
-//   addRequest(request)                -> Promise<HistoryItem>     // запрос-подбор из чата
+//   addOrder(order)                    -> Promise<Order>
+//   addRequest(request)                -> Promise<HistoryItem>
 //   loadCustomer()                     -> Promise<Customer | null>
 //   upsertCustomer(patch)              -> Promise<Customer>
+//   loadFavorites()                    -> Promise<Array<{productId, size}>>
+//   addFavorite(productId, size)       -> Promise<void>
+//   removeFavorite(productId, size)    -> Promise<void>
+//   onProductsChange(callback)         -> () => void  (unsubscribe)
 //
-// Product: { id, name_ru, name_en, desc_ru, desc_en, price_usd, price_byn, images, sizes }
-// Customer: { tg_id, first_name, last_name, username, phone, birth_date, purchases_total, preferences }
-// Order: { id, customer_id, items, total_usd, total_byn, currency, status, is_paid, eta, created_at }
-// HistoryItem (для UI): { id, type, date, payload, status?, isPaid?, eta? }
+// Все методы должны возвращать одинаковые структуры независимо от реализации —
+// UI не должен знать что под капотом (local или supabase).
 
 import { CONFIG } from '../config.js';
 import * as local from './local.js';
@@ -24,6 +26,9 @@ function impl() {
   return impls[CONFIG.API_MODE] || impls.local;
 }
 
+// Заглушка для unsubscribe если реализация не поддерживает подписку
+const noop = () => {};
+
 export const api = {
   loadProducts: (...a) => impl().loadProducts(...a),
   saveProducts: (...a) => impl().saveProducts(...a),
@@ -32,4 +37,8 @@ export const api = {
   addRequest: (...a) => impl().addRequest(...a),
   loadCustomer: (...a) => impl().loadCustomer(...a),
   upsertCustomer: (...a) => impl().upsertCustomer(...a),
+  loadFavorites: (...a) => (impl().loadFavorites ? impl().loadFavorites(...a) : Promise.resolve(null)),
+  addFavorite: (...a) => (impl().addFavorite ? impl().addFavorite(...a) : Promise.resolve()),
+  removeFavorite: (...a) => (impl().removeFavorite ? impl().removeFavorite(...a) : Promise.resolve()),
+  onProductsChange: (cb) => (impl().onProductsChange ? impl().onProductsChange(cb) : noop),
 };

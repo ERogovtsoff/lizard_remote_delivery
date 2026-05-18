@@ -66,17 +66,55 @@ function setupChatHandlers() {
     updateSendBtn();
   });
 
-  // Скрепка: показывает информационный тост. preventDefault сохраняет фокус
-  // на textarea, чтобы клавиатура не закрылась при тапе.
+  // Скрепка: показывает информационный тост.
+  // Реализация надёжная для iOS/Android Telegram WebView:
+  //   - На touchstart: запоминаем точку касания, preventDefault (сохраняем фокус)
+  //   - На touchend: если палец не сдвинулся больше 10px и время < 500мс → показываем тост,
+  //     и помечаем флаг handled, чтобы click не сработал повторно
+  //   - На click (десктоп): если флаг handled — игнорируем; иначе показываем тост
+  // preventDefault на touchstart также удерживает фокус textarea (клавиатура не закрывается)
   const attachBtn = document.getElementById('chatAttachBtn');
-  const preventBlur = (e) => e.preventDefault();
-  attachBtn.addEventListener('pointerdown', preventBlur);
-  attachBtn.addEventListener('mousedown', preventBlur);
-  attachBtn.addEventListener('touchstart', preventBlur, { passive: false });
-  attachBtn.addEventListener('click', () => {
+  let touchStartX = 0, touchStartY = 0, touchStartT = 0;
+  let touchHandled = false;
+
+  function showAttachInfo() {
     haptic('light');
     showToast(t('chatAttachInfo'), 4000);
+  }
+
+  attachBtn.addEventListener('touchstart', (e) => {
+    if (e.cancelable) e.preventDefault();
+    if (e.touches.length !== 1) return;
+    const t0 = e.touches[0];
+    touchStartX = t0.clientX;
+    touchStartY = t0.clientY;
+    touchStartT = Date.now();
+    touchHandled = false;
+  }, { passive: false });
+
+  attachBtn.addEventListener('touchend', (e) => {
+    if (e.changedTouches.length !== 1) return;
+    const t0 = e.changedTouches[0];
+    const dx = Math.abs(t0.clientX - touchStartX);
+    const dy = Math.abs(t0.clientY - touchStartY);
+    const dt = Date.now() - touchStartT;
+    if (dx <= 10 && dy <= 10 && dt < 500) {
+      touchHandled = true;
+      showAttachInfo();
+      // На многих мобильных WebView preventDefault на touchend подавляет
+      // последующий click — гарантия что тост не покажется дважды.
+      if (e.cancelable) e.preventDefault();
+    }
   });
+
+  // Click — только для десктопа (на мобиле touchend уже отработал и поставил touchHandled)
+  attachBtn.addEventListener('click', (e) => {
+    if (touchHandled) { touchHandled = false; return; }
+    showAttachInfo();
+  });
+
+  // mousedown с preventDefault — сохраняет фокус textarea на десктопе при клике
+  attachBtn.addEventListener('mousedown', (e) => e.preventDefault());
 
   document.getElementById('chatSendBtn').onclick = sendChatMessage;
 }

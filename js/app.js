@@ -3,7 +3,7 @@ import { CONFIG } from './config.js';
 import { initTelegram, onThemeChanged, onViewportChanged, tg } from './tg.js';
 import { applyTheme } from './theme.js';
 import { setLang, applyI18N, t } from './i18n.js';
-import { state, isOnboarded, cartTotalCount } from './state.js';
+import { state, isOnboarded, cartTotalCount, saveState, setFavoritesSyncer } from './state.js';
 import { api } from './api/index.js';
 import { router, registerView } from './router.js';
 import { setupLightbox } from './components/lightbox.js';
@@ -42,28 +42,56 @@ async function bootstrap() {
   applyTheme(state.settings.theme);
   applyI18N();
 
-  // Подтягиваем настройки клиента из API в фоне.
+  // Регистрируем синхронизатор избранного: state.js дёргает его при каждой мутации,
+  // мы пишем в БД через API.
+  setFavoritesSyncer(({ action, productId, size }) => {
+    if (action === 'add') api.addFavorite(productId, size);
+    else if (action === 'remove') api.removeFavorite(productId, size);
+  });
+
+  // Подтягиваем настройки клиента и избранное из БД в фоне.
   // Если БД отдала отличные настройки — применим и перерисуем текущую страницу.
-  // В local-режиме это мгновенно; в supabase — асинхронно (без блокировки UI).
   (async () => {
     try {
       const customer = await api.loadCustomer();
       const dbPrefs = customer?.preferences;
-      if (!dbPrefs) return;
-      const changed =
-        dbPrefs.lang !== state.settings.lang ||
-        dbPrefs.theme !== state.settings.theme ||
-        dbPrefs.currency !== state.settings.currency;
-      if (!changed) return;
-      state.settings = { ...state.settings, ...dbPrefs };
-      setLang(state.settings.lang);
-      applyTheme(state.settings.theme);
-      applyI18N();
-      // Перерисуем текущую страницу, чтобы применились язык/валюта/тема
-      const cur = router.current();
-      if (cur) router.navigate(cur, router.lastContext());
+      let needRerender = false;
+      if (dbPrefs) {
+        const changed =
+          dbPrefs.lang !== state.settings.lang ||
+          dbPrefs.theme !== state.settings.theme ||
+          dbPrefs.currency !== state.settings.currency;
+        if (changed) {
+          state.settings = { ...state.settings, ...dbPrefs };
+          setLang(state.settings.lang);
+          applyTheme(state.settings.theme);
+          applyI18N();
+          needRerender = true;
+        }
+      }
+
+      // Загружаем избранное из БД и сливаем с локальным.
+      // Стратегия: если в БД что-то есть — БД это «источник правды» (между устройствами).
+      // Локальные изменения, сделанные в этой сессии до прихода БД, останутся
+      // — мы их добавляем к серверному списку.
+      const dbFavs = await api.loadFavorites();
+      if (Array.isArray(dbFavs) && dbFavs.length > 0) {
+        // merge: уникальные по {productId, size}
+        const key = f => f.productId + '::' + (f.size || '');
+        const merged = new Map();
+        dbFavs.forEach(f => merged.set(key(f), f));
+        state.favorites.forEach(f => merged.set(key(f), f));
+        state.favorites = Array.from(merged.values());
+        saveState();
+        needRerender = true;
+      }
+
+      if (needRerender) {
+        const cur = router.current();
+        if (cur) router.navigate(cur, router.lastContext());
+      }
     } catch (e) {
-      console.warn('[bootstrap] customer load skipped:', e);
+      console.warn('[bootstrap] background load skipped:', e);
     }
   })();
 
@@ -79,6 +107,17 @@ async function bootstrap() {
   registerView('history',    renderHistory);
   registerView('settings',   renderSettings);
   registerView('admin',      renderAdmin);
+
+  // Подписка на обновление каталога (фоновое stale-while-revalidate).
+  // Если открыта главная/каталог/деталь/избранное/корзина — перерисуем,
+  // чтобы пользователь увидел свежие данные без ручной перезагрузки.
+  const VIEWS_WITH_PRODUCTS = new Set(['home', 'catalog', 'detail', 'favorites', 'cart', 'admin', 'history']);
+  api.onProductsChange(() => {
+    const cur = router.current();
+    if (VIEWS_WITH_PRODUCTS.has(cur)) {
+      router.navigate(cur, router.lastContext());
+    }
+  });
 
   // Лайтбокс
   setupLightbox();
@@ -99,15 +138,10 @@ async function bootstrap() {
   // Бейджи: обновляем после любого перехода и по событию из корзины/избранного
   const refreshBadges = () => updateBadges();
   window.addEventListener('cart:changed', refreshBadges);
-  // Каждые 300мс — простой способ держать бейджи свежими без шин:
   setInterval(refreshBadges, 300);
   refreshBadges();
 
-  // Правка #4: тап в любое место мини-аппа закрывает экранную клавиатуру.
-  // Если цель клика внутри — поля ввода, label (включая скрепку с скрытым file input),
-  // или кнопки (отправка, прикрепить) — клавиатуру не закрываем.
-  // Используем явный walk вверх, потому что Element.closest() на SVG-детях
-  // (наша иконка скрепки — SVG) не всегда работает в старых WebView Telegram.
+  // Тап в любое место мини-аппа закрывает экранную клавиатуру.
   const KEEP_FOCUS_SELECTOR = 'input, textarea, select, label, button, a, [contenteditable="true"]';
   function shouldKeepFocus(el) {
     let n = el;

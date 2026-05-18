@@ -34,6 +34,7 @@ const STRINGS = {
     cartTitle: 'Корзина', cartSub: 'Товары из наличия, готовые к заказу.',
     cartEmptyTitle: 'Корзина пуста', cartEmptyText: 'Добавьте что-нибудь из раздела «В наличии».',
     cartTotal: 'Итого', checkout: 'Оформить заказ',
+    orderPlaced: 'Заказ оформлен — менеджер свяжется с вами',
 
     guest: 'Гость',
     historyTitle: 'История заказов', historySub: 'Запросы и заказы',
@@ -134,6 +135,7 @@ const STRINGS = {
     cartTitle: 'Cart', cartSub: 'In-stock items ready to order.',
     cartEmptyTitle: 'Cart is empty', cartEmptyText: 'Add something from "In Stock".',
     cartTotal: 'Total', checkout: 'Place order',
+    orderPlaced: 'Order placed — the manager will contact you',
 
     guest: 'Guest',
     historyTitle: 'Order history', historySub: 'Requests and orders',
