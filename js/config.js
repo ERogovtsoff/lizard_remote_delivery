@@ -5,11 +5,11 @@
 // Чтобы подключить Supabase: создайте проект на supabase.com, выполните db/schema.sql,
 // затем смените режим на 'supabase' и заполните SUPABASE_URL / SUPABASE_ANON_KEY.
 export const CONFIG = {
-  API_MODE: 'local',
+  API_MODE: 'supabase',
 
   // Supabase (заполнить после создания проекта)
-  SUPABASE_URL: '',
-  SUPABASE_ANON_KEY: '',
+  SUPABASE_URL: 'https://nhnbprmyqqpwcofkaasi.supabase.co',
+  SUPABASE_ANON_KEY: 'sb_publishable_ZVpN2FT834wEYHHXkqW3mg_6Xi5Yeuq',
 
   // Локальный fallback каталога
   CATALOG_URL: './catalog.json',
