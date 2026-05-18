@@ -9,7 +9,7 @@ export const CONFIG = {
 
   // Supabase (заполнить после создания проекта)
   SUPABASE_URL: 'https://nhnbprmyqqpwcofkaasi.supabase.co',
-  SUPABASE_ANON_KEY: 'sb_publishable_ZVpN2FT834wEYHHXkqW3mg_6Xi5Yeuq',
+  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5obmJwcm15cXFwd2NvZmthYXNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwOTc4NzEsImV4cCI6MjA5NDY3Mzg3MX0.85NtVma5cplLuhm_fRHga3Z1ZlyNuFQBOqlxGeQggJ0',
 
   // Локальный fallback каталога
   CATALOG_URL: './catalog.json',
