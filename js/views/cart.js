@@ -5,7 +5,6 @@ import { state, changeCartQty, removeFromCart, cartKey, saveState } from '../sta
 import { api } from '../api/index.js';
 import { router } from '../router.js';
 import { showConfirm } from '../components/modal.js';
-import { showToast } from '../components/toast.js';
 import { haptic, openManagerChat } from '../tg.js';
 
 export async function renderCart() {
@@ -142,10 +141,7 @@ async function checkout(productsMap, totalUsd, totalByn) {
   saveState();
   haptic('success');
 
-  const result = await openManagerChat(message);
-  if (result === 'opened') showToast(t('msgCopied'), 3500);
-  else if (result === 'opened-no-copy') showToast(t('openingChat'));
-  else showToast(t('cannotOpenChat'));
+  openManagerChat(message);
 
   // Через секунду вернёмся в историю
   setTimeout(() => router.navigate('history'), 800);

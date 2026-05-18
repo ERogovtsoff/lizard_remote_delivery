@@ -87,14 +87,25 @@ async function bootstrap() {
   refreshBadges();
 
   // Правка #4: тап в любое место мини-аппа закрывает экранную клавиатуру.
-  // Если цель клика — НЕ инпут/textarea/select/label и НЕ кнопка-сабмит-формы,
-  // мы убираем фокус с активного инпута.
+  // Если цель клика внутри — поля ввода, label (включая скрепку с скрытым file input),
+  // или кнопки (отправка, прикрепить) — клавиатуру не закрываем.
+  // Используем явный walk вверх, потому что Element.closest() на SVG-детях
+  // (наша иконка скрепки — SVG) не всегда работает в старых WebView Telegram.
+  const KEEP_FOCUS_SELECTOR = 'input, textarea, select, label, button, a, [contenteditable="true"]';
+  function shouldKeepFocus(el) {
+    let n = el;
+    while (n && n !== document.body) {
+      if (n.matches && n.matches(KEEP_FOCUS_SELECTOR)) return true;
+      n = n.parentNode;
+    }
+    return false;
+  }
   document.addEventListener('pointerdown', (e) => {
     const active = document.activeElement;
     if (!active) return;
     const isTextField = active.matches?.('input, textarea, [contenteditable="true"]');
     if (!isTextField) return;
-    if (e.target.closest('input, textarea, select, label, [contenteditable="true"]')) return;
+    if (shouldKeepFocus(e.target)) return;
     try { active.blur(); } catch (err) {}
   }, true);
 

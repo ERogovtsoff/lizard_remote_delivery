@@ -41,11 +41,9 @@ html, body {
   -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
 }
-html, body { height: 100%; }
+html, body { height: auto; min-height: 100%; }
 body {
   min-height: 100%;
-  /* нижний паддинг под фикс-навигацию — чтобы на десктопе и мобильном не закрывался контент */
-  padding-bottom: var(--nav-h);
 }
 body.no-chrome { padding-bottom: 0; }
 body.chat-mode {
@@ -99,7 +97,9 @@ img { display: block; max-width: 100%; }
 }
 
 /* ========== Layout / Pages ========== */
-.page { display: none; padding: 16px; max-width: 720px; margin: 0 auto; }
+/* Правка: нижний паддинг — на самой странице (не на body), так как в Telegram WebView
+   на мобилке padding на body иногда обрезается viewport-логикой. Это надёжнее. */
+.page { display: none; padding: 16px 16px calc(var(--nav-h) + 16px); max-width: 720px; margin: 0 auto; }
 .page.active { display: block; }
 .page h2 { font-size: 22px; font-weight: 700; margin: 0 0 8px 0; }
 .page-sub { color: var(--text-secondary); margin: 0 0 20px 0; font-size: 14px; }

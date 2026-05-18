@@ -173,14 +173,7 @@ async function sendChatMessage() {
   document.getElementById('chatFileHint').classList.remove('show');
   haptic('success');
 
-  setTimeout(async () => {
-    const result = await openManagerChat(text);
-    if (result === 'failed') {
-      showToast(t('cannotOpenChat'));
-    } else if (result === 'opened') {
-      showToast(t('msgCopied'), 3500);
-    } else {
-      showToast(t('openingChat'));
-    }
+  setTimeout(() => {
+    openManagerChat(text);
   }, 350);
 }

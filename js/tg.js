@@ -56,27 +56,28 @@ export function showBackButton(show, onClick) {
 }
 
 // Открыть чат с менеджером с предзаполненным текстом.
-// ВАЖНО: параметр ?text= для приватных чатов Telegram не работает —
-// поэтому копируем текст в буфер обмена и открываем чат.
-// Возвращает 'opened' | 'opened-no-copy' | 'failed'
+//
+// Логика «гибрид»:
+//   1. Пробрасываем текст через ?text= в URL — это работает в Telegram Desktop
+//      и в некоторых веб-клиентах, и было основной механикой раньше.
+//   2. Параллельно тихо копируем текст в системный буфер — на тех клиентах,
+//      где ?text= игнорируется (часто на iOS/Android для приватных чатов),
+//      пользователь сможет вставить вручную долгим нажатием на поле ввода.
+//
+// Без тостов и подсказок — копирование работает на фоне.
 export async function openManagerChat(text) {
-  const url = `https://t.me/${CONFIG.MANAGER_USERNAME}`;
-
-  let copied = false;
+  // Тихая страховка в буфер (не ждём успех — это best-effort)
   if (text) {
-    copied = await copyToClipboard(text);
+    try { copyToClipboard(text); } catch (e) {}
   }
 
-  let opened = false;
+  const base = `https://t.me/${CONFIG.MANAGER_USERNAME}`;
+  const url = text ? `${base}?text=${encodeURIComponent(text)}` : base;
+
   if (tg?.openTelegramLink) {
-    try { tg.openTelegramLink(url); opened = true; } catch (e) {}
+    try { tg.openTelegramLink(url); return; } catch (e) {}
   }
-  if (!opened) {
-    try { window.open(url, '_blank'); opened = true; } catch (e) {}
-  }
-
-  if (!opened) return 'failed';
-  return copied ? 'opened' : 'opened-no-copy';
+  try { window.open(url, '_blank'); } catch (e) {}
 }
 
 // Подписаться на смену темы Telegram

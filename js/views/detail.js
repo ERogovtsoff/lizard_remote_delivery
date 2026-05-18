@@ -70,12 +70,9 @@ export async function renderDetail(opts = {}) {
   // Размеры
   if (prod.sizes && prod.sizes.length > 0) {
     renderSizes(prod);
-    document.getElementById('askSizesBtn').onclick = async () => {
+    document.getElementById('askSizesBtn').onclick = () => {
       const msg = `${t('askOtherSizesMsg')} "${p.name}"?`;
-      const result = await openManagerChat(msg);
-      if (result === 'opened') showToast(t('msgCopied'), 3500);
-      else if (result === 'opened-no-copy') showToast(t('openingChat'));
-      else showToast(t('cannotOpenChat'));
+      openManagerChat(msg);
     };
   }
 
