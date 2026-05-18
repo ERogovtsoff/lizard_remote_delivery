@@ -22,14 +22,14 @@ export function renderChat() {
         <div class="chat-file-hint" id="chatFileHint">${escapeHtml(t('chatFileHint'))}</div>
         <div class="chat-attached" id="chatAttached"></div>
         <div class="chat-input-row">
-          <label class="chat-input-icon-btn" aria-label="Attach">
+          <button type="button" class="chat-input-icon-btn" id="chatAttachBtn" aria-label="Attach">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-            <input type="file" id="chatAttachInput" accept="image/*,application/pdf,.doc,.docx" multiple>
-          </label>
+          </button>
+          <input type="file" id="chatAttachInput" accept="image/*,application/pdf,.doc,.docx" multiple style="display:none">
           <div class="chat-input-field">
             <textarea id="chatInput" rows="1" placeholder="${escapeHtml(t('chatInputPlaceholder'))}"></textarea>
           </div>
-          <button class="chat-input-icon-btn send" id="chatSendBtn" aria-label="Send" disabled>
+          <button type="button" class="chat-input-icon-btn send" id="chatSendBtn" aria-label="Send" disabled>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           </button>
         </div>
@@ -62,8 +62,36 @@ function setupChatHandlers() {
     input.style.height = Math.min(input.scrollHeight, 100) + 'px';
     updateSendBtn();
   });
+
+  // Кнопка-скрепка: открываем file picker программно.
+  // КЛЮЧЕВОЙ МОМЕНТ: preventDefault на pointerdown/mousedown/touchstart предотвращает
+  // фокус-перехват кнопкой — благодаря этому textarea НЕ теряет фокус,
+  // а значит экранная клавиатура НЕ закрывается при тапе по скрепке.
+  const attachBtn = document.getElementById('chatAttachBtn');
+  const attachInput = document.getElementById('chatAttachInput');
+  const preventBlur = (e) => e.preventDefault();
+  attachBtn.addEventListener('pointerdown', preventBlur);
+  attachBtn.addEventListener('mousedown', preventBlur);
+  attachBtn.addEventListener('touchstart', preventBlur, { passive: false });
+  attachBtn.addEventListener('click', () => {
+    // Запоминаем что textarea был в фокусе ДО клика
+    const wasFocused = document.activeElement === input;
+    attachInput.click();
+    // Страховка: если по какой-то причине браузер всё же снял фокус (бывает в iOS WebView
+    // при появлении системного file picker), возвращаем его сразу.
+    if (wasFocused) {
+      // requestAnimationFrame даёт браузеру обработать его внутренние эффекты, потом мы
+      // восстанавливаем фокус — это в большинстве случаев не дает клавиатуре уйти
+      requestAnimationFrame(() => {
+        if (document.activeElement !== input) {
+          try { input.focus({ preventScroll: true }); } catch (e) { input.focus(); }
+        }
+      });
+    }
+  });
+
   document.getElementById('chatSendBtn').onclick = sendChatMessage;
-  document.getElementById('chatAttachInput').addEventListener('change', (e) => {
+  attachInput.addEventListener('change', (e) => {
     const files = Array.from(e.target.files || []);
     files.forEach(file => {
       if (file.type.startsWith('image/')) {

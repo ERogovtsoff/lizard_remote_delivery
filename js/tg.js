@@ -1,7 +1,6 @@
 // Обёртка над window.Telegram.WebApp с безопасными вызовами.
 // Никаких enableClosingConfirmation — клиент сам решает когда выйти.
 import { CONFIG } from './config.js';
-import { copyToClipboard } from './utils.js';
 
 export const tg = window.Telegram?.WebApp || null;
 
@@ -56,21 +55,10 @@ export function showBackButton(show, onClick) {
 }
 
 // Открыть чат с менеджером с предзаполненным текстом.
-//
-// Логика «гибрид»:
-//   1. Пробрасываем текст через ?text= в URL — это работает в Telegram Desktop
-//      и в некоторых веб-клиентах, и было основной механикой раньше.
-//   2. Параллельно тихо копируем текст в системный буфер — на тех клиентах,
-//      где ?text= игнорируется (часто на iOS/Android для приватных чатов),
-//      пользователь сможет вставить вручную долгим нажатием на поле ввода.
-//
-// Без тостов и подсказок — копирование работает на фоне.
-export async function openManagerChat(text) {
-  // Тихая страховка в буфер (не ждём успех — это best-effort)
-  if (text) {
-    try { copyToClipboard(text); } catch (e) {}
-  }
-
+// Логика как была до экспериментов с буфером обмена:
+// просто открываем https://t.me/USERNAME?text=... и Telegram сам подставляет текст
+// в поле ввода чата. Работает на Telegram Desktop, веб-клиентах и iOS.
+export function openManagerChat(text) {
   const base = `https://t.me/${CONFIG.MANAGER_USERNAME}`;
   const url = text ? `${base}?text=${encodeURIComponent(text)}` : base;
 
