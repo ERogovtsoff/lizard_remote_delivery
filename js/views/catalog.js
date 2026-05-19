@@ -5,7 +5,6 @@ import { api } from '../api/index.js';
 import { createSearchBar, matches } from '../components/search.js';
 import { createProductGrid } from '../components/product-grid.js';
 import { createSkeletonGrid } from '../components/skeleton.js';
-import { attachPullToRefresh } from '../components/pull-to-refresh.js';
 
 let searchQuery = '';
 let grid = null;
@@ -39,11 +38,6 @@ export async function renderCatalog() {
   const container = document.getElementById('catalogGridContainer');
   grid = createProductGrid({ source: 'catalog' });
   container.appendChild(grid.element);
-
-  attachPullToRefresh(page, async () => {
-    allProducts = await api.refreshProducts();
-    refreshGrid();
-  });
 
   const cached = await api.loadProducts();
   if (!cached || cached.length === 0) {

@@ -14,7 +14,6 @@ import { router } from '../router.js';
 import { createSearchBar, matches } from '../components/search.js';
 import { createProductGrid } from '../components/product-grid.js';
 import { createSkeletonGrid } from '../components/skeleton.js';
-import { attachPullToRefresh } from '../components/pull-to-refresh.js';
 
 let searchQuery = '';
 let grid = null;
@@ -62,12 +61,6 @@ export async function renderHome() {
   // Создаём grid единожды (между рендерами он переиспользует свои карточки)
   grid = createProductGrid({ source: 'home' });
   container.appendChild(grid.element);
-
-  // Pull-to-refresh
-  attachPullToRefresh(page, async () => {
-    allProducts = await api.refreshProducts();
-    refreshGrid();
-  });
 
   // Если в кэше ничего нет — показываем skeleton до прихода данных
   const cached = await api.loadProducts();
