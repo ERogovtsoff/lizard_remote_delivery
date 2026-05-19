@@ -8,7 +8,7 @@ import { createCarousel } from '../components/carousel.js';
 import { openLightbox } from '../components/lightbox.js';
 import { showConfirm } from '../components/modal.js';
 import { showToast } from '../components/toast.js';
-import { haptic, openManagerChat } from '../tg.js';
+import { haptic, openBotChat } from '../tg.js';
 
 let selectedSize = null;
 
@@ -67,8 +67,8 @@ export async function renderDetail(opts = {}) {
   if (prod.sizes && prod.sizes.length > 0) {
     renderSizes(prod);
     document.getElementById('askSizesBtn').onclick = () => {
-      const msg = `${t('askOtherSizesMsg')} "${p.name}"?`;
-      openManagerChat(msg);
+      haptic('light');
+      openBotChat('ask_' + prod.id);
     };
   }
 

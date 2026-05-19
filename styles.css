@@ -404,6 +404,16 @@ img { display: block; max-width: 100%; }
   padding: 0; max-height: 100px; overflow-y: auto;
 }
 
+/* Фейк-поле для псевдо-чата: тап открывает чат с ботом. Курсор не показываем. */
+.chat-input-row-fake { cursor: pointer; }
+.chat-input-row-fake:active { opacity: 0.7; }
+.chat-input-field-fake {
+  color: var(--hint);
+  user-select: none;
+  -webkit-user-select: none;
+  font-size: 15px;
+}
+
 /* ========== Detail ========== */
 .product-carousel {
   position: relative; width: 100%; aspect-ratio: 1;

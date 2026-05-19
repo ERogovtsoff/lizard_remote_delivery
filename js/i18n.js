@@ -21,13 +21,9 @@ const STRINGS = {
     catalogTitle: 'В наличии', catalogSub: 'Товары, которые можно заказать прямо сейчас.',
 
     chatGreeting1: 'Здравствуйте! 👋',
-    chatGreeting2: 'Я ваш менеджер из магазина. Расскажите, что вы хотели бы заказать — название, описание, ссылку или фото. Я найду и привезу.',
-    chatGreeting3: 'Опишите вещь как удобно — а лучше пришлите ссылку или фото.',
+    chatGreeting2: 'Расскажите, что вы хотели бы заказать — название, описание, ссылку или фото. Я найду и привезу.',
+    chatGreeting3: 'Нажмите на поле ввода, чтобы продолжить диалог. Там можно отправить сообщение и приложить фото.',
     chatInputPlaceholder: 'Напишите сообщение…',
-    chatNothingToSend: 'Сначала напишите сообщение',
-    chatAttachInfo: 'Фото и файлы можно прикрепить в чате с менеджером после отправки сообщения',
-    msgSentFallback: 'Открываю чат с менеджером. Если текст не подставится — он скопирован в буфер, вставьте долгим нажатием на поле ввода.',
-    msgSentFailed: 'Не удалось отправить — попробуйте ещё раз или напишите менеджеру @rogovtsoff вручную',
 
     favTitle: 'Избранное', favSub: 'Товары, которые вы сохранили.',
     favEmptyTitle: 'Пока пусто', favEmptyText: 'Добавляйте товары в избранное, чтобы вернуться к ним позже.',
@@ -35,6 +31,7 @@ const STRINGS = {
     cartEmptyTitle: 'Корзина пуста', cartEmptyText: 'Добавьте что-нибудь из раздела «В наличии».',
     cartTotal: 'Итого', checkout: 'Оформить заказ',
     orderPlaced: 'Заказ оформлен — менеджер свяжется с вами',
+    orderFailed: 'Не удалось оформить заказ. Попробуйте ещё раз.',
 
     guest: 'Гость',
     profileSpent: 'Выкуплено на сумму',
@@ -55,7 +52,6 @@ const STRINGS = {
     sizeChart: 'Выберите размер', description: 'Описание',
     selectSize: 'Выберите размер',
     askOtherSizes: 'Уточнить наличие других размеров',
-    askOtherSizesMsg: 'Здравствуйте! Подскажите, есть ли в наличии другие размеры товара',
     addedToCart: 'Добавлено в корзину', removedFromCart: 'Убрано из корзины',
     addedToFav: 'Добавлено в избранное', removedFromFav: 'Убрано из избранного',
     typeRequest: 'Запрос на подбор', typeOrder: 'Заказ из наличия',
@@ -125,13 +121,9 @@ const STRINGS = {
     catalogTitle: 'In Stock', catalogSub: 'Items you can order right now.',
 
     chatGreeting1: 'Hi! 👋',
-    chatGreeting2: 'I am your manager from the shop. Tell me what you would like to order — name, description, link or photo. I will find and bring it.',
-    chatGreeting3: 'Describe the item however you like — or even better, send a link or a photo.',
+    chatGreeting2: 'Tell us what you would like to order — name, description, link or photo. We will find it and bring it.',
+    chatGreeting3: 'Tap the input field to continue the conversation. You can send messages and attach photos there.',
     chatInputPlaceholder: 'Type a message…',
-    chatNothingToSend: 'Write a message first',
-    chatAttachInfo: 'You can attach photos and files in the chat with the manager after sending the message',
-    msgSentFallback: 'Opening chat with the manager. If the text is not pasted automatically — it is in your clipboard, paste with a long-press on the input.',
-    msgSentFailed: 'Failed to send — try again or write to @rogovtsoff manually',
 
     favTitle: 'Favorites', favSub: 'Items you saved.',
     favEmptyTitle: 'Nothing here yet', favEmptyText: 'Save items to favorites to come back to them later.',
@@ -139,6 +131,7 @@ const STRINGS = {
     cartEmptyTitle: 'Cart is empty', cartEmptyText: 'Add something from "In Stock".',
     cartTotal: 'Total', checkout: 'Place order',
     orderPlaced: 'Order placed — the manager will contact you',
+    orderFailed: 'Failed to place the order. Please try again.',
 
     guest: 'Guest',
     profileSpent: 'Total bought',
@@ -159,7 +152,6 @@ const STRINGS = {
     sizeChart: 'Select size', description: 'Description',
     selectSize: 'Select size',
     askOtherSizes: 'Ask about other sizes',
-    askOtherSizesMsg: 'Hi! Do you have other sizes available for the item',
     addedToCart: 'Added to cart', removedFromCart: 'Removed from cart',
     addedToFav: 'Added to favorites', removedFromFav: 'Removed from favorites',
     typeRequest: 'Pickup request', typeOrder: 'Order from stock',

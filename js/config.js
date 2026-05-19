@@ -14,6 +14,11 @@ export const CONFIG = {
   MANAGER_USERNAME: 'rogovtsoff',
   ADMIN_USERNAMES: ['rogovtsoff'],
 
+  // Имя бота, через которого ведётся коммуникация между клиентом и менеджером.
+  // Бот должен быть запущен (см. bot.py) и менеджер должен сделать /start.
+  // ВАЖНО: укажите имя БЕЗ @
+  BOT_USERNAME: 'lizard_remote_delivery_bot',
+
   STORAGE: {
     STATE: 'tg_shop_state_v5',
     CATALOG: 'tg_shop_catalog_v5',

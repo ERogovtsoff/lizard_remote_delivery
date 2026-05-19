@@ -6,7 +6,7 @@ import { api } from '../api/index.js';
 import { router } from '../router.js';
 import { showConfirm } from '../components/modal.js';
 import { showToast } from '../components/toast.js';
-import { haptic, sendToBot } from '../tg.js';
+import { haptic, openBotChat } from '../tg.js';
 
 export async function renderCart() {
   const page = document.getElementById('page-cart');
@@ -14,31 +14,34 @@ export async function renderCart() {
     <h2>${escapeHtml(t('cartTitle'))}</h2>
     <p class="page-sub">${escapeHtml(t('cartSub'))}</p>
     <div id="cartList"></div>
-    <div id="cartTotal"></div>
     <div class="empty-state" id="cartEmpty" style="display:none">
       <div class="icon">🛒</div>
       <h3>${escapeHtml(t('cartEmptyTitle'))}</h3>
       <p>${escapeHtml(t('cartEmptyText'))}</p>
     </div>
+    <div id="cartTotalBox"></div>
   `;
+
   const products = await api.loadProducts();
   const map = new Map(products.map(p => [p.id, p]));
 
   function render() {
     const list = document.getElementById('cartList');
-    const totalBox = document.getElementById('cartTotal');
     const empty = document.getElementById('cartEmpty');
-    const lang = getLang();
-    const cur = state.settings.currency;
+    const totalBox = document.getElementById('cartTotalBox');
+    list.innerHTML = '';
 
-    list.innerHTML = ''; totalBox.innerHTML = '';
     if (state.cart.length === 0) {
       empty.style.display = 'block';
+      totalBox.innerHTML = '';
       return;
     }
     empty.style.display = 'none';
 
     let totalUsd = 0, totalByn = 0;
+    const lang = getLang();
+    const cur = state.settings.currency;
+
     state.cart.forEach(item => {
       const prod = map.get(item.productId);
       if (!prod) return;
@@ -68,31 +71,23 @@ export async function renderCart() {
       row.querySelectorAll('.cart-item-clickable').forEach(el => {
         el.onclick = () => router.navigate('detail', { productId: prod.id, source: 'cart' });
       });
-      row.querySelector('[data-act="dec"]').onclick = () => {
-        if (item.qty === 1) {
-          showConfirm({
-            icon: '🛒',
-            title: t('confirmRemoveCartTitle'),
-            text: t('confirmRemoveCartText'),
-            yes: t('confirmYes'), no: t('confirmNo'), danger: true,
-            onYes: () => { removeFromCart(item.productId, item.size); haptic('light'); render(); }
-          });
-        } else {
-          changeCartQty(item.productId, item.size, -1); render();
-        }
-      };
-      row.querySelector('[data-act="inc"]').onclick = () => {
-        changeCartQty(item.productId, item.size, +1); render();
-      };
-      row.querySelector('[data-act="rm"]').onclick = () => {
-        showConfirm({
-          icon: '🛒',
-          title: t('confirmRemoveCartTitle'),
-          text: t('confirmRemoveCartText'),
-          yes: t('confirmYes'), no: t('confirmNo'), danger: true,
-          onYes: () => { removeFromCart(item.productId, item.size); haptic('light'); render(); }
-        });
-      };
+
+      row.querySelectorAll('[data-act]').forEach(btn => {
+        btn.onclick = () => {
+          const act = btn.getAttribute('data-act');
+          if (act === 'inc') { changeCartQty(item.productId, item.size, 1); render(); haptic('light'); }
+          else if (act === 'dec') { changeCartQty(item.productId, item.size, -1); render(); haptic('light'); }
+          else if (act === 'rm') {
+            showConfirm({
+              icon: '🗑️',
+              title: t('confirmRemoveCartTitle'),
+              text: t('confirmRemoveCartText'),
+              yes: t('confirmYes'), no: t('confirmNo'), danger: true,
+              onYes: () => { removeFromCart(item.productId, item.size); render(); haptic('warning'); }
+            });
+          }
+        };
+      });
       list.appendChild(row);
     });
 
@@ -104,79 +99,39 @@ export async function renderCart() {
       </div>
       <button class="primary-btn" id="checkoutBtn">${escapeHtml(t('checkout'))}</button>
     `;
-    document.getElementById('checkoutBtn').onclick = () => checkout(map, totalUsd, totalByn);
+    document.getElementById('checkoutBtn').onclick = () => checkout(totalUsd, totalByn);
   }
   render();
 }
 
-async function checkout(productsMap, totalUsd, totalByn) {
+async function checkout(totalUsd, totalByn) {
   const cur = state.settings.currency;
-  const lang = getLang();
   const items = state.cart.map(c => ({ productId: c.productId, size: c.size, qty: c.qty }));
 
-  // Сохраняем заказ
-  await api.addOrder({
-    items,
-    total_usd: totalUsd,
-    total_byn: totalByn,
-    currency: cur,
-  });
+  // 1. Сохраняем заказ в БД и получаем его id
+  let order;
+  try {
+    order = await api.addOrder({
+      items,
+      total_usd: totalUsd,
+      total_byn: totalByn,
+      currency: cur,
+    });
+  } catch (e) {
+    showToast(t('orderFailed'), 4000);
+    return;
+  }
 
-  // Полные позиции для бота (бот ожидает name_ru/name_en/price_usd/price_byn/qty/size)
-  const itemsForBot = state.cart.map(c => {
-    const prod = productsMap.get(c.productId);
-    return {
-      id: c.productId,
-      name_ru: prod?.name_ru || '',
-      name_en: prod?.name_en || '',
-      size: c.size || null,
-      qty: c.qty,
-      price_usd: prod?.price_usd || 0,
-      price_byn: prod?.price_byn || 0,
-    };
-  });
-
-  const mainTotal = cur === 'USD' ? totalUsd : totalByn;
-
-  // Текст для fallback-режима (когда бот недоступен)
-  const lines = [t('orderMsgHeader'), ''];
-  state.cart.forEach(c => {
-    const prod = productsMap.get(c.productId);
-    if (!prod) return;
-    const p = localizedProduct(prod, cur);
-    const sz = c.size ? ` (${c.size})` : '';
-    lines.push(`• ${p.name}${sz} × ${c.qty} — ${formatPrice(p.price * c.qty, cur, lang)}`);
-  });
-  lines.push('');
-  lines.push(`${t('orderMsgTotal')}: ${formatPrice(mainTotal, cur, lang)}`);
-  const fallbackText = lines.join('\n');
-
-  // Чистим корзину локально + в БД одной операцией (через syncer).
+  // 2. Чистим корзину
   clearLocalCart();
   haptic('success');
 
-  // Сразу даём пользователю фидбек и уводим в историю, чтобы он видел свой заказ.
-  // Это работает одинаково независимо от того, сработает sendData или нет:
-  //   - Если sendData сработает → Telegram сам закроет апку поверх (наш переход
-  //     в историю в этом случае не виден, но и не мешает)
-  //   - Если нет → пользователь остаётся в апке на странице «История» и видит
-  //     свой только что созданный заказ
-  showToast(t('orderPlaced'), 3000);
-  router.navigate('history');
-
-  // Контракт payload — то, что ожидает bot.py (см. handle_order)
-  const payload = {
-    type: 'order',
-    items: itemsForBot,
-    total: mainTotal,
-    currency: cur,
-  };
-  const result = await sendToBot(payload, fallbackText);
-
-  if (result.mode === 'fallback') {
-    showToast(t('msgSentFallback'), 5000);
-  } else if (result.mode === 'failed') {
-    showToast(t('msgSentFailed'), 4000);
+  // 3. Открываем чат с ботом — бот покажет резюме заказа клиенту и уведомит менеджера
+  if (order?.dbId) {
+    openBotChat('order_' + order.dbId);
+  } else {
+    // Если по каким-то причинам dbId не пришёл — просто покажем тост и уведём в историю
+    showToast(t('orderPlaced'), 3000);
+    router.navigate('history');
   }
-  // mode === 'sent' → Telegram закроет апку, ничего больше не делаем
 }

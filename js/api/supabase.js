@@ -393,6 +393,7 @@ export async function addOrder(order) {
 
     return {
       id: 'o' + newOrder.id,
+      dbId: newOrder.id,             // raw UUID — нужен для deep-link в бот
       type: 'order',
       date: newOrder.created_at,
       status: newOrder.status,

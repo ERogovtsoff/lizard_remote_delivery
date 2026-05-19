@@ -1,25 +1,38 @@
 """
-Telegram-бот для мини-аппа «Магазин одежды + заказ из Китая».
-Стек: Python 3.10+, aiogram 3.x.
+Telegram-бот «Магазин одежды + заказ из Китая».
+Архитектура: бот-посредник между клиентами и менеджером.
+
+Стек: Python 3.10+, aiogram 3.x, httpx.
 
 Что делает бот:
-1. На команду /start показывает кнопку «Открыть», которая открывает мини-апп.
-2. Принимает данные от мини-аппа (WebAppData) — запросы на подбор и заказы из наличия.
-3. Пересылает их менеджеру (@rogovtsoff) с указанием юзернейма клиента.
-4. После запроса с прикреплёнными фото просит клиента переслать фото в чат —
-   все фото/документы от клиента пересылаются менеджеру с привязкой к запросу.
+1. Команда /start без параметров — показывает приветствие и кнопку «Открыть магазин» (мини-апп).
+2. Команда /start request — клиент пришёл из апки оформить общий запрос на подбор.
+   Бот пишет клиенту приветствие и ждёт сообщения, чтобы переслать менеджеру.
+3. Команда /start ask_<product_id> — клиент пришёл уточнить размеры конкретного товара.
+   Бот читает товар из Supabase, шлёт клиенту контекст («вы интересуетесь товаром X»)
+   и параллельно уведомляет менеджера.
+4. Команда /start order_<order_id> — клиент только что оформил заказ в апке.
+   Бот читает заказ из Supabase, шлёт клиенту резюме заказа и уведомляет менеджера.
+5. Все обычные сообщения от клиента (текст, фото, документы) пересылаются менеджеру
+   с заголовком «От @username» — это reply-target.
+6. Когда менеджер делает reply на сообщение в своём чате с ботом, бот находит
+   соответствующего клиента по message_id и пересылает ему ответ.
+
+Менеджер один. У него один чат с ботом — все клиенты в одном потоке. Контекст конкретного
+клиента понятен по заголовку входящего сообщения, ответ адресуется через reply.
 
 Установка:
-    pip install aiogram
+    pip install aiogram httpx
 
 Запуск:
-    export BOT_TOKEN="123:ABC..."        # токен от @BotFather
+    export BOT_TOKEN="123:ABC..."
     export WEBAPP_URL="https://your.site/index.html"
-    export MANAGER_USERNAME="rogovtsoff"  # без @
+    export MANAGER_USERNAME="rogovtsoff"      # без @
+    export SUPABASE_URL="https://xxx.supabase.co"
+    export SUPABASE_ANON_KEY="eyJ..."
     python bot.py
 
-Важно: чтобы бот мог писать менеджеру, менеджер должен ОДИН РАЗ написать боту
-команду /start. Бот запомнит его chat_id в файле manager_chat.txt.
+Менеджер должен один раз отправить /start боту — бот запомнит его chat_id.
 """
 
 import asyncio
@@ -27,49 +40,45 @@ import html
 import json
 import logging
 import os
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+import httpx
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, CommandObject
 from aiogram.types import (
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
     KeyboardButton,
     Message,
     ReplyKeyboardMarkup,
-    ReplyKeyboardRemove,
     WebAppInfo,
 )
+
 
 # ============================ КОНФИГ ============================
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 WEBAPP_URL = os.getenv("WEBAPP_URL", "https://example.com/index.html")
 MANAGER_USERNAME = os.getenv("MANAGER_USERNAME", "rogovtsoff").lstrip("@").lower()
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY", "")
 
-# Файл для хранения chat_id менеджера (заполняется автоматически, когда он напишет /start)
 MANAGER_FILE = Path("manager_chat.txt")
-
-# Файл для хранения "последнего запроса с ожидаемыми фото" — клиент → request_id
-# чтобы пересылать фото менеджеру с правильной привязкой
-PENDING_FILE = Path("pending_photos.json")
+# message_id (в чате менеджера) → tg_id клиента. Нужно для reply-routing.
+ROUTING_FILE = Path("routing.json")
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 log = logging.getLogger("shop-bot")
-
 router = Router()
+
 
 # ========================== ХРАНИЛИЩЕ ==========================
 
 def get_manager_chat_id() -> Optional[int]:
-    """Прочитать сохранённый chat_id менеджера."""
     if MANAGER_FILE.exists():
         try:
             return int(MANAGER_FILE.read_text().strip())
@@ -79,65 +88,112 @@ def get_manager_chat_id() -> Optional[int]:
 
 
 def set_manager_chat_id(chat_id: int) -> None:
-    """Сохранить chat_id менеджера."""
     MANAGER_FILE.write_text(str(chat_id))
 
 
-def load_pending() -> dict:
-    """Загрузить {client_chat_id: {'request_id': ..., 'expires_at': ts}}."""
-    if PENDING_FILE.exists():
+def load_routing() -> dict:
+    """{ manager_message_id (str): client_tg_id (int) }"""
+    if ROUTING_FILE.exists():
         try:
-            return json.loads(PENDING_FILE.read_text())
+            return json.loads(ROUTING_FILE.read_text())
         except (json.JSONDecodeError, OSError):
             return {}
     return {}
 
 
-def save_pending(data: dict) -> None:
-    PENDING_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+def save_routing(data: dict) -> None:
+    # Ограничиваем размер файла: храним последние 500 записей
+    if len(data) > 500:
+        keys = sorted(data.keys(), key=int)[-500:]
+        data = {k: data[k] for k in keys}
+    ROUTING_FILE.write_text(json.dumps(data, ensure_ascii=False))
 
 
-def set_pending(client_chat_id: int, request_id: str) -> None:
-    """Запомнить, что от клиента ожидаем фото к конкретному запросу."""
-    data = load_pending()
-    data[str(client_chat_id)] = {
-        "request_id": request_id,
-        "expires_at": int(datetime.now().timestamp()) + 3600,  # 1 час
+def add_routing(manager_msg_id: int, client_tg_id: int) -> None:
+    data = load_routing()
+    data[str(manager_msg_id)] = client_tg_id
+    save_routing(data)
+
+
+def get_routed_client(manager_msg_id: int) -> Optional[int]:
+    return load_routing().get(str(manager_msg_id))
+
+
+# ========================== SUPABASE ===========================
+
+def supabase_ready() -> bool:
+    return bool(SUPABASE_URL and SUPABASE_KEY)
+
+
+async def supabase_get(path: str, params: dict = None) -> Optional[list]:
+    """GET-запрос к Supabase REST API. Возвращает список объектов или None."""
+    if not supabase_ready():
+        log.warning("Supabase не настроен — пропускаю запрос %s", path)
+        return None
+    url = f"{SUPABASE_URL}/rest/v1/{path}"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Accept": "application/json",
     }
-    save_pending(data)
-
-
-def pop_pending(client_chat_id: int) -> Optional[str]:
-    """Получить request_id ожидающих фото (но не удалять — за окно в 1 час можно слать несколько)."""
-    data = load_pending()
-    rec = data.get(str(client_chat_id))
-    if not rec:
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(url, headers=headers, params=params or {})
+            if r.status_code >= 400:
+                log.error("Supabase %s failed: %s %s", path, r.status_code, r.text[:200])
+                return None
+            return r.json()
+    except Exception as e:
+        log.exception("Supabase request error: %s", e)
         return None
-    if rec.get("expires_at", 0) < int(datetime.now().timestamp()):
-        # окно истекло — чистим
-        data.pop(str(client_chat_id), None)
-        save_pending(data)
+
+
+async def fetch_product(product_id: str) -> Optional[dict]:
+    rows = await supabase_get("products", {"id": f"eq.{product_id}", "limit": "1"})
+    return rows[0] if rows else None
+
+
+async def fetch_order(order_id: str) -> Optional[dict]:
+    """Загружает заказ + позиции + product-данные позиций."""
+    # 1. сам заказ
+    rows = await supabase_get("orders", {"id": f"eq.{order_id}", "limit": "1"})
+    if not rows:
         return None
-    return rec.get("request_id")
+    order = rows[0]
 
+    # 2. позиции
+    items = await supabase_get("order_items", {"order_id": f"eq.{order_id}"})
+    order["items"] = items or []
 
-def clear_pending(client_chat_id: int) -> None:
-    data = load_pending()
-    if data.pop(str(client_chat_id), None) is not None:
-        save_pending(data)
+    # 3. данные по товарам (для имени)
+    if order["items"]:
+        ids = list({it["product_id"] for it in order["items"]})
+        # IN-фильтр в PostgREST: in.("a","b","c")
+        in_clause = "in.(" + ",".join(f'"{i}"' for i in ids) + ")"
+        prods = await supabase_get("products", {"id": in_clause})
+        prod_map = {p["id"]: p for p in (prods or [])}
+        for it in order["items"]:
+            it["_product"] = prod_map.get(it["product_id"])
+
+    return order
 
 
 # ========================== УТИЛИТЫ ============================
 
 def client_mention(message: Message) -> str:
-    """HTML-упоминание клиента (никогда не падает)."""
     user = message.from_user
     if user is None:
         return "Аноним"
+    name = user.full_name or "Пользователь"
     if user.username:
-        return f"@{user.username}"
-    full_name = user.full_name or "Пользователь"
-    return f'<a href="tg://user?id={user.id}">{html.escape(full_name)}</a>'
+        return f"@{user.username} ({html.escape(name)})"
+    return f'<a href="tg://user?id={user.id}">{html.escape(name)}</a>'
+
+
+def product_name(prod: dict) -> str:
+    if not prod:
+        return "—"
+    return prod.get("name_ru") or prod.get("name_en") or prod.get("id") or "—"
 
 
 def fmt_price(amount: float, currency: str) -> str:
@@ -147,38 +203,69 @@ def fmt_price(amount: float, currency: str) -> str:
     return f"${s}" if currency == "USD" else f"{s} BYN"
 
 
-def short_id() -> str:
-    """Короткий идентификатор для запроса (для привязки фото)."""
-    return datetime.now().strftime("%y%m%d%H%M%S")
+async def notify_manager(bot: Bot, text: str, client_tg_id: int) -> None:
+    """
+    Отправить сообщение менеджеру и запомнить, что reply на него
+    адресуется конкретному клиенту.
+    """
+    manager_chat = get_manager_chat_id()
+    if manager_chat is None:
+        log.warning("Manager chat_id не задан — менеджер должен сделать /start")
+        return
+    try:
+        sent = await bot.send_message(manager_chat, text)
+        add_routing(sent.message_id, client_tg_id)
+    except Exception as e:
+        log.exception("Failed to notify manager: %s", e)
 
 
-# ========================== ХЕНДЛЕРЫ ===========================
+# ============================ /start ===========================
+
+@router.message(CommandStart(deep_link=True))
+async def cmd_start_deeplink(message: Message, command: CommandObject, bot: Bot) -> None:
+    """
+    /start <param> — клиент пришёл из апки с конкретным контекстом.
+    Поддерживаем: request, ask_<product_id>, order_<order_id>.
+    """
+    param = (command.args or "").strip()
+    user = message.from_user
+    if not user:
+        return
+
+    if param == "request":
+        await handle_start_request(message, bot)
+    elif param.startswith("ask_"):
+        product_id = param[len("ask_"):]
+        await handle_start_ask(message, bot, product_id)
+    elif param.startswith("order_"):
+        order_id = param[len("order_"):]
+        await handle_start_order(message, bot, order_id)
+    else:
+        # Неизвестный параметр — обычное приветствие
+        await send_welcome(message)
+
 
 @router.message(CommandStart())
 async def cmd_start(message: Message) -> None:
-    """
-    /start — две роли:
-    - если пишет менеджер (@rogovtsoff) — запоминаем его chat_id
-    - всем остальным показываем кнопку «Открыть» с мини-аппом
-    """
+    """/start без параметров — приветствие + кнопка магазина. Для менеджера — регистрация."""
     user = message.from_user
     username = (user.username or "").lower() if user else ""
 
-    # Если это менеджер — запоминаем его chat_id, чтобы потом писать ему
     if username and username == MANAGER_USERNAME:
         set_manager_chat_id(message.chat.id)
         await message.answer(
             "✅ Вы зарегистрированы как менеджер.\n"
-            f"Все запросы и заказы из мини-аппа будут приходить сюда.\n\n"
-            f"<i>Чат ID: {message.chat.id}</i>",
+            f"Все запросы клиентов будут приходить сюда.\n"
+            f"Чтобы ответить — делайте <b>reply</b> на сообщение клиента.\n\n"
+            f"<i>Chat ID: {message.chat.id}</i>",
         )
         return
+    await send_welcome(message)
 
-    # Обычный пользователь — даём кнопку «Открыть»
+
+async def send_welcome(message: Message) -> None:
     kb = ReplyKeyboardMarkup(
-        keyboard=[[
-            KeyboardButton(text="🛍 Открыть магазин", web_app=WebAppInfo(url=WEBAPP_URL))
-        ]],
+        keyboard=[[KeyboardButton(text="🛍 Открыть магазин", web_app=WebAppInfo(url=WEBAPP_URL))]],
         resize_keyboard=True,
     )
     await message.answer(
@@ -189,204 +276,206 @@ async def cmd_start(message: Message) -> None:
     )
 
 
-@router.message(F.web_app_data)
-async def handle_web_app_data(message: Message, bot: Bot) -> None:
-    """Приём данных от мини-аппа: запросы на подбор и заказы из наличия."""
-    raw = message.web_app_data.data
-    log.info("WebApp data from %s: %s", message.from_user.id if message.from_user else "?", raw[:200])
+# ===================== HANDLERS DEEP-LINK ======================
 
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError:
-        await message.answer("⚠️ Не удалось прочитать данные. Попробуйте ещё раз.")
-        return
-
-    manager_chat = get_manager_chat_id()
-    if manager_chat is None:
-        await message.answer(
-            "⚠️ Менеджер пока не подключен к боту. "
-            "Мы зафиксировали ваш запрос локально — попробуйте через несколько минут."
-        )
-        log.warning(
-            "Manager chat_id is not set. Tell @%s to send /start to the bot.",
-            MANAGER_USERNAME,
-        )
-        return
-
-    payload_type = payload.get("type")
-
-    if payload_type == "request":
-        await handle_request(message, bot, payload, manager_chat)
-    elif payload_type == "order":
-        await handle_order(message, bot, payload, manager_chat)
-    else:
-        await message.answer("⚠️ Неизвестный тип запроса.")
-
-
-async def handle_request(message: Message, bot: Bot, payload: dict, manager_chat: int) -> None:
-    """Запрос на подбор товара из Китая."""
-    text = (payload.get("text") or "").strip()
-    link = (payload.get("link") or "").strip()
-    photos_count = int(payload.get("photosCount") or 0)
-    req_id = short_id()
-
-    # Формируем сообщение менеджеру
-    lines = [
-        "🆕 <b>Запрос на подбор</b>",
-        f"От: {client_mention(message)}",
-        f"ID запроса: <code>{req_id}</code>",
-        "",
-    ]
-    if text:
-        lines.append(f"<b>Описание:</b>\n{html.escape(text)}")
-    if link:
-        lines.append(f"\n<b>Ссылка:</b> {html.escape(link)}")
-    if photos_count:
-        lines.append(f"\n📎 <i>Прикреплено фото: {photos_count} — ожидаем пересылку от клиента.</i>")
-
-    await bot.send_message(manager_chat, "\n".join(lines))
-
-    # Если есть фото — просим клиента переслать их в чат
-    if photos_count > 0:
-        set_pending(message.chat.id, req_id)
-        await message.answer(
-            f"📨 Запрос отправлен менеджеру.\n\n"
-            f"Теперь, пожалуйста, <b>пришлите фото</b> следующими сообщениями — "
-            f"я перешлю их менеджеру.",
-            reply_markup=ReplyKeyboardRemove(),
-        )
-    else:
-        await message.answer("📨 Запрос отправлен менеджеру. Он свяжется с вами в ближайшее время.")
-
-
-async def handle_order(message: Message, bot: Bot, payload: dict, manager_chat: int) -> None:
-    """Заказ из наличия."""
-    items = payload.get("items") or []
-    total = float(payload.get("total") or 0)
-    currency = payload.get("currency") or "USD"
-
-    lines = [
-        "🛒 <b>Новый заказ из наличия</b>",
-        f"От: {client_mention(message)}",
-        "",
-        "<b>Состав заказа:</b>",
-    ]
-    for it in items:
-        name = it.get("name_ru") or it.get("name_en") or it.get("id", "—")
-        qty = int(it.get("qty") or 1)
-        price_usd = float(it.get("price_usd") or 0)
-        price_byn = float(it.get("price_byn") or 0)
-        unit_price = price_byn if currency == "BYN" else price_usd
-        lines.append(
-            f"• {html.escape(str(name))} × {qty} = {fmt_price(unit_price * qty, currency)}"
-        )
-    lines.append("")
-    lines.append(f"<b>Итого:</b> {fmt_price(total, currency)}")
-
-    await bot.send_message(manager_chat, "\n".join(lines))
+async def handle_start_request(message: Message, bot: Bot) -> None:
+    """Клиент пришёл написать общий запрос на подбор товара."""
     await message.answer(
-        "🎉 Заказ оформлен! Менеджер свяжется с вами для подтверждения и оплаты."
+        "Здравствуйте! 👋\n\n"
+        "Расскажите, что вы хотели бы заказать — название, описание, ссылку или фото. "
+        "Я найду и привезу. Можно прислать несколько сообщений или фото."
+    )
+    await notify_manager(
+        bot,
+        text=(
+            "🆕 <b>Новый запрос на подбор</b>\n"
+            f"От: {client_mention(message)}\n\n"
+            "<i>Клиент пришёл из апки и сейчас опишет, что ему нужно.</i>"
+        ),
+        client_tg_id=message.from_user.id,
     )
 
 
-@router.message(F.photo | F.document | F.video)
-async def forward_media_to_manager(message: Message, bot: Bot) -> None:
-    """
-    Пересылка медиа от клиента менеджеру.
-    Работает только если у клиента есть "ожидание фото" по последнему запросу
-    (открывается на 1 час после отправки запроса с фото).
-    """
-    user = message.from_user
-    if user is None:
+async def handle_start_ask(message: Message, bot: Bot, product_id: str) -> None:
+    """Клиент пришёл уточнить наличие размеров конкретного товара."""
+    prod = await fetch_product(product_id)
+    name = product_name(prod) if prod else f"товар {product_id}"
+
+    await message.answer(
+        f"👋 Здравствуйте!\n\n"
+        f"Вы интересуетесь товаром «<b>{html.escape(name)}</b>». "
+        f"Менеджер свяжется с вами в ближайшее время и расскажет про доступные размеры и наличие.\n\n"
+        f"Если хотите — можете прямо сейчас написать дополнительные вопросы или прислать фото."
+    )
+    await notify_manager(
+        bot,
+        text=(
+            "❓ <b>Уточнение по товару</b>\n"
+            f"От: {client_mention(message)}\n"
+            f"🛍 Товар: <b>{html.escape(name)}</b>"
+        ),
+        client_tg_id=message.from_user.id,
+    )
+
+
+async def handle_start_order(message: Message, bot: Bot, order_id: str) -> None:
+    """Клиент только что оформил заказ в апке — показываем резюме и уведомляем менеджера."""
+    order = await fetch_order(order_id)
+    if not order:
+        await message.answer(
+            "⚠️ Не удалось найти ваш заказ. Возможно, он был только что создан — "
+            "попробуйте через несколько секунд, или напишите менеджеру вручную."
+        )
         return
 
-    # Менеджеру свои же фото не пересылаем (если он сам себе шлёт)
+    currency = order.get("currency") or "USD"
+    items = order.get("items", [])
+    total = float(order.get(f"total_{currency.lower()}") or 0)
+
+    # Резюме клиенту
+    client_lines = [f"🛒 <b>Ваш заказ №{order_id[:8]}</b>", ""]
+    for it in items:
+        prod = it.get("_product")
+        name = product_name(prod)
+        size = it.get("size")
+        qty = it.get("qty") or 1
+        snap_key = f"price_{currency.lower()}_snapshot"
+        price = float(it.get(snap_key) or 0) * qty
+        size_str = f" ({html.escape(size)})" if size else ""
+        client_lines.append(
+            f"• {html.escape(name)}{size_str} × {qty} — {fmt_price(price, currency)}"
+        )
+    client_lines.append("")
+    client_lines.append(f"<b>Итого:</b> {fmt_price(total, currency)}")
+    client_lines.append("")
+    client_lines.append("Менеджер свяжется с вами для подтверждения и оплаты.")
+    await message.answer("\n".join(client_lines))
+
+    # Уведомление менеджеру (то же резюме + клиент)
+    mgr_lines = [
+        f"🆕 <b>Новый заказ №{order_id[:8]}</b>",
+        f"От: {client_mention(message)}",
+        "",
+    ]
+    for it in items:
+        prod = it.get("_product")
+        name = product_name(prod)
+        size = it.get("size")
+        qty = it.get("qty") or 1
+        snap_key = f"price_{currency.lower()}_snapshot"
+        price = float(it.get(snap_key) or 0) * qty
+        size_str = f" ({html.escape(size)})" if size else ""
+        mgr_lines.append(
+            f"• {html.escape(name)}{size_str} × {qty} — {fmt_price(price, currency)}"
+        )
+    mgr_lines.append("")
+    mgr_lines.append(f"<b>Итого:</b> {fmt_price(total, currency)}")
+    await notify_manager(bot, "\n".join(mgr_lines), message.from_user.id)
+
+
+# ===================== REPLY-ROUTING ===========================
+
+@router.message(F.reply_to_message)
+async def handle_manager_reply(message: Message, bot: Bot) -> None:
+    """
+    Менеджер делает reply на сообщение в своём чате с ботом → пересылаем клиенту.
+    """
+    user = message.from_user
+    if not user:
+        return
+    if (user.username or "").lower() != MANAGER_USERNAME:
+        # Это не менеджер — пусть отрабатывает обычный handle_client_message
+        await forward_client_to_manager(message, bot)
+        return
+
+    # Находим клиента по message_id того сообщения, на которое отвечает менеджер
+    target_msg_id = message.reply_to_message.message_id
+    client_tg_id = get_routed_client(target_msg_id)
+
+    if not client_tg_id:
+        await message.answer(
+            "⚠️ Не удалось определить клиента (это сообщение слишком старое или не от клиента). "
+            "Чтобы ответить клиенту — делайте reply на свежее сообщение от него.",
+        )
+        return
+
+    # Копируем сообщение менеджера клиенту. copy_message сохраняет фото/документ/текст,
+    # но без подписи «от кого» — это и есть смысл бота-посредника.
+    try:
+        await bot.copy_message(
+            chat_id=client_tg_id,
+            from_chat_id=message.chat.id,
+            message_id=message.message_id,
+        )
+        # Лёгкая обратная связь — менеджер увидит галочку и поймёт, что доставлено
+        try:
+            from aiogram.types import ReactionTypeEmoji
+            await message.react([ReactionTypeEmoji(emoji="👌")])
+        except Exception:
+            pass  # реакции могут быть недоступны в групповых чатах или старых клиентах
+    except Exception as e:
+        log.exception("Failed to relay manager reply: %s", e)
+        await message.answer(f"⚠️ Не удалось доставить сообщение клиенту: {e}")
+
+
+# ===================== СООБЩЕНИЯ ОТ КЛИЕНТА ====================
+
+@router.message(F.text | F.photo | F.document | F.video | F.voice | F.video_note | F.audio | F.sticker)
+async def handle_client_message(message: Message, bot: Bot) -> None:
+    """
+    Любое обычное сообщение от клиента — пересылаем менеджеру.
+    Сначала отправляем заголовок «От @username», затем копию сообщения —
+    так у менеджера в потоке всегда понятен контекст.
+    """
+    user = message.from_user
+    if not user:
+        return
+    # Менеджер пишет сам себе — игнорируем
     if (user.username or "").lower() == MANAGER_USERNAME:
         return
 
+    await forward_client_to_manager(message, bot)
+
+
+async def forward_client_to_manager(message: Message, bot: Bot) -> None:
+    """Общая логика пересылки. Reply-target = заголовок (а не само сообщение)."""
     manager_chat = get_manager_chat_id()
     if manager_chat is None:
-        return
-
-    req_id = pop_pending(message.chat.id)
-    if not req_id:
-        # Клиент шлёт медиа без активного запроса — мягко подсказываем, что делать
         await message.answer(
-            "Чтобы прислать фото к запросу, сначала откройте магазин и отправьте запрос "
-            "с указанием количества фото. Затем пришлите фото сюда."
+            "⚠️ Менеджер пока не подключен. Попробуйте позже или напишите ему вручную."
         )
         return
 
-    # Подпись с привязкой к запросу
-    caption = (
-        f"📎 Доп. материал к запросу <code>{req_id}</code>\n"
-        f"От: {client_mention(message)}"
-    )
-
+    # 1. Заголовок — короткая шапка с упоминанием клиента. Это reply-target.
+    header = f"💬 <b>Сообщение от клиента</b>\nОт: {client_mention(message)}"
     try:
-        # forward_message сохраняет оригинал; copy_message — отправляет как от бота с новой подписью
-        # Используем copy_message + caption, чтобы менеджер видел, к какому запросу относится фото
-        await bot.copy_message(
+        header_msg = await bot.send_message(manager_chat, header)
+        add_routing(header_msg.message_id, message.from_user.id)
+    except Exception as e:
+        log.exception("Failed to send header: %s", e)
+        return
+
+    # 2. Содержимое — копируется как есть (фото/документ/текст/etc)
+    try:
+        copied = await bot.copy_message(
             chat_id=manager_chat,
             from_chat_id=message.chat.id,
             message_id=message.message_id,
-            caption=caption,
         )
+        # Также маршрутим reply на само сообщение — на случай если менеджер
+        # сделает reply на копию, а не на заголовок
+        add_routing(copied.message_id, message.from_user.id)
     except Exception as e:
-        log.exception("Failed to forward media: %s", e)
-        await message.answer("⚠️ Не удалось переслать файл менеджеру. Попробуйте ещё раз.")
-        return
-
-    # короткое подтверждение клиенту (без спама — без emoji)
-    await message.answer("Передано менеджеру.")
-
-
-@router.message(F.text & ~F.text.startswith("/"))
-async def handle_text(message: Message, bot: Bot) -> None:
-    """
-    Свободный текст от клиента в чате с ботом:
-    - если есть «ожидание» — пересылаем менеджеру как доп. инфо
-    - иначе подсказываем открыть магазин
-    """
-    user = message.from_user
-    if user is None:
-        return
-
-    if (user.username or "").lower() == MANAGER_USERNAME:
-        return
-
-    manager_chat = get_manager_chat_id()
-    if manager_chat is None:
-        return
-
-    req_id = pop_pending(message.chat.id)
-    if req_id:
-        text = (
-            f"💬 Доп. информация к запросу <code>{req_id}</code>\n"
-            f"От: {client_mention(message)}\n\n"
-            f"{html.escape(message.text or '')}"
-        )
-        await bot.send_message(manager_chat, text)
-        await message.answer("Передано менеджеру.")
-    else:
-        kb = ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="🛍 Открыть магазин", web_app=WebAppInfo(url=WEBAPP_URL))]],
-            resize_keyboard=True,
-        )
-        await message.answer(
-            "Чтобы оформить заказ или запрос на подбор — откройте магазин:",
-            reply_markup=kb,
-        )
+        log.exception("Failed to copy message: %s", e)
 
 
 # ============================ MAIN =============================
 
 async def main() -> None:
     if not BOT_TOKEN:
-        raise RuntimeError(
-            "BOT_TOKEN не задан. Установите переменную окружения: "
-            "export BOT_TOKEN='ваш_токен_от_BotFather'"
-        )
+        raise RuntimeError("BOT_TOKEN не задан")
+    if not supabase_ready():
+        log.warning("SUPABASE_URL/SUPABASE_ANON_KEY не заданы — заказы и товары не будут читаться из БД")
 
     bot = Bot(
         token=BOT_TOKEN,
@@ -395,16 +484,10 @@ async def main() -> None:
     dp = Dispatcher()
     dp.include_router(router)
 
-    # Удаляем вебхук на случай, если он был, чтобы long-polling работал чисто
     await bot.delete_webhook(drop_pending_updates=False)
-
-    log.info("Bot started. Manager username: @%s", MANAGER_USERNAME)
-    log.info("WebApp URL: %s", WEBAPP_URL)
+    log.info("Bot started. Manager: @%s, WebApp: %s", MANAGER_USERNAME, WEBAPP_URL)
     if get_manager_chat_id() is None:
-        log.warning(
-            "Manager chat_id is not set yet. Ask @%s to send /start to the bot.",
-            MANAGER_USERNAME,
-        )
+        log.warning("Manager chat_id не задан — менеджер должен сделать /start боту.")
 
     await dp.start_polling(bot)
 
