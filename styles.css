@@ -1,28 +1,30 @@
 /* ========== Tokens / Theme ========== */
+/* Дефолтные значения — то что увидит пользователь до загрузки JS (FOUC).
+   После загрузки theme.js применяет настоящую палитру (LIGHT/DARK).
+   Эти значения должны соответствовать POIZON-палитре LIGHT в theme.js. */
 :root {
-  /* Светлая (оранжево-коричневая) — устанавливается из theme.js, тут только дефолт */
   --bg: #ffffff;
-  --bg-secondary: #faf4ec;
-  --bg-tertiary: #efe3d2;
-  --text: #2a1a0e;
-  --text-secondary: #7b5a3c;
-  --hint: #ad8d6c;
-  --link: #c4661f;
-  --button: #e07d2e;
+  --bg-secondary: #f5f5f5;
+  --bg-tertiary: #ebebeb;
+  --text: #1a1a1a;
+  --text-secondary: #666666;
+  --hint: #999999;
+  --link: #01a8a9;
+  --button: #01C2C3;
   --button-text: #ffffff;
-  --button-hover: #c4661f;
-  --border: #ead9c2;
-  --danger: #b03a2e;
-  --success: #6b8e23;
-  --warning: #d97706;
-  --accent: #e07d2e;
-  --accent-soft: rgba(224, 125, 46, 0.10);
-  --brown: #5c3a1e;
-  --brown-soft: rgba(92, 58, 30, 0.08);
-  --chat-in: #f3e9d9;
-  --chat-out: #e07d2e;
+  --button-hover: #01a8a9;
+  --border: #e5e5e5;
+  --danger: #e74c3c;
+  --success: #2ecc71;
+  --warning: #f39c12;
+  --accent: #01C2C3;
+  --accent-soft: rgba(1, 194, 195, 0.10);
+  --brown: #1a1a1a;
+  --brown-soft: rgba(26, 26, 26, 0.06);
+  --chat-in: #f0f0f0;
+  --chat-out: #01C2C3;
   --chat-out-text: #ffffff;
-  --shadow: 0 1px 2px rgba(92,58,30,0.06), 0 4px 12px rgba(92,58,30,0.06);
+  --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04);
 
   --radius: 12px;
   --radius-sm: 8px;
@@ -30,6 +32,26 @@
 
   --header-h: 56px;
   --nav-h: calc(64px + env(safe-area-inset-bottom, 0px));
+}
+
+/* FOUC-prevention: если у пользователя системная тёмная тема, не показываем
+   светлую палитру в момент загрузки. JS theme.js дальше всё равно применит
+   правильную палитру через CSS-переменные. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d0d0d;
+    --bg-secondary: #1a1a1a;
+    --bg-tertiary: #262626;
+    --text: #f5f5f5;
+    --text-secondary: #a8a8a8;
+    --hint: #7a7a7a;
+    --link: #33d4d5;
+    --border: #2a2a2a;
+    --accent-soft: rgba(1, 194, 195, 0.18);
+    --brown: #f5f5f5;
+    --brown-soft: rgba(245, 245, 245, 0.06);
+    --chat-in: #262626;
+  }
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -174,28 +196,106 @@ img { display: block; max-width: 100%; }
 
 /* ========== Home Hero ========== */
 .home-hero {
-  background: linear-gradient(135deg, var(--accent-soft) 0%, transparent 100%);
-  border-radius: var(--radius-lg);
-  padding: 20px; margin-bottom: 18px; text-align: center;
+  text-align: center;
+  padding: 24px 0 20px;
 }
-.home-hero-logo {
-  width: 56px; height: 56px; margin: 0 auto 12px;
-  background: var(--bg); border-radius: 16px;
+.home-brand-mark {
+  width: 56px; height: 56px; margin: 0 auto 14px;
+  background: var(--accent-soft); border-radius: 16px;
   display: flex; align-items: center; justify-content: center;
   color: var(--accent);
 }
-.home-hero-logo svg { width: 32px; height: 32px; }
-.home-hero h2 { margin: 0 0 6px; font-size: 19px; font-weight: 700; color: var(--brown); }
-.home-hero p { margin: 0 0 16px; color: var(--text-secondary); font-size: 14px; }
+.home-brand-mark svg { width: 32px; height: 32px; }
+.home-title {
+  margin: 0 0 8px;
+  font-size: 22px; font-weight: 700; line-height: 1.25;
+  color: var(--text);
+  letter-spacing: -0.3px;
+}
+.home-subtitle {
+  margin: 0;
+  font-size: 14px; color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* ========== Home Features ========== */
+.home-features {
+  list-style: none;
+  padding: 0; margin: 0 0 20px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.home-features li {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 12px 14px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+}
+.home-feature-icon {
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.home-feature-icon svg { width: 18px; height: 18px; }
+.home-feature-text { flex: 1; min-width: 0; }
+.home-feature-title {
+  font-size: 14px; font-weight: 600; color: var(--text);
+  margin-bottom: 2px;
+}
+.home-feature-sub {
+  font-size: 13px; color: var(--text-secondary);
+  line-height: 1.35;
+}
+
+/* ========== Home CTA (главная кнопка «Заказать из Китая через POIZON») ========== */
 .home-cta-btn {
   width: 100%;
   background: var(--button); color: var(--button-text);
   border: none; padding: 14px 16px; border-radius: var(--radius);
-  font-size: 15px; font-weight: 600;
-  display: flex; align-items: center; justify-content: center; gap: 8px;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(1, 194, 195, 0.25);
 }
-.home-cta-btn:active { opacity: 0.85; }
-.home-cta-btn svg { width: 18px; height: 18px; }
+.home-cta-btn:active { opacity: 0.85; transform: scale(0.99); }
+.home-cta-main {
+  font-size: 16px; font-weight: 700;
+  letter-spacing: -0.2px;
+}
+.home-cta-via {
+  font-size: 12px; opacity: 0.9; font-weight: 500;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.home-cta-via svg { height: 14px; width: auto; }
+
+/* ========== Home In-Stock block (вторичный путь) ========== */
+.home-instock-block {
+  margin-top: 24px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  text-align: center;
+}
+.home-instock-title {
+  font-size: 14px; font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.home-instock-text {
+  font-size: 13px; color: var(--text-secondary);
+  line-height: 1.4;
+  margin-bottom: 10px;
+}
+.home-instock-link {
+  display: inline-block;
+  font-size: 14px; font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 4px 0;
+}
+.home-instock-link:active { opacity: 0.7; }
 
 .section-header { display: flex; align-items: center; justify-content: space-between; margin: 0 0 12px; }
 .section-header h3 { font-size: 17px; font-weight: 700; margin: 0; color: var(--brown); }
@@ -924,4 +1024,31 @@ img { display: block; max-width: 100%; }
   font-weight: 600;
   color: var(--text);
   font-variant-numeric: tabular-nums;
+}
+
+/* ========== Скрытие nav-bar при открытой клавиатуре ========== */
+/* При фокусе на input/textarea мы добавляем body.keyboard-open. Прячем nav-bar
+   чтобы клавиатура не оставляла «мёртвую зону» между полем ввода и нижней навигацией.
+   Также убираем нижний padding со страницы — он зарезервирован под nav. */
+body.keyboard-open .bottom-nav { display: none; }
+body.keyboard-open .page { padding-bottom: 0 !important; }
+
+/* ========== Empty-state ссылки ========== */
+.empty-state-link {
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-block;
+  padding: 6px 0;
+  font-size: 14px;
+}
+.empty-state-link:active { opacity: 0.7; }
+.empty-state-links {
+  margin-top: 8px;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  flex-wrap: wrap;
+}
+.empty-state-link-sep {
+  color: var(--text-secondary);
+  font-size: 13px;
 }

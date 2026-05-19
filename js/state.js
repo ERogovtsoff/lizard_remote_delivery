@@ -59,13 +59,22 @@ export function saveState() {
   } catch (e) {}
 }
 
-export function isOnboarded() {
+// Локальный быстрый кэш факта прохождения онбординга.
+// Источник правды — поле customers.onboarded в БД. localStorage здесь нужен только
+// чтобы при следующих запусках не моргать онбординг-страницей пока ждём ответ из БД.
+export function isOnboardedLocal() {
   try { return !!localStorage.getItem(ONBOARD_KEY); } catch (e) { return false; }
 }
-
-export function setOnboarded() {
+export function setOnboardedLocal() {
   try { localStorage.setItem(ONBOARD_KEY, '1'); } catch (e) {}
 }
+export function clearOnboardedLocal() {
+  try { localStorage.removeItem(ONBOARD_KEY); } catch (e) {}
+}
+
+// Старые имена сохраняем для обратной совместимости с другими местами в коде.
+export const isOnboarded = isOnboardedLocal;
+export const setOnboarded = setOnboardedLocal;
 
 // ============================== FAVORITES ==============================
 

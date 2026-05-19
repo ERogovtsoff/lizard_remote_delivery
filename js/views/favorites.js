@@ -4,6 +4,7 @@ import { t } from '../i18n.js';
 import { escapeHtml } from '../utils.js';
 import { state } from '../state.js';
 import { api } from '../api/index.js';
+import { router } from '../router.js';
 import { createProductGrid } from '../components/product-grid.js';
 
 let grid = null;
@@ -19,11 +20,11 @@ export async function renderFavorites() {
       <div class="icon">❤️</div>
       <h3>${escapeHtml(t('favEmptyTitle'))}</h3>
       <p>${escapeHtml(t('favEmptyText'))}</p>
+      <a class="empty-state-link" id="favEmptyLink">${escapeHtml(t('favEmptyLink'))}</a>
     </div>
   `;
 
   const container = document.getElementById('favGridContainer');
-  // Карточка избранного передаёт favSize в опции — grid использует это для key
   grid = createProductGrid({
     source: 'favorites',
     favSizeBy: item => item.__favSize ?? null,
@@ -34,6 +35,10 @@ export async function renderFavorites() {
   const products = await api.loadProducts();
   productsMap = new Map(products.map(p => [p.id, p]));
   refreshGrid();
+
+  // Кнопка-ссылка в empty-state становится доступна сразу после render
+  const emptyLink = document.getElementById('favEmptyLink');
+  if (emptyLink) emptyLink.onclick = () => router.navigate('catalog');
 }
 
 function refreshGrid() {
@@ -47,8 +52,6 @@ function refreshGrid() {
   }
   empty.style.display = 'none';
 
-  // Для grid нам нужны «продукты» — но в избранном они с привязкой к size.
-  // Делаем расширенный объект на лету: { ...product, __favSize: size }
   const items = state.favorites
     .map(fav => {
       const prod = productsMap.get(fav.productId);

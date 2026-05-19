@@ -270,7 +270,7 @@ export async function upsertCustomer(patch) {
       const merged = { ...(cur?.preferences || {}), ...patch.preferences };
       update.preferences = merged;
     }
-    for (const k of ['first_name', 'last_name', 'username', 'photo_url', 'phone', 'birth_date']) {
+    for (const k of ['first_name', 'last_name', 'username', 'photo_url', 'phone', 'birth_date', 'onboarded']) {
       if (patch[k] !== undefined) update[k] = patch[k];
     }
     if (Object.keys(update).length === 0) {
@@ -286,6 +286,20 @@ export async function upsertCustomer(patch) {
   } catch (e) {
     console.error('[supabase] upsertCustomer exception:', e);
     return null;
+  }
+}
+
+// Помечает онбординг как пройденный — пишет TRUE в customers.onboarded.
+export async function markOnboarded() {
+  try {
+    const u = getUser();
+    if (!u) return;
+    const sb = await getClient();
+    const { error } = await sb.from('customers')
+      .update({ onboarded: true }).eq('tg_id', u.id);
+    if (error) console.error('[supabase] markOnboarded error:', error.message);
+  } catch (e) {
+    console.error('[supabase] markOnboarded exception:', e);
   }
 }
 

@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS customers (
   birth_date       DATE,                              -- Telegram эту инфу не отдаёт мини-аппе — заполнять вручную/из бота
   purchases_total      NUMERIC(12,2) NOT NULL DEFAULT 0,  -- сумма оплаченных заказов в USD
   purchases_total_byn  NUMERIC(12,2) NOT NULL DEFAULT 0,  -- сумма оплаченных заказов в BYN
+  onboarded            BOOLEAN NOT NULL DEFAULT FALSE,    -- видел ли клиент онбординг
   preferences          JSONB NOT NULL DEFAULT '{}'::jsonb,-- { lang, theme, currency }
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()

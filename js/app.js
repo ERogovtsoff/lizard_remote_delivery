@@ -19,6 +19,7 @@ import { setLang, applyI18N } from './i18n.js';
 import {
   state, isOnboarded, cartTotalCount, saveState,
   setFavoritesSyncer, setCartSyncer,
+  setOnboardedLocal, clearOnboardedLocal,
 } from './state.js';
 import { api } from './api/index.js';
 import { router, registerView } from './router.js';
@@ -122,15 +123,14 @@ async function loadCustomerData() {
     if (favsChanged || cartChanged) {
       updateBadges();
     }
-    // Только если изменились preferences (тема/язык/валюта) — перерисуем текущую
-    // страницу, потому что их применение требует пересчёта верстки. На главной/каталоге
-    // grid сам обновится через onCatalogChanged когда придут товары.
     if (prefsChanged) {
       const cur = router.current();
       if (cur && cur !== 'detail') router.navigate(cur, router.lastContext());
     }
+    return customer;
   } catch (e) {
     console.warn('[bootstrap] customer load skipped:', e);
+    return null;
   }
 }
 
@@ -181,6 +181,20 @@ async function bootstrap() {
   setInterval(updateBadges, 500);
   updateBadges();
 
+  // При фокусе на input/textarea — прячем нижнюю навигацию.
+  // Это убирает «мёртвую зону» между полем ввода и клавиатурой
+  // и соответствует UX обычных мобильных приложений.
+  document.addEventListener('focusin', (e) => {
+    if (e.target?.matches?.('input, textarea, [contenteditable="true"]')) {
+      document.body.classList.add('keyboard-open');
+    }
+  });
+  document.addEventListener('focusout', (e) => {
+    if (e.target?.matches?.('input, textarea, [contenteditable="true"]')) {
+      document.body.classList.remove('keyboard-open');
+    }
+  });
+
   // Закрытие клавиатуры при тапе вне поля ввода
   const KEEP_FOCUS_SELECTOR = 'input, textarea, select, label, button, a, [contenteditable="true"]';
   document.addEventListener('pointerdown', (e) => {
@@ -209,12 +223,45 @@ async function bootstrap() {
     // На admin/history — обычно нужна полная перерисовка, но это редкий случай
   });
 
-  // Стартовый экран сразу — без блокирующего ожидания
-  if (!isOnboarded()) router.navigate('onboarding');
-  else router.navigate('home');
-
-  // Подгружаем БД-данные в фоне
-  if (isOnboarded()) loadCustomerData();
+  // Стартовый экран — определяем по флагу онбординга.
+  //
+  // Источник правды — поле customers.onboarded в БД. Но запрос к БД асинхронный,
+  // и если мы будем ждать его перед первой отрисовкой — пользователь увидит
+  // белый экран на 200-500мс. Делаем так:
+  //
+  //   1. Если localStorage говорит что онбординг был — сразу показываем главную.
+  //      Это покрывает 99% случаев (повторное открытие апки).
+  //   2. Если localStorage пустой — это либо новый клиент, либо админ сбросил флаг.
+  //      Ждём БД с коротким таймаутом 400мс, чтобы решить.
+  //   3. БД-данные (customer/favorites/cart) подгружаем параллельно в любом случае.
+  if (isOnboarded()) {
+    // localStorage говорит что было — показываем сразу главную.
+    router.navigate('home');
+    // Параллельно проверяем БД: если там FALSE (например, админ сбросил)
+    // — переключаем на онбординг и стираем локальный флаг.
+    loadCustomerData().then(customer => {
+      if (customer && customer.onboarded === false) {
+        clearOnboardedLocal();
+        router.navigate('onboarding');
+      }
+    });
+  } else {
+    // Нет локального флага. Запрашиваем БД быстро.
+    const customer = await Promise.race([
+      api.loadCustomer().catch(() => null),
+      new Promise(resolve => setTimeout(() => resolve(null), 400)),
+    ]);
+    if (customer?.onboarded === true) {
+      // В БД флаг стоит — синхронизируем с localStorage и идём на главную.
+      setOnboardedLocal();
+      router.navigate('home');
+    } else {
+      // Либо новый клиент, либо БД не ответила — в любом случае показываем онбординг.
+      router.navigate('onboarding');
+    }
+    // Догружаем остальные данные в фоне
+    loadCustomerData();
+  }
 }
 
 bootstrap();

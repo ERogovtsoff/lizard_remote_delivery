@@ -11,6 +11,7 @@
 import { t, getLang } from '../i18n.js';
 import { escapeHtml, formatDayHeader } from '../utils.js';
 import { openBotChat, haptic } from '../tg.js';
+import { showToast } from '../components/toast.js';
 
 let rendered = false;
 
@@ -22,7 +23,7 @@ export function renderChat() {
     page.innerHTML = `
       <div class="chat-scroll" id="chatScroll"></div>
       <div class="chat-composer">
-        <div class="chat-input-row chat-input-row-fake" id="chatComposer">
+        <div class="chat-input-row chat-input-row-fake">
           <button type="button" class="chat-input-icon-btn" id="chatAttachBtn" aria-label="Attach" tabindex="-1">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
           </button>
@@ -53,13 +54,20 @@ export function renderChat() {
 }
 
 function setupChatHandlers() {
-  // Любой тап в области композера (поле ввода, скрепка, send) — открывает чат с ботом.
-  // На всех элементах одинаковое поведение, чтобы клиенту не приходилось целиться.
-  const handler = () => {
+  // Поле ввода и кнопка отправки — открывают чат с ботом.
+  // Скрепка — показывает тост-подсказку (файлы прикрепляются уже в чате с ботом).
+  const openHandler = () => {
     haptic('light');
     openBotChat('request');
   };
-  document.getElementById('chatComposer').addEventListener('click', handler);
+  document.getElementById('chatInputFake').addEventListener('click', openHandler);
+  document.getElementById('chatSendBtn').addEventListener('click', openHandler);
+
+  document.getElementById('chatAttachBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    haptic('light');
+    showToast(t('chatAttachInfo'), 4000);
+  });
 }
 
 function appendBubble(direction, text) {

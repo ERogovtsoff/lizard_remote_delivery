@@ -18,9 +18,20 @@ export async function renderCart() {
       <div class="icon">🛒</div>
       <h3>${escapeHtml(t('cartEmptyTitle'))}</h3>
       <p>${escapeHtml(t('cartEmptyText'))}</p>
+      <div class="empty-state-links">
+        <a class="empty-state-link" id="cartEmptyCatalog">${escapeHtml(t('cartEmptyLinkCatalog'))}</a>
+        <span class="empty-state-link-sep">${escapeHtml(t('orJoin'))}</span>
+        <a class="empty-state-link" id="cartEmptyOrder">${escapeHtml(t('cartEmptyLinkOrder'))}</a>
+      </div>
     </div>
     <div id="cartTotalBox"></div>
   `;
+
+  // Ссылки в empty-state
+  const catLink = document.getElementById('cartEmptyCatalog');
+  const ordLink = document.getElementById('cartEmptyOrder');
+  if (catLink) catLink.onclick = () => router.navigate('catalog');
+  if (ordLink) ordLink.onclick = () => router.navigate('chat');
 
   const products = await api.loadProducts();
   const map = new Map(products.map(p => [p.id, p]));
