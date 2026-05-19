@@ -3,13 +3,13 @@ import { getUserLanguage } from './tg.js';
 
 const STRINGS = {
   ru: {
-    appName: 'Магазин',
-    onbTitle: 'Привет!',
-    onbText: 'Магазин одежды и сервис заказа любых вещей из Китая — всё в одном приложении.',
-    onbF1Title: 'Заказ из Китая', onbF1Text: 'Опишите вещь или пришлите ссылку — менеджер найдёт и привезёт',
-    onbF2Title: 'Каталог в наличии', onbF2Text: 'Готовые товары, доступные сразу — без ожидания доставки',
-    onbF3Title: 'Избранное и корзина', onbF3Text: 'Сохраняйте понравившееся и оформляйте заказ в пару нажатий',
-    onbBtnLabel: 'Понятно',
+    appName: 'LIZARD',
+    onbTitle: 'Добро пожаловать в LIZARD',
+    onbText: 'Покупай оригинальные товары мировых брендов напрямую с китайских маркетплейсов — без переплат и подделок.',
+    onbF1Title: '100% оригинал', onbF1Text: 'Проверяем подлинность каждой вещи перед отправкой',
+    onbF2Title: 'Примерка перед оплатой', onbF2Text: 'Не подошло — возвращаем деньги без вопросов',
+    onbF3Title: 'Доставка 2–3 недели', onbF3Text: 'Прямые поставки из Китая по всей Беларуси',
+    onbBtnLabel: 'Начать',
 
     homeHeroTitle: 'Оригинальные товары мировых брендов',
     homeHeroText: 'Заказ напрямую с китайских площадок — без переплат и подделок.',
@@ -25,7 +25,9 @@ const STRINGS = {
     homeInStockLink: 'Смотреть наличие →',
     inStock: 'В наличии',
     searchPlaceholder: 'Поиск по названию…',
-    catalogEmptyTitle: 'Пока пусто', catalogEmptyText: 'Товары скоро появятся.',
+    catalogEmptyTitle: 'Пока нет товаров в наличии',
+    catalogEmptyText: 'Но любой товар можно заказать из Китая — оригинал, с примеркой при получении.',
+    catalogEmptyLink: 'Заказать товар →',
     searchEmptyTitle: 'Ничего не найдено', searchEmptyText: 'Попробуйте изменить запрос.',
     catalogTitle: 'В наличии', catalogSub: 'Товары, которые можно заказать прямо сейчас.',
 
@@ -117,13 +119,13 @@ const STRINGS = {
     cancel: 'Отмена', yes: 'Да',
   },
   en: {
-    appName: 'Shop',
-    onbTitle: 'Hello!',
-    onbText: 'Clothing store and a service for ordering anything from China — all in one app.',
-    onbF1Title: 'Order from China', onbF1Text: 'Describe the item or send a link — the manager will find and bring it',
-    onbF2Title: 'In-stock catalog', onbF2Text: 'Ready items available now — no waiting for shipping',
-    onbF3Title: 'Favorites and cart', onbF3Text: 'Save what you like and order in a couple of taps',
-    onbBtnLabel: 'Got it',
+    appName: 'LIZARD',
+    onbTitle: 'Welcome to LIZARD',
+    onbText: 'Buy authentic items from world brands directly from Chinese marketplaces — no markups, no fakes.',
+    onbF1Title: '100% authentic', onbF1Text: 'We verify every item before shipping',
+    onbF2Title: 'Try on before paying', onbF2Text: 'Does not fit — we refund without questions',
+    onbF3Title: 'Delivery in 2–3 weeks', onbF3Text: 'Direct shipping from China across Belarus',
+    onbBtnLabel: 'Start',
 
     homeHeroTitle: 'Authentic items from world brands',
     homeHeroText: 'Direct orders from China — no markups, no fakes.',
@@ -139,7 +141,9 @@ const STRINGS = {
     homeInStockLink: 'Browse in stock →',
     inStock: 'In Stock',
     searchPlaceholder: 'Search by name…',
-    catalogEmptyTitle: 'Empty for now', catalogEmptyText: 'Items coming soon.',
+    catalogEmptyTitle: 'No items in stock yet',
+    catalogEmptyText: 'But you can order any item from China — authentic, with try-on at delivery.',
+    catalogEmptyLink: 'Order an item →',
     searchEmptyTitle: 'Nothing found', searchEmptyText: 'Try a different query.',
     catalogTitle: 'In Stock', catalogSub: 'Items you can order right now.',
 

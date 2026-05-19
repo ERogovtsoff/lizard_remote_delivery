@@ -211,20 +211,18 @@ async function bootstrap() {
 
   // Стартовый экран — определяем по флагу онбординга.
   //
-  // Источник правды — поле customers.onboarded в БД. Но запрос к БД асинхронный,
-  // и если мы будем ждать его перед первой отрисовкой — пользователь увидит
-  // белый экран на 200-500мс. Делаем так:
+  // Источник правды — customers.onboarded в БД. localStorage — быстрый кэш.
   //
-  //   1. Если localStorage говорит что онбординг был — сразу показываем главную.
-  //      Это покрывает 99% случаев (повторное открытие апки).
-  //   2. Если localStorage пустой — это либо новый клиент, либо админ сбросил флаг.
-  //      Ждём БД с коротким таймаутом 400мс, чтобы решить.
-  //   3. БД-данные (customer/favorites/cart) подгружаем параллельно в любом случае.
+  // Логика гарантирует что новый клиент НИКОГДА не увидит главную раньше
+  // онбординга:
+  //   - Если есть localStorage флаг → показываем главную сразу (это уже точно
+  //     существующий клиент, прошёл онбординг). Параллельно проверяем БД,
+  //     и если админ сбросил флаг — переключаемся.
+  //   - Если localStorage пуст → НЕ показываем ничего пока не получим ответ из БД
+  //     (таймаут 1.5 сек). Splash-экран с логотипом виден всё это время.
+  //     Если БД сказала onboarded=true → главная. Иначе → онбординг.
   if (isOnboarded()) {
-    // localStorage говорит что было — показываем сразу главную.
     router.navigate('home');
-    // Параллельно проверяем БД: если там FALSE (например, админ сбросил)
-    // — переключаем на онбординг и стираем локальный флаг.
     loadCustomerData().then(customer => {
       if (customer && customer.onboarded === false) {
         clearOnboardedLocal();
@@ -232,22 +230,37 @@ async function bootstrap() {
       }
     });
   } else {
-    // Нет локального флага. Запрашиваем БД быстро.
+    // Показываем splash — пустой экран с лого, пока ждём ответ из БД.
+    showSplash();
     const customer = await Promise.race([
       api.loadCustomer().catch(() => null),
-      new Promise(resolve => setTimeout(() => resolve(null), 400)),
+      new Promise(resolve => setTimeout(() => resolve(null), 1500)),
     ]);
+    hideSplash();
+
     if (customer?.onboarded === true) {
-      // В БД флаг стоит — синхронизируем с localStorage и идём на главную.
       setOnboardedLocal();
       router.navigate('home');
     } else {
-      // Либо новый клиент, либо БД не ответила — в любом случае показываем онбординг.
       router.navigate('onboarding');
     }
-    // Догружаем остальные данные в фоне
     loadCustomerData();
   }
+}
+
+function showSplash() {
+  if (document.getElementById('appSplash')) return;
+  const splash = document.createElement('div');
+  splash.id = 'appSplash';
+  splash.className = 'app-splash';
+  splash.innerHTML = `<img src="./assets/logo.png" alt="" />`;
+  document.body.appendChild(splash);
+}
+function hideSplash() {
+  const s = document.getElementById('appSplash');
+  if (!s) return;
+  s.classList.add('fade-out');
+  setTimeout(() => s.remove(), 200);
 }
 
 bootstrap();

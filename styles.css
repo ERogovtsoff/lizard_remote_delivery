@@ -104,9 +104,15 @@ img { display: block; max-width: 100%; }
 .header-side { width: 0; }
 .header-logo {
   background: none; border: none; padding: 0;
-  color: var(--accent);
   display: flex; align-items: center; justify-content: center;
   cursor: pointer;
+  height: 40px;
+}
+.header-logo img {
+  height: 40px; width: auto;
+  display: block;
+  /* Логотип на прозрачном фоне — в тёмной теме светлый header, в светлой темный */
+  object-fit: contain;
 }
 .header-logo svg { width: 32px; height: 32px; }
 .header-actions {
@@ -169,8 +175,10 @@ img { display: block; max-width: 100%; }
   border-radius: 28px;
   display: flex; align-items: center; justify-content: center;
   margin-bottom: 24px; color: var(--accent);
+  overflow: hidden;
 }
 .onb-logo svg { width: 56px; height: 56px; }
+.onb-logo img { width: 72px; height: 72px; object-fit: contain; }
 .onb-title { font-size: 28px; font-weight: 700; margin: 0 0 6px; line-height: 1.2; color: var(--brown); }
 .onb-brand { font-size: 16px; color: var(--accent); font-weight: 600; margin: 0 0 20px; letter-spacing: 0.4px; }
 .onb-text { color: var(--text-secondary); font-size: 15px; line-height: 1.5; margin: 0 0 32px; max-width: 320px; }
@@ -195,45 +203,79 @@ img { display: block; max-width: 100%; }
 .onb-btn:active { opacity: 0.85; }
 
 /* ========== Home (one-screen layout) ========== */
-/* На главной не используется .page padding-bottom — мы сами управляем высотой
-   через min-height и flex-распределение. */
 #page-home.page { padding-bottom: var(--nav-h); }
+
 .home-screen {
   display: flex;
   flex-direction: column;
+  gap: 16px;
   min-height: calc(100dvh - var(--header-h) - var(--nav-h) - 32px);
-  padding: 8px 0;
+  padding: 4px 0 8px;
 }
-.home-hero {
+
+.home-top {
   text-align: center;
-  padding: 8px 0 16px;
   flex-shrink: 0;
 }
-.home-brand-mark {
-  width: 48px; height: 48px; margin: 0 auto 10px;
-  background: var(--accent-soft); border-radius: 14px;
-  display: flex; align-items: center; justify-content: center;
-  color: var(--accent);
-}
-.home-brand-mark svg { width: 28px; height: 28px; }
 .home-title {
   margin: 0 0 6px;
-  font-size: 20px; font-weight: 700; line-height: 1.25;
+  font-size: 19px; font-weight: 700; line-height: 1.25;
   color: var(--text);
   letter-spacing: -0.3px;
 }
 .home-subtitle {
   margin: 0;
-  font-size: 14px; color: var(--text-secondary);
+  font-size: 13px; color: var(--text-secondary);
   line-height: 1.4;
 }
 
+/* ========== Партнёрские маркетплейсы ========== */
+.home-partners {
+  display: flex; flex-direction: column; gap: 6px;
+  flex-shrink: 0;
+}
+.partner-big, .partner-small {
+  position: relative;
+  background: #0d0d0d; /* фон по умолчанию для POIZON-карточки (под чёрный логотип) */
+  border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+.partner-big { height: 140px; }
+.partner-big img { max-height: 70%; max-width: 70%; object-fit: contain; }
+
+.partner-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+}
+.partner-small { height: 70px; }
+.partner-small img { max-height: 70%; max-width: 80%; object-fit: contain; }
+
+/* Цветной фон карточек партнёров когда нет картинки (или для брендового образа) */
+.partner-pdd { background: #d92e2e; color: #fff; }
+.partner-tb  { background: #ff6a00; color: #fff; }
+
+/* Текстовый фолбэк — показывается только если img не загрузился (см. onerror) */
+.partner-fallback {
+  display: none;
+  font-weight: 700;
+  font-size: 22px;
+  color: #fff;
+  letter-spacing: 0.5px;
+  text-align: center;
+  line-height: 1.1;
+}
+.partner-big .partner-fallback { font-size: 36px; letter-spacing: 1px; }
+.partner-small.partner-pdd .partner-fallback { font-size: 26px; }
+.partner-small.partner-tb .partner-fallback { font-size: 18px; }
+.partner-big.no-img .partner-fallback,
+.partner-small.no-img .partner-fallback { display: block; }
+
+/* ========== Преимущества ========== */
 .home-features {
   list-style: none;
-  padding: 0; margin: 0 0 16px;
+  padding: 0; margin: 0;
   display: flex; flex-direction: column; gap: 8px;
-  flex-grow: 1;
-  justify-content: center;
+  flex-shrink: 0;
 }
 .home-features li {
   display: flex; align-items: center; gap: 12px;
@@ -261,6 +303,11 @@ img { display: block; max-width: 100%; }
   line-height: 1.3;
 }
 
+/* ========== Низ: CTA + ссылка-fallback ========== */
+.home-bottom {
+  margin-top: auto;   /* прижимаем к низу экрана */
+  flex-shrink: 0;
+}
 .home-cta-btn {
   width: 100%;
   background: var(--button); color: var(--button-text);
@@ -269,7 +316,6 @@ img { display: block; max-width: 100%; }
   letter-spacing: -0.2px;
   cursor: pointer;
   box-shadow: 0 2px 10px rgba(1, 194, 195, 0.25);
-  flex-shrink: 0;
 }
 .home-cta-btn:active { opacity: 0.85; transform: scale(0.99); }
 
@@ -278,12 +324,11 @@ img { display: block; max-width: 100%; }
   align-items: center; justify-content: center;
   flex-wrap: wrap;
   gap: 4px;
-  margin-top: 12px;
-  padding: 6px 0;
+  margin-top: 10px;
+  padding: 4px 0;
   text-align: center;
   font-size: 13px;
   cursor: pointer;
-  flex-shrink: 0;
 }
 .home-instock-link .home-instock-text { color: var(--text-secondary); }
 .home-instock-link .home-instock-action { color: var(--accent); font-weight: 600; }
@@ -1036,4 +1081,23 @@ img { display: block; max-width: 100%; }
 .empty-state-link-sep {
   color: var(--text-secondary);
   font-size: 13px;
+}
+
+/* ========== Splash (показывается пока ждём ответа БД для решения онбординга) ========== */
+.app-splash {
+  position: fixed; inset: 0;
+  background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 9999;
+  transition: opacity 200ms;
+}
+.app-splash.fade-out { opacity: 0; }
+.app-splash img {
+  width: 96px; height: 96px;
+  object-fit: contain;
+  animation: splash-pulse 1.4s ease-in-out infinite;
+}
+@keyframes splash-pulse {
+  0%, 100% { opacity: 0.7; transform: scale(0.98); }
+  50%      { opacity: 1; transform: scale(1.02); }
 }

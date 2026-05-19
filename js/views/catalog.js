@@ -2,6 +2,7 @@
 import { t } from '../i18n.js';
 import { escapeHtml } from '../utils.js';
 import { api } from '../api/index.js';
+import { router } from '../router.js';
 import { createSearchBar, matches } from '../components/search.js';
 import { createProductGrid } from '../components/product-grid.js';
 import { createSkeletonGrid } from '../components/skeleton.js';
@@ -21,11 +22,13 @@ export async function renderCatalog() {
       <div class="icon">📦</div>
       <h3>${escapeHtml(t('catalogEmptyTitle'))}</h3>
       <p>${escapeHtml(t('catalogEmptyText'))}</p>
+      <a class="empty-state-link" id="catalogEmptyLink">${escapeHtml(t('catalogEmptyLink'))}</a>
     </div>
     <div class="empty-state" id="catalogSearchEmpty" style="display:none">
       <div class="icon">🔍</div>
       <h3>${escapeHtml(t('searchEmptyTitle'))}</h3>
       <p>${escapeHtml(t('searchEmptyText'))}</p>
+      <a class="empty-state-link" id="catalogSearchEmptyLink">${escapeHtml(t('catalogEmptyLink'))}</a>
     </div>
   `;
 
@@ -34,6 +37,12 @@ export async function renderCatalog() {
     onChange: v => { searchQuery = v; refreshGrid(); }
   });
   document.getElementById('catalogSearchSlot').appendChild(searchBar);
+
+  // Ссылки в empty-state
+  const emptyLink = document.getElementById('catalogEmptyLink');
+  const searchEmptyLink = document.getElementById('catalogSearchEmptyLink');
+  if (emptyLink) emptyLink.onclick = () => router.navigate('chat');
+  if (searchEmptyLink) searchEmptyLink.onclick = () => router.navigate('chat');
 
   const container = document.getElementById('catalogGridContainer');
   grid = createProductGrid({ source: 'catalog' });
