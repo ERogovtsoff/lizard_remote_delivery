@@ -1,26 +1,28 @@
 // Профиль: шапка с аватаркой и именем, карточка суммы выкупа, ссылки на разделы.
+//
+// Имя и аватарка берутся из tg.initDataUnsafe.user — они доступны мгновенно,
+// без запроса в БД. Это убирает мерцание «Гость → реальное имя».
+// Сумма выкупа подгружается из БД в фоне и обновляется на месте, когда придёт.
 import { t, getLang } from '../i18n.js';
 import { escapeHtml, formatPrice } from '../utils.js';
 import { state } from '../state.js';
 import { api } from '../api/index.js';
 import { router } from '../router.js';
-import { isAdmin } from '../tg.js';
+import { isAdmin, getUser } from '../tg.js';
 
 export async function renderProfile() {
-  const customer = await api.loadCustomer();
-  const name = customer
-    ? [customer.first_name, customer.last_name].filter(Boolean).join(' ').trim() || t('guest')
-    : t('guest');
-  const username = customer?.username ? '@' + customer.username : '';
-  const photo = customer?.photo_url || '';
+  // Имя, username и фото — сразу из Telegram (синхронно, без сети)
+  const user = getUser();
+  const fullName = user
+    ? [user.first_name, user.last_name].filter(Boolean).join(' ').trim()
+    : '';
+  const name = fullName || t('guest');
+  const username = user?.username ? '@' + user.username : '';
+  const photo = user?.photo_url || '';
   const letter = (name || 'G').trim().charAt(0).toUpperCase();
 
-  // Сумма выкупа в выбранной клиентом валюте
   const cur = state.settings.currency;
   const lang = getLang();
-  const totalUsd = Number(customer?.purchases_total) || 0;
-  const totalByn = Number(customer?.purchases_total_byn) || 0;
-  const total = cur === 'USD' ? totalUsd : totalByn;
 
   const page = document.getElementById('page-profile');
   page.innerHTML = `
@@ -36,7 +38,7 @@ export async function renderProfile() {
 
     <div class="profile-stats">
       <div class="profile-stat-label">${escapeHtml(t('profileSpent'))}</div>
-      <div class="profile-stat-value">${escapeHtml(formatPrice(total, cur, lang))}</div>
+      <div class="profile-stat-value" id="profileSpentValue">${escapeHtml(formatPrice(0, cur, lang))}</div>
     </div>
 
     <div class="settings-group">
@@ -90,4 +92,16 @@ export async function renderProfile() {
   document.getElementById('rowSettings').onclick = () => router.navigate('settings');
   const adminRow = document.getElementById('rowAdmin');
   if (adminRow) adminRow.onclick = () => router.navigate('admin');
+
+  // Подгружаем сумму выкупа из БД в фоне — обновляем только цифру на месте,
+  // без перерисовки всей страницы. Если БД ещё не ответила, останется $0
+  // — это нормально (новый клиент в любом случае без покупок).
+  api.loadCustomer().then(customer => {
+    if (!customer) return;
+    const totalUsd = Number(customer.purchases_total) || 0;
+    const totalByn = Number(customer.purchases_total_byn) || 0;
+    const total = cur === 'USD' ? totalUsd : totalByn;
+    const el = document.getElementById('profileSpentValue');
+    if (el) el.textContent = formatPrice(total, cur, lang);
+  }).catch(() => {});
 }

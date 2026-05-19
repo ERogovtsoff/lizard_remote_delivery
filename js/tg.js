@@ -58,14 +58,24 @@ export function showBackButton(show, onClick) {
 //   'ask_<product_id>'  — уточнение по конкретному товару
 //   'order_<order_id>'  — клиент только что оформил заказ
 //
-// Бот по этому параметру отправит клиенту приветствие с контекстом и параллельно
-// уведомит менеджера.
+// После открытия чата сворачиваем мини-апп, чтобы клиент оказался непосредственно
+// в чате с ботом. Задержка перед close() даёт клиенту Telegram время отреагировать
+// на openTelegramLink — без неё на некоторых платформах ссылка не успевает открыться.
 export function openBotChat(token) {
   const url = `https://t.me/${CONFIG.BOT_USERNAME}?start=${encodeURIComponent(token)}`;
   if (tg?.openTelegramLink) {
-    try { tg.openTelegramLink(url); return; } catch (e) {}
+    try {
+      tg.openTelegramLink(url);
+    } catch (e) {
+      try { window.open(url, '_blank'); } catch (_) {}
+    }
+  } else {
+    try { window.open(url, '_blank'); } catch (_) {}
   }
-  try { window.open(url, '_blank'); } catch (e) {}
+  // Сворачиваем апку — клиент должен оказаться в чате с ботом
+  setTimeout(() => {
+    try { tg?.close?.(); } catch (e) {}
+  }, 200);
 }
 
 export function onThemeChanged(handler) {
