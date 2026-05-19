@@ -181,20 +181,6 @@ async function bootstrap() {
   setInterval(updateBadges, 500);
   updateBadges();
 
-  // При фокусе на input/textarea — прячем нижнюю навигацию.
-  // Это убирает «мёртвую зону» между полем ввода и клавиатурой
-  // и соответствует UX обычных мобильных приложений.
-  document.addEventListener('focusin', (e) => {
-    if (e.target?.matches?.('input, textarea, [contenteditable="true"]')) {
-      document.body.classList.add('keyboard-open');
-    }
-  });
-  document.addEventListener('focusout', (e) => {
-    if (e.target?.matches?.('input, textarea, [contenteditable="true"]')) {
-      document.body.classList.remove('keyboard-open');
-    }
-  });
-
   // Закрытие клавиатуры при тапе вне поля ввода
   const KEEP_FOCUS_SELECTOR = 'input, textarea, select, label, button, a, [contenteditable="true"]';
   document.addEventListener('pointerdown', (e) => {
