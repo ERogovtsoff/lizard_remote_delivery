@@ -1,6 +1,7 @@
-// Профиль: шапка + ссылки на разделы.
-import { t } from '../i18n.js';
-import { escapeHtml } from '../utils.js';
+// Профиль: шапка с аватаркой и именем, карточка суммы выкупа, ссылки на разделы.
+import { t, getLang } from '../i18n.js';
+import { escapeHtml, formatPrice } from '../utils.js';
+import { state } from '../state.js';
 import { api } from '../api/index.js';
 import { router } from '../router.js';
 import { isAdmin } from '../tg.js';
@@ -14,6 +15,13 @@ export async function renderProfile() {
   const photo = customer?.photo_url || '';
   const letter = (name || 'G').trim().charAt(0).toUpperCase();
 
+  // Сумма выкупа в выбранной клиентом валюте
+  const cur = state.settings.currency;
+  const lang = getLang();
+  const totalUsd = Number(customer?.purchases_total) || 0;
+  const totalByn = Number(customer?.purchases_total_byn) || 0;
+  const total = cur === 'USD' ? totalUsd : totalByn;
+
   const page = document.getElementById('page-profile');
   page.innerHTML = `
     <div class="profile-header">
@@ -25,6 +33,12 @@ export async function renderProfile() {
         ${username ? `<div class="profile-username">${escapeHtml(username)}</div>` : ''}
       </div>
     </div>
+
+    <div class="profile-stats">
+      <div class="profile-stat-label">${escapeHtml(t('profileSpent'))}</div>
+      <div class="profile-stat-value">${escapeHtml(formatPrice(total, cur, lang))}</div>
+    </div>
+
     <div class="settings-group">
       <div class="settings-row clickable" id="rowHistory">
         <div class="settings-row-content">

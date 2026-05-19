@@ -37,6 +37,7 @@ const STRINGS = {
     orderPlaced: 'Заказ оформлен — менеджер свяжется с вами',
 
     guest: 'Гость',
+    profileSpent: 'Куплено на сумму',
     historyTitle: 'История заказов', historySub: 'Запросы и заказы',
     historySubFull: 'Все ваши запросы и заказы.',
     historyEmptyTitle: 'Пока пусто', historyEmptyText: 'Здесь появятся ваши запросы и заказы.',
@@ -140,6 +141,7 @@ const STRINGS = {
     orderPlaced: 'Order placed — the manager will contact you',
 
     guest: 'Guest',
+    profileSpent: 'Total purchases',
     historyTitle: 'Order history', historySub: 'Requests and orders',
     historySubFull: 'All your requests and orders.',
     historyEmptyTitle: 'Nothing here yet', historyEmptyText: 'Your requests and orders will appear here.',

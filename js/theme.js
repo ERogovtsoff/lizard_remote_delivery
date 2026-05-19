@@ -1,50 +1,54 @@
-// Тема: оранжево-коричневая палитра. Игнорируем Telegram themeParams,
-// чтобы сохранить фирменный вид. Поддерживаем только светлый/тёмный режим.
+// Тема в стиле POIZON: бирюзовый акцент на нейтральной серой базе.
+// Игнорируем Telegram themeParams, чтобы сохранить фирменный вид.
+
 import { tg, setHeaderColor } from './tg.js';
+
+// Бирюзовый акцент: #01C2C3 — основной цвет POIZON.
+// Серая база: почти-белый фон (#f5f5f5 / #fafafa) и тёмно-серый текст (#1a1a1a).
 
 const LIGHT = {
   '--bg': '#ffffff',
-  '--bg-secondary': '#faf4ec',
-  '--bg-tertiary': '#efe3d2',
-  '--text': '#2a1a0e',
-  '--text-secondary': '#7b5a3c',
-  '--hint': '#ad8d6c',
-  '--link': '#c4661f',
-  '--button': '#e07d2e',
+  '--bg-secondary': '#f5f5f5',
+  '--bg-tertiary': '#ebebeb',
+  '--text': '#1a1a1a',
+  '--text-secondary': '#666666',
+  '--hint': '#999999',
+  '--link': '#01a8a9',
+  '--button': '#01C2C3',
   '--button-text': '#ffffff',
-  '--border': '#ead9c2',
-  '--danger': '#b03a2e',
-  '--success': '#6b8e23',
-  '--warning': '#d97706',
-  '--accent': '#e07d2e',
-  '--accent-soft': 'rgba(224, 125, 46, 0.10)',
-  '--brown': '#5c3a1e',
-  '--brown-soft': 'rgba(92, 58, 30, 0.08)',
-  '--chat-in': '#f3e9d9',
-  '--chat-out': '#e07d2e',
+  '--border': '#e5e5e5',
+  '--danger': '#e74c3c',
+  '--success': '#2ecc71',
+  '--warning': '#f39c12',
+  '--accent': '#01C2C3',
+  '--accent-soft': 'rgba(1, 194, 195, 0.10)',
+  '--brown': '#1a1a1a',                        // legacy var name: используется для цен
+  '--brown-soft': 'rgba(26, 26, 26, 0.06)',
+  '--chat-in': '#f0f0f0',
+  '--chat-out': '#01C2C3',
   '--chat-out-text': '#ffffff',
 };
 
 const DARK = {
-  '--bg': '#1c130c',
-  '--bg-secondary': '#2a1c12',
-  '--bg-tertiary': '#3a2718',
-  '--text': '#f4e9da',
-  '--text-secondary': '#c3a988',
-  '--hint': '#8b7355',
-  '--link': '#ed8a3e',
-  '--button': '#e07d2e',
+  '--bg': '#0d0d0d',
+  '--bg-secondary': '#1a1a1a',
+  '--bg-tertiary': '#262626',
+  '--text': '#f5f5f5',
+  '--text-secondary': '#a8a8a8',
+  '--hint': '#7a7a7a',
+  '--link': '#33d4d5',
+  '--button': '#01C2C3',
   '--button-text': '#ffffff',
-  '--border': '#3a2718',
-  '--danger': '#e57161',
-  '--success': '#9aaf5a',
-  '--warning': '#e0922e',
-  '--accent': '#e07d2e',
-  '--accent-soft': 'rgba(224, 125, 46, 0.16)',
-  '--brown': '#d9b896',
-  '--brown-soft': 'rgba(217, 184, 150, 0.10)',
-  '--chat-in': '#3a2718',
-  '--chat-out': '#e07d2e',
+  '--border': '#2a2a2a',
+  '--danger': '#e74c3c',
+  '--success': '#2ecc71',
+  '--warning': '#f39c12',
+  '--accent': '#01C2C3',
+  '--accent-soft': 'rgba(1, 194, 195, 0.18)',
+  '--brown': '#f5f5f5',
+  '--brown-soft': 'rgba(245, 245, 245, 0.06)',
+  '--chat-in': '#262626',
+  '--chat-out': '#01C2C3',
   '--chat-out-text': '#ffffff',
 };
 
@@ -60,13 +64,13 @@ export function applyTheme(settingsTheme) {
   const palette = isDark ? DARK : LIGHT;
   const root = document.documentElement;
 
-  // Включаем плавный transition только на момент смены палитры,
-  // чтобы не тормозить остальные интеракции (наведения, фокусы и т.п.)
+  // Класс theme-transition включает плавный transition только на момент смены палитры,
+  // чтобы не тормозить остальные интеракции.
   root.classList.add('theme-transition');
   for (const [k, v] of Object.entries(palette)) {
     root.style.setProperty(k, v);
   }
   root.style.setProperty('color-scheme', isDark ? 'dark' : 'light');
-  setHeaderColor(isDark ? '#1c130c' : '#ffffff');
+  setHeaderColor(isDark ? '#0d0d0d' : '#ffffff');
   setTimeout(() => root.classList.remove('theme-transition'), 400);
 }

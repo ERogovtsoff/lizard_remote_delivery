@@ -49,8 +49,9 @@ CREATE TABLE IF NOT EXISTS customers (
   photo_url        TEXT,
   phone            TEXT,                              -- доступен только если клиент сам поделился через Bot API
   birth_date       DATE,                              -- Telegram эту инфу не отдаёт мини-аппе — заполнять вручную/из бота
-  purchases_total  NUMERIC(12,2) NOT NULL DEFAULT 0,  -- сумма оплаченных заказов
-  preferences      JSONB NOT NULL DEFAULT '{}'::jsonb,-- { lang, theme, currency }
+  purchases_total      NUMERIC(12,2) NOT NULL DEFAULT 0,  -- сумма оплаченных заказов в USD
+  purchases_total_byn  NUMERIC(12,2) NOT NULL DEFAULT 0,  -- сумма оплаченных заказов в BYN
+  preferences          JSONB NOT NULL DEFAULT '{}'::jsonb,-- { lang, theme, currency }
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -134,17 +135,19 @@ CREATE TABLE IF NOT EXISTS cart_items (
   PRIMARY KEY (customer_tg_id, product_id, size)
 );
 
--- 8. ТРИГГЕР: пересчёт purchases_total при оплате
+-- 8. ТРИГГЕР: пересчёт purchases_total в USD и BYN при оплате
 CREATE OR REPLACE FUNCTION update_purchases_total() RETURNS TRIGGER AS $$
 BEGIN
   IF NEW.is_paid IS TRUE AND OLD.is_paid IS FALSE THEN
     UPDATE customers
-      SET purchases_total = purchases_total + COALESCE(NEW.total_usd, 0),
+      SET purchases_total     = purchases_total     + COALESCE(NEW.total_usd, 0),
+          purchases_total_byn = purchases_total_byn + COALESCE(NEW.total_byn, 0),
           updated_at = now()
       WHERE tg_id = NEW.customer_tg_id;
   ELSIF NEW.is_paid IS FALSE AND OLD.is_paid IS TRUE THEN
     UPDATE customers
-      SET purchases_total = GREATEST(0, purchases_total - COALESCE(OLD.total_usd, 0)),
+      SET purchases_total     = GREATEST(0, purchases_total     - COALESCE(OLD.total_usd, 0)),
+          purchases_total_byn = GREATEST(0, purchases_total_byn - COALESCE(OLD.total_byn, 0)),
           updated_at = now()
       WHERE tg_id = NEW.customer_tg_id;
   END IF;

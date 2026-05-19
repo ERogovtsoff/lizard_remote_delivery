@@ -1,72 +1,113 @@
-// Pull-to-refresh: жест свайпа вниз в начале страницы вызывает refresh.
+// Pull-to-refresh со сдвигом всей страницы (как в нативных iOS-приложениях).
 //
-// Работает только когда страница прокручена в самый верх (window.scrollY === 0)
-// и в текущей странице активен PTR. Поверх стандартного скролла, но индикатор
-// показывается только при достаточном смещении.
+// Поведение:
+//   - В верхней части страницы пользователь свайпает вниз пальцем
+//   - Весь контент страницы движется вниз с резистивностью (~50% от движения пальца)
+//   - Над верхней границей контента появляется индикатор (стрелка/спиннер)
+//   - При отпускании:
+//      * если pull >= порога → контент остаётся приспущен (виден спиннер),
+//        выполняется refresh, потом плавный возврат
+//      * иначе → плавный возврат в исходное положение без действия
 //
 // API:
-//   attachPullToRefresh(pageElement, onRefresh)
-//   detachPullToRefresh(pageElement)
-//   onRefresh — async () => void; пока выполняется, спиннер крутится.
+//   attachPullToRefresh(scrollable, onRefresh)
+//       scrollable — элемент с скроллом (обычно сам page). Должен иметь
+//                    position не static.
+//   detachPullToRefresh(scrollable)
+//
+// При повторном attach к тому же элементу старый детачится автоматически —
+// поэтому функция идемпотентна и безопасна на повторный вход в страницу.
 
-const THRESHOLD = 70;          // px пройти пальцем чтобы триггернуть refresh
-const MAX_PULL = 120;          // максимальное растяжение для визуала
+const THRESHOLD = 70;        // px движения пальца для триггера refresh
+const MAX_PULL = 140;        // максимальное растяжение визуала
+const RESISTANCE = 0.5;      // 1.0 = синхронно с пальцем, 0.5 = в 2 раза медленнее
 
 const INDICATOR_SVG = `
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
     <polyline points="23 4 23 10 17 10"/>
     <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
   </svg>
 `;
 
-// Удерживаем по одному обработчику на каждую страницу — чтобы attach был идемпотентен
 const installed = new WeakMap();
 
-export function attachPullToRefresh(page, onRefresh) {
-  if (!page || installed.has(page)) return;
+export function attachPullToRefresh(scrollable, onRefresh) {
+  if (!scrollable) return;
+  // Идемпотентность: если уже установлен — снимем старый
+  if (installed.has(scrollable)) detachPullToRefresh(scrollable);
 
-  // Индикатор размещаем относительно page; page нужен position для абсолютного позиционирования.
-  if (getComputedStyle(page).position === 'static') {
-    page.style.position = 'relative';
+  if (getComputedStyle(scrollable).position === 'static') {
+    scrollable.style.position = 'relative';
   }
+
   const indicator = document.createElement('div');
   indicator.className = 'ptr-indicator';
   indicator.innerHTML = INDICATOR_SVG;
-  page.appendChild(indicator);
+  scrollable.appendChild(indicator);
 
   let startY = 0;
-  let pulling = false;
-  let pullDistance = 0;
-  let loading = false;
+  let pulling = false;          // активен ли в данный момент жест
+  let pullDistance = 0;         // фактическое смещение контента (с учётом резистивности)
+  let loading = false;          // выполняется ли в данный момент refresh
+  let armed = false;            // палец достаточно опустился, чтобы считать жест «pull-to-refresh»
+
+  function setTranslate(y) {
+    scrollable.style.transform = y > 0 ? `translateY(${y}px)` : '';
+  }
+
+  function setIndicator(y, spinning = false) {
+    if (y > 6) {
+      indicator.classList.add('visible');
+      indicator.style.transform = `translate(-50%, ${y - 40}px)`;
+      const svg = indicator.querySelector('svg');
+      if (svg && !spinning) {
+        const ratio = Math.min(1, y / THRESHOLD);
+        svg.style.transform = `rotate(${ratio * 360}deg)`;
+      }
+    } else {
+      indicator.classList.remove('visible');
+    }
+  }
+
+  function reset(animated = true) {
+    if (animated) scrollable.classList.add('ptr-animating');
+    setTranslate(0);
+    indicator.classList.remove('visible', 'loading');
+    indicator.style.transform = 'translate(-50%, -100%)';
+    pullDistance = 0;
+    armed = false;
+    if (animated) {
+      setTimeout(() => scrollable.classList.remove('ptr-animating'), 300);
+    }
+  }
 
   function onStart(e) {
     if (loading) return;
+    // Только если контент проскроллен в самый верх
     if (window.scrollY > 0) return;
     if (e.touches.length !== 1) return;
     startY = e.touches[0].clientY;
     pulling = true;
-    pullDistance = 0;
+    armed = false;
+    scrollable.classList.remove('ptr-animating');
   }
 
   function onMove(e) {
     if (!pulling || loading) return;
-    const y = e.touches[0].clientY;
-    const dy = y - startY;
+    const dy = e.touches[0].clientY - startY;
     if (dy <= 0) {
-      indicator.classList.remove('visible');
+      if (armed) {
+        setTranslate(0);
+        setIndicator(0);
+        armed = false;
+      }
       return;
     }
-    // Резистивное движение — индикатор следует пальцу с убывающей скоростью
-    pullDistance = Math.min(MAX_PULL, dy * 0.5);
-    if (pullDistance > 6) {
-      indicator.classList.add('visible');
-      indicator.style.transform = `translate(-50%, ${pullDistance - 32}px)`;
-      const svg = indicator.querySelector('svg');
-      const ratio = Math.min(1, pullDistance / THRESHOLD);
-      svg.style.transform = `rotate(${ratio * 360}deg)`;
-    } else {
-      indicator.classList.remove('visible');
-    }
+    // Распознаём что это вертикальный pull (а не горизонтальный свайп)
+    armed = true;
+    pullDistance = Math.min(MAX_PULL, dy * RESISTANCE);
+    setTranslate(pullDistance);
+    setIndicator(pullDistance);
   }
 
   async function onEnd() {
@@ -75,40 +116,44 @@ export function attachPullToRefresh(page, onRefresh) {
       return;
     }
     pulling = false;
+    if (!armed) return;
+
     if (pullDistance >= THRESHOLD) {
+      // Триггерим refresh: контент остаётся приспущен, спиннер крутится
       loading = true;
-      indicator.classList.add('loading', 'visible');
-      indicator.style.transform = `translate(-50%, ${THRESHOLD - 32}px)`;
-      try {
-        await onRefresh();
-      } catch (_) {}
+      scrollable.classList.add('ptr-animating');
+      setTranslate(THRESHOLD);
+      setIndicator(THRESHOLD, true);
+      indicator.classList.add('loading');
+      setTimeout(() => scrollable.classList.remove('ptr-animating'), 300);
+
+      try { await onRefresh(); } catch (_) {}
+
+      // Возвращаем в исходное
       loading = false;
-      indicator.classList.remove('loading');
-      // Плавно убираем индикатор
-      indicator.style.transform = `translate(-50%, -100%)`;
-      setTimeout(() => indicator.classList.remove('visible'), 250);
+      reset(true);
     } else {
-      indicator.classList.remove('visible');
-      indicator.style.transform = `translate(-50%, -100%)`;
+      reset(true);
     }
-    pullDistance = 0;
   }
 
-  page.addEventListener('touchstart', onStart, { passive: true });
-  page.addEventListener('touchmove', onMove, { passive: true });
-  page.addEventListener('touchend', onEnd);
-  page.addEventListener('touchcancel', onEnd);
+  scrollable.addEventListener('touchstart', onStart, { passive: true });
+  scrollable.addEventListener('touchmove', onMove, { passive: true });
+  scrollable.addEventListener('touchend', onEnd);
+  scrollable.addEventListener('touchcancel', onEnd);
 
-  installed.set(page, { indicator, onStart, onMove, onEnd });
+  installed.set(scrollable, { indicator, onStart, onMove, onEnd });
 }
 
-export function detachPullToRefresh(page) {
-  const h = installed.get(page);
+export function detachPullToRefresh(scrollable) {
+  const h = installed.get(scrollable);
   if (!h) return;
-  page.removeEventListener('touchstart', h.onStart);
-  page.removeEventListener('touchmove', h.onMove);
-  page.removeEventListener('touchend', h.onEnd);
-  page.removeEventListener('touchcancel', h.onEnd);
-  h.indicator.remove();
-  installed.delete(page);
+  scrollable.removeEventListener('touchstart', h.onStart);
+  scrollable.removeEventListener('touchmove', h.onMove);
+  scrollable.removeEventListener('touchend', h.onEnd);
+  scrollable.removeEventListener('touchcancel', h.onEnd);
+  if (h.indicator && h.indicator.parentNode) h.indicator.remove();
+  scrollable.style.transform = '';
+  scrollable.classList.remove('ptr-animating');
+  installed.delete(scrollable);
 }
