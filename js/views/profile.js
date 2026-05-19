@@ -11,15 +11,20 @@ import { router } from '../router.js';
 import { isAdmin, getUser } from '../tg.js';
 
 export async function renderProfile() {
-  // Имя, username и фото — сразу из Telegram (синхронно, без сети)
+  // Имя, username и фото — сразу из Telegram (синхронно, без сети).
+  // Приоритет: full name → username → «Гость». У многих клиентов в Telegram
+  // нет first_name (только @username) — для них «Гость» был бы странным.
   const user = getUser();
   const fullName = user
     ? [user.first_name, user.last_name].filter(Boolean).join(' ').trim()
     : '';
-  const name = fullName || t('guest');
   const username = user?.username ? '@' + user.username : '';
+  const name = fullName || username || t('guest');
+  // Поле username под именем показываем только если есть и имя, и username
+  // (чтобы не дублировать username, который и так стоит в name)
+  const subline = (fullName && username) ? username : '';
   const photo = user?.photo_url || '';
-  const letter = (name || 'G').trim().charAt(0).toUpperCase();
+  const letter = (name || 'G').trim().replace('@', '').charAt(0).toUpperCase();
 
   const cur = state.settings.currency;
   const lang = getLang();
@@ -32,7 +37,7 @@ export async function renderProfile() {
       </div>
       <div class="profile-info">
         <div class="profile-name">${escapeHtml(name)}</div>
-        ${username ? `<div class="profile-username">${escapeHtml(username)}</div>` : ''}
+        ${subline ? `<div class="profile-username">${escapeHtml(subline)}</div>` : ''}
       </div>
     </div>
 

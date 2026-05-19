@@ -221,27 +221,26 @@ async function ensureCustomer(sb) {
     photo_url: u.photo_url || '',
   };
 
-  const { data: existing, error: selErr } = await sb
-    .from('customers').select('*').eq('tg_id', u.id).maybeSingle();
-  if (selErr) {
-    console.error('[supabase] ensureCustomer select error:', selErr.message);
-  }
-
-  if (!existing) {
-    const insert = { ...baseFields, preferences: state.settings || {} };
-    const { data, error } = await sb.from('customers').insert(insert).select().single();
-    if (error) {
-      console.error('[supabase] ensureCustomer insert error:', error.message);
-      return null;
-    }
-    return data;
-  }
-
+  // upsert по tg_id: один атомарный запрос вместо select+insert/update.
+  // Никаких гонок при параллельных вызовах из bootstrap. ignoreDuplicates: false
+  // означает что при существующей записи update применится — это нам и нужно,
+  // чтобы держать имя/photo актуальными.
+  //
+  // ВАЖНО: НЕ перезаписываем preferences и purchases_total на существующих записях.
+  // upsert без них — Postgres update обновит только перечисленные колонки.
   const { data, error } = await sb
-    .from('customers').update(baseFields).eq('tg_id', u.id).select().single();
+    .from('customers')
+    .upsert(baseFields, { onConflict: 'tg_id' })
+    .select()
+    .single();
+
   if (error) {
-    console.error('[supabase] ensureCustomer update error:', error.message);
-    return existing;
+    console.error('[supabase] ensureCustomer upsert error:', error.message);
+    // Делаем ещё одну попытку — простой select, чтобы вернуть существующую запись
+    // если она уже есть в БД (например, после race condition)
+    const fallback = await sb
+      .from('customers').select('*').eq('tg_id', u.id).maybeSingle();
+    return fallback.data || null;
   }
   return data;
 }
@@ -349,67 +348,84 @@ export async function loadHistory() {
 // ============================== ЗАКАЗЫ ==============================
 
 export async function addOrder(order) {
-  try {
-    const u = getUser();
-    if (!u) throw new Error('No Telegram user');
-    const sb = await getClient();
+  const u = getUser();
+  if (!u) throw new Error('No Telegram user');
+  const sb = await getClient();
 
-    // FK requires customer present
-    await ensureCustomer(sb);
-
-    // Снапшоты цен товаров
-    const products = await loadProducts();
-    const productMap = new Map(products.map(p => [p.id, p]));
-
-    const { data: newOrder, error: e1 } = await sb.from('orders').insert({
-      customer_tg_id: u.id,
-      total_usd: order.total_usd || 0,
-      total_byn: order.total_byn || 0,
-      currency: order.currency || 'USD',
-      status: 'processing',
-      is_paid: false,
-    }).select().single();
-
-    if (e1) {
-      console.error('[supabase] addOrder: orders insert error:', e1.message);
-      throw e1;
-    }
-
-    const itemRows = (order.items || []).map(it => {
-      const prod = productMap.get(it.productId);
-      return {
-        order_id: newOrder.id,
-        product_id: it.productId,
-        size: it.size,
-        qty: it.qty || 1,
-        price_usd_snapshot: prod?.price_usd || 0,
-        price_byn_snapshot: prod?.price_byn || 0,
-      };
-    });
-    if (itemRows.length > 0) {
-      const { error: e2 } = await sb.from('order_items').insert(itemRows);
-      if (e2) console.error('[supabase] addOrder: order_items insert error:', e2.message);
-    }
-
-    return {
-      id: 'o' + newOrder.id,
-      dbId: newOrder.id,             // raw UUID — нужен для deep-link в бот
-      type: 'order',
-      date: newOrder.created_at,
-      status: newOrder.status,
-      isPaid: !!newOrder.is_paid,
-      eta: newOrder.eta,
-      payload: {
-        items: order.items || [],
-        total_usd: Number(newOrder.total_usd) || 0,
-        total_byn: Number(newOrder.total_byn) || 0,
-        currency: newOrder.currency || 'USD',
-      },
-    };
-  } catch (e) {
-    console.error('[supabase] addOrder exception:', e);
-    throw e;
+  // 1. Гарантируем существование customer-а (FK constraint на customer_tg_id).
+  //    Если не удалось — заказ оформить нельзя.
+  const customer = await ensureCustomer(sb);
+  if (!customer) {
+    throw new Error('Не удалось зарегистрировать клиента в БД');
   }
+
+  // 2. Снапшоты цен — из текущего кэша или прямо из БД (для скрытых товаров).
+  //    Если товар в корзине больше не активен — берём его всё равно (по id),
+  //    т.к. он может быть просто скрыт, но в БД есть и FK не упадёт.
+  const products = await loadProducts();
+  const productMap = new Map(products.map(p => [p.id, p]));
+  const missingIds = (order.items || [])
+    .map(it => it.productId)
+    .filter(id => !productMap.has(id));
+  if (missingIds.length > 0) {
+    // Дочитаем по id (включая is_active=false) — нам нужны снапшоты цен
+    const { data: extras } = await sb.from('products').select('*').in('id', missingIds);
+    (extras || []).forEach(p => productMap.set(p.id, p));
+  }
+
+  // 3. Создаём заказ. Если падает — пробрасываем оригинальное сообщение.
+  const { data: newOrder, error: e1 } = await sb.from('orders').insert({
+    customer_tg_id: u.id,
+    total_usd: order.total_usd || 0,
+    total_byn: order.total_byn || 0,
+    currency: order.currency || 'USD',
+    status: 'processing',
+    is_paid: false,
+  }).select().single();
+
+  if (e1) {
+    console.error('[supabase] addOrder: orders insert error:', e1.message);
+    throw new Error(e1.message || 'Не удалось создать заказ');
+  }
+
+  // 4. Добавляем позиции. Если упадёт — откатываем заказ.
+  const itemRows = (order.items || []).map(it => {
+    const prod = productMap.get(it.productId);
+    return {
+      order_id: newOrder.id,
+      product_id: it.productId,
+      size: it.size,
+      qty: it.qty || 1,
+      price_usd_snapshot: prod?.price_usd || 0,
+      price_byn_snapshot: prod?.price_byn || 0,
+    };
+  });
+  if (itemRows.length > 0) {
+    const { error: e2 } = await sb.from('order_items').insert(itemRows);
+    if (e2) {
+      console.error('[supabase] addOrder: order_items insert error:', e2.message);
+      // Rollback — удаляем создавшийся заказ, иначе у клиента будет
+      // «пустой заказ» в истории, а у менеджера — заказ без позиций
+      await sb.from('orders').delete().eq('id', newOrder.id);
+      throw new Error(e2.message || 'Не удалось сохранить позиции заказа');
+    }
+  }
+
+  return {
+    id: 'o' + newOrder.id,
+    dbId: newOrder.id,
+    type: 'order',
+    date: newOrder.created_at,
+    status: newOrder.status,
+    isPaid: !!newOrder.is_paid,
+    eta: newOrder.eta,
+    payload: {
+      items: order.items || [],
+      total_usd: Number(newOrder.total_usd) || 0,
+      total_byn: Number(newOrder.total_byn) || 0,
+      currency: newOrder.currency || 'USD',
+    },
+  };
 }
 
 // ============================== ЗАПРОСЫ ==============================

@@ -108,34 +108,47 @@ async function checkout(totalUsd, totalByn) {
   const cur = state.settings.currency;
   const items = state.cart.map(c => ({ productId: c.productId, size: c.size, qty: c.qty }));
 
-  // 1. Сохраняем заказ в БД и получаем его id
-  let order;
-  try {
-    order = await api.addOrder({
-      items,
-      total_usd: totalUsd,
-      total_byn: totalByn,
-      currency: cur,
-    });
-  } catch (e) {
+  // Блокируем кнопку checkout на время отправки — защита от двойного клика
+  const btn = document.getElementById('checkoutBtn');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+
+  // Retry: 3 попытки с задержками 0/400/1200 мс. Большинство ошибок при оформлении —
+  // временные (гонка с ensureCustomer, сетевые сбои Supabase). Простое повторение спасает.
+  let order = null;
+  let lastError = null;
+  const delays = [0, 400, 1200];
+  for (const delay of delays) {
+    if (delay > 0) await new Promise(r => setTimeout(r, delay));
+    try {
+      order = await api.addOrder({
+        items, total_usd: totalUsd, total_byn: totalByn, currency: cur,
+      });
+      break;
+    } catch (e) {
+      lastError = e;
+      console.warn('[checkout] addOrder attempt failed, retrying:', e?.message || e);
+    }
+  }
+
+  // Восстанавливаем кнопку
+  if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+
+  if (!order) {
+    console.error('[checkout] all attempts failed:', lastError);
     showToast(t('orderFailed'), 4000);
     return;
   }
 
-  // 2. Чистим корзину, даём тактильный фидбек
+  // Чистим корзину, фидбек
   clearLocalCart();
   haptic('success');
 
-  // 3. Показываем тост и сразу уводим в историю — клиент видит свой свежий заказ.
-  //    Если/когда апка снова откроется (например клиент свернул чат), он окажется
-  //    на странице истории, а не на пустой корзине.
+  // Тост + переход в историю до сворачивания апки
   showToast(t('orderPlaced'), 3000);
   router.navigate('history');
 
-  // 4. Открываем чат с ботом и сворачиваем апку. openBotChat() сам делает close()
-  //    с задержкой, чтобы Telegram успел открыть чат.
-  if (order?.dbId) {
-    // Небольшая пауза, чтобы клиент увидел тост и переход в историю до сворачивания апки
+  // Открываем чат с ботом и сворачиваем апку
+  if (order.dbId) {
     setTimeout(() => openBotChat('order_' + order.dbId), 600);
   }
 }
