@@ -8,7 +8,7 @@
 //   favSize      — если задан, тоггл изменяет именно этот размер; иначе любой
 //   onChange     — callback после изменения избранного (родитель перерисует список)
 
-import { escapeHtml, formatPrice } from '../utils.js';
+import { escapeHtml, formatPrice, badgeColor } from '../utils.js';
 import { localizedProduct, getLang, t } from '../i18n.js';
 import { state, isFavAny, isFavExact, removeFav, toggleFav, removeFavAll } from '../state.js';
 import { showConfirm } from './modal.js';
@@ -35,6 +35,17 @@ export function createProductCard(prod, opts = {}) {
     onSlideClick: () => router.navigate('detail', { productId: prod.id, source: opts.source || 'home' }),
   });
   card.appendChild(carousel);
+
+  // Плашка товара (Топ/Хит/etc) — поверх картинки в левом верхнем углу
+  if (prod.badge_text && prod.badge_text.trim()) {
+    const c = badgeColor(prod.badge_color);
+    const badgeEl = document.createElement('div');
+    badgeEl.className = 'product-badge';
+    badgeEl.style.background = c.bg;
+    badgeEl.style.color = c.fg;
+    badgeEl.textContent = prod.badge_text.trim();
+    carousel.appendChild(badgeEl);
+  }
 
   // Бейдж с размером (для страницы «Избранное»)
   if (opts.showSize) {

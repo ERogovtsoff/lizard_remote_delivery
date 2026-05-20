@@ -47,7 +47,10 @@ function rowToProduct(row) {
     price_byn: Number(row.price_byn) || 0,
     images: Array.isArray(row.images) ? row.images : [],
     sizes: Array.isArray(row.sizes) ? row.sizes : [],
+    stock: (row.stock && typeof row.stock === 'object') ? row.stock : {},
     is_active: row.is_active !== false,
+    badge_text: row.badge_text || '',
+    badge_color: row.badge_color || '',
     updated_at: row.updated_at || null,  // используется для сравнения в кэше
   };
 }
@@ -63,7 +66,10 @@ function productToRow(p) {
     price_byn: Number(p.price_byn) || 0,
     images: Array.isArray(p.images) ? p.images : (p.img ? [p.img] : []),
     sizes: Array.isArray(p.sizes) ? p.sizes : [],
+    stock: (p.stock && typeof p.stock === 'object') ? p.stock : {},
     is_active: p.is_active !== false,
+    badge_text: (p.badge_text || '').trim() || null,
+    badge_color: (p.badge_color || '').trim() || null,
   };
 }
 

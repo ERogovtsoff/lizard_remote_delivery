@@ -1,6 +1,6 @@
 // Деталь товара.
 import { t, getLang, localizedProduct } from '../i18n.js';
-import { escapeHtml, formatPrice } from '../utils.js';
+import { escapeHtml, formatPrice, badgeColor } from '../utils.js';
 import { state, isFavExact, toggleFav, removeFav, addToCart } from '../state.js';
 import { api } from '../api/index.js';
 import { router } from '../router.js';
@@ -26,15 +26,18 @@ export async function renderDetail(opts = {}) {
   const p = localizedProduct(prod, cur);
   const images = (prod.images && prod.images.length) ? prod.images : (prod.img ? [prod.img] : []);
 
-  // Если размер один — выбираем автоматически
+  // Если размер один и он в наличии — выбираем автоматически
   if (prod.sizes && prod.sizes.length === 1) {
-    selectedSize = prod.sizes[0];
+    const only = prod.sizes[0];
+    const st = (!prod.stock || Object.keys(prod.stock).length === 0) ? Infinity : (Number(prod.stock[only]) || 0);
+    selectedSize = st > 0 ? only : null;
   } else {
     selectedSize = null;
   }
 
   page.innerHTML = `
     <div id="detailCarouselSlot"></div>
+    ${prod.badge_text && prod.badge_text.trim() ? `<div class="detail-badge" style="background:${badgeColor(prod.badge_color).bg};color:${badgeColor(prod.badge_color).fg}">${escapeHtml(prod.badge_text.trim())}</div><br>` : ''}
     <h2 class="product-detail-name">${escapeHtml(p.name)}</h2>
     <div class="product-detail-price">${escapeHtml(formatPrice(p.price, cur, lang))}</div>
     ${p.desc ? `<p class="product-detail-desc">${escapeHtml(p.desc)}</p>` : ''}
@@ -105,6 +108,16 @@ export async function renderDetail(opts = {}) {
       haptic('warning');
       return;
     }
+    // Проверяем остаток: сколько этого размера уже в корзине + 1 не должно превышать stock
+    const maxQty = sizeStock(prod, selectedSize);
+    const inCart = state.cart
+      .filter(c => c.productId === prod.id && c.size === selectedSize)
+      .reduce((sum, c) => sum + c.qty, 0);
+    if (inCart >= maxQty) {
+      showToast(t('cartMaxQty'));
+      haptic('warning');
+      return;
+    }
     addToCart(prod.id, selectedSize);
     haptic('success');
     showToast(t('addedToCart'));
@@ -113,18 +126,37 @@ export async function renderDetail(opts = {}) {
   };
 }
 
+// Доступное количество для размера. Если stock не задан вовсе — считаем доступным (∞).
+function sizeStock(prod, sz) {
+  if (!prod.stock || Object.keys(prod.stock).length === 0) return Infinity;
+  // Товар без выбранного размера (нет размеров вовсе) — суммарный остаток
+  if (sz == null) {
+    const vals = Object.values(prod.stock);
+    return vals.length ? vals.reduce((a, b) => a + (Number(b) || 0), 0) : Infinity;
+  }
+  return Number(prod.stock[sz]) || 0;
+}
+
 function renderSizes(prod) {
   const wrap = document.getElementById('sizePicker');
   wrap.innerHTML = '';
   prod.sizes.forEach(sz => {
+    const stock = sizeStock(prod, sz);
+    const soldOut = stock <= 0;
     const cell = document.createElement('div');
-    cell.className = 'size-cell' + (selectedSize === sz ? ' selected' : '');
+    cell.className = 'size-cell'
+      + (selectedSize === sz ? ' selected' : '')
+      + (soldOut ? ' sold-out' : '');
     cell.textContent = sz;
-    cell.onclick = () => {
-      selectedSize = sz;
-      renderSizes(prod);
-      updateFavBtn(prod);
-    };
+    if (soldOut) {
+      cell.title = t('sizeSoldOut');
+    } else {
+      cell.onclick = () => {
+        selectedSize = sz;
+        renderSizes(prod);
+        updateFavBtn(prod);
+      };
+    }
     wrap.appendChild(cell);
   });
 }

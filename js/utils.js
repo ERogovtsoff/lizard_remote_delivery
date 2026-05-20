@@ -59,3 +59,20 @@ export async function copyToClipboard(text) {
     return false;
   }
 }
+
+// Фиксированная палитра цветов плашек (бейджей) товаров.
+// Ключ хранится в БД (products.badge_color), значения — фон и цвет текста.
+export const BADGE_COLORS = {
+  red:    { bg: '#e74c3c', fg: '#ffffff', label: 'Красный' },
+  orange: { bg: '#f39c12', fg: '#ffffff', label: 'Оранжевый' },
+  green:  { bg: '#2ecc71', fg: '#ffffff', label: 'Зелёный' },
+  blue:   { bg: '#3498db', fg: '#ffffff', label: 'Синий' },
+  gold:   { bg: '#d4af37', fg: '#1a1a1a', label: 'Золотой' },
+  black:  { bg: '#1a1a1a', fg: '#ffffff', label: 'Чёрный' },
+  accent: { bg: '#01C2C3', fg: '#ffffff', label: 'Бирюзовый' },
+};
+
+// Вернуть {bg, fg} для ключа цвета. Дефолт — accent.
+export function badgeColor(key) {
+  return BADGE_COLORS[key] || BADGE_COLORS.accent;
+}

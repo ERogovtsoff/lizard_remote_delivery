@@ -1,6 +1,6 @@
 // Админка каталога: список товаров, редактор с несколькими картинками, экспорт/импорт.
 import { t, getLang, localizedProduct } from '../i18n.js';
-import { escapeHtml, escapeAttr, formatPrice, makeId } from '../utils.js';
+import { escapeHtml, escapeAttr, formatPrice, makeId, BADGE_COLORS } from '../utils.js';
 import { api } from '../api/index.js';
 import { router } from '../router.js';
 import { showToast } from '../components/toast.js';
@@ -93,7 +93,8 @@ function renderEditor() {
   const isNew = editingId === 'new';
   const prod = isNew
     ? { id: makeId('p'), name_ru: '', name_en: '', desc_ru: '', desc_en: '',
-        price_usd: 0, price_byn: 0, images: [], sizes: [], is_active: true }
+        price_usd: 0, price_byn: 0, images: [], sizes: [], is_active: true,
+        badge_text: '', badge_color: 'accent' }
     : { ...workingProducts.find(p => p.id === editingId) };
   if (!prod.images) prod.images = prod.img ? [prod.img] : [];
   if (prod.is_active === undefined) prod.is_active = true;
@@ -129,7 +130,12 @@ function renderEditor() {
       </div>
       <div class="form-row">
         <label>${escapeHtml(t('adminFieldSizes'))}</label>
-        <input type="text" id="fSizes" value="${escapeAttr((prod.sizes || []).join(', '))}" placeholder="${escapeAttr(t('adminFieldSizesPlaceholder'))}">
+        <div class="size-stock-editor" id="sizeStockEditor"></div>
+        <button class="image-editor-add" id="addSizeBtn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span>${escapeHtml(t('adminAddSize'))}</span>
+        </button>
+        <div class="admin-checkbox-hint">${escapeHtml(t('adminSizeStockHint'))}</div>
       </div>
       <div class="form-row">
         <label>${escapeHtml(t('adminFieldDescRu'))}</label>
@@ -138,6 +144,14 @@ function renderEditor() {
       <div class="form-row">
         <label>${escapeHtml(t('adminFieldDescEn'))}</label>
         <textarea id="fDescEn">${escapeHtml(prod.desc_en || '')}</textarea>
+      </div>
+      <div class="form-row">
+        <label>${escapeHtml(t('adminFieldBadge'))}</label>
+        <input type="text" id="fBadgeText" value="${escapeAttr(prod.badge_text || '')}" placeholder="${escapeAttr(t('adminFieldBadgePlaceholder'))}" maxlength="14">
+      </div>
+      <div class="form-row">
+        <label>${escapeHtml(t('adminFieldBadgeColor'))}</label>
+        <div class="badge-color-picker" id="badgeColorPicker"></div>
       </div>
       <div class="form-row admin-active-toggle">
         <label class="admin-checkbox">
@@ -178,13 +192,65 @@ function renderEditor() {
   renderImages();
   document.getElementById('addImgBtn').onclick = () => { draft.images.push(''); renderImages(); };
 
+  // Редактор размеров с остатками: [{size, qty}]
+  const sizeDraft = (prod.sizes || []).map(s => ({
+    size: s,
+    qty: (prod.stock && prod.stock[s] != null) ? prod.stock[s] : 0,
+  }));
+  const sizeEditor = document.getElementById('sizeStockEditor');
+  function renderSizes() {
+    sizeEditor.innerHTML = '';
+    sizeDraft.forEach((item, i) => {
+      const row = document.createElement('div');
+      row.className = 'size-stock-row';
+      row.innerHTML = `
+        <input type="text" class="size-stock-name" placeholder="${escapeAttr(t('adminSizeName'))}" value="${escapeAttr(item.size)}">
+        <input type="number" class="size-stock-qty" min="0" placeholder="0" value="${item.qty}">
+        <button type="button" class="size-stock-del" aria-label="Remove">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>
+        </button>
+      `;
+      row.querySelector('.size-stock-name').oninput = (e) => { sizeDraft[i].size = e.target.value; };
+      row.querySelector('.size-stock-qty').oninput = (e) => { sizeDraft[i].qty = Math.max(0, parseInt(e.target.value) || 0); };
+      row.querySelector('.size-stock-del').onclick = () => { sizeDraft.splice(i, 1); renderSizes(); };
+      sizeEditor.appendChild(row);
+    });
+  }
+  renderSizes();
+  document.getElementById('addSizeBtn').onclick = () => { sizeDraft.push({ size: '', qty: 0 }); renderSizes(); };
+
+  // Палитра цветов плашки
+  const badgeDraft = { color: prod.badge_color || 'accent' };
+  const colorPicker = document.getElementById('badgeColorPicker');
+  function renderColorPicker() {
+    colorPicker.innerHTML = '';
+    for (const [key, c] of Object.entries(BADGE_COLORS)) {
+      const sw = document.createElement('button');
+      sw.type = 'button';
+      sw.className = 'badge-color-swatch' + (badgeDraft.color === key ? ' active' : '');
+      sw.style.background = c.bg;
+      sw.title = c.label;
+      sw.onclick = () => { badgeDraft.color = key; renderColorPicker(); };
+      colorPicker.appendChild(sw);
+    }
+  }
+  renderColorPicker();
+
   document.getElementById('cancelEditBtn').onclick = () => { editingId = null; renderAdmin(); };
   document.getElementById('saveProdBtn').onclick = async () => {
     const nameRu = document.getElementById('fNameRu').value.trim();
     const nameEn = document.getElementById('fNameEn').value.trim();
     if (!nameRu && !nameEn) { showToast(t('adminNoName')); return; }
-    const sizes = document.getElementById('fSizes').value
-      .split(',').map(s => s.trim()).filter(Boolean);
+    // Собираем размеры и остатки из редактора (пропускаем пустые имена)
+    const sizes = [];
+    const stock = {};
+    sizeDraft.forEach(item => {
+      const s = (item.size || '').trim();
+      if (!s) return;
+      sizes.push(s);
+      stock[s] = Math.max(0, parseInt(item.qty) || 0);
+    });
+    const badgeText = document.getElementById('fBadgeText').value.trim();
     const obj = {
       id: prod.id,
       name_ru: nameRu, name_en: nameEn,
@@ -194,7 +260,10 @@ function renderEditor() {
       price_byn: Number(document.getElementById('fPriceByn').value) || 0,
       images: draft.images.filter(Boolean),
       sizes,
+      stock,
       is_active: document.getElementById('fIsActive').checked,
+      badge_text: badgeText,
+      badge_color: badgeText ? badgeDraft.color : '',
     };
     if (isNew) workingProducts.push(obj);
     else {

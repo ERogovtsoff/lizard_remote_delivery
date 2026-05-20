@@ -9,6 +9,18 @@ import { showToast } from '../components/toast.js';
 import { haptic, openBotChat } from '../tg.js';
 import { invalidateHistoryCache } from './history.js';
 
+// Доступное количество для размера товара. Если stock не задан — без ограничения.
+function sizeStockOf(prod, size) {
+  if (!prod || !prod.stock || Object.keys(prod.stock).length === 0) return Infinity;
+  if (size == null) {
+    // товар без размеров — суммарный остаток или Infinity
+    const vals = Object.values(prod.stock);
+    if (!vals.length) return Infinity;
+    return vals.reduce((a, b) => a + (Number(b) || 0), 0);
+  }
+  return Number(prod.stock[size]) || 0;
+}
+
 export async function renderCart() {
   const page = document.getElementById('page-cart');
   page.innerHTML = `
@@ -87,7 +99,16 @@ export async function renderCart() {
       row.querySelectorAll('[data-act]').forEach(btn => {
         btn.onclick = () => {
           const act = btn.getAttribute('data-act');
-          if (act === 'inc') { changeCartQty(item.productId, item.size, 1); render(); haptic('light'); }
+          if (act === 'inc') {
+            // Проверяем остаток по размеру
+            const maxQty = sizeStockOf(prod, item.size);
+            if (item.qty >= maxQty) {
+              showToast(t('cartMaxQty'));
+              haptic('warning');
+              return;
+            }
+            changeCartQty(item.productId, item.size, 1); render(); haptic('light');
+          }
           else if (act === 'dec') { changeCartQty(item.productId, item.size, -1); render(); haptic('light'); }
           else if (act === 'rm') {
             showConfirm({
