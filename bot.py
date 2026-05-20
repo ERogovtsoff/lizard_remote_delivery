@@ -281,33 +281,21 @@ async def notify_manager(bot: Bot, text: str, client_tg_id: int,
 
 ORDER_STATUS = {
     "new":              {"label": "🆕 Новый",            "client_msg": None},
-    "in_progress":      {"label": "✋ В работе",          "client_msg": "Менеджер взял ваш заказ в работу и скоро свяжется с вами."},
-    "awaiting_payment": {"label": "💳 Ждёт оплаты",       "client_msg": "Ваш заказ подтверждён. Ожидаем оплату — менеджер пришлёт реквизиты."},
-    "paid":             {"label": "✅ Оплачен",           "client_msg": "Оплата получена, спасибо! Приступаем к выкупу товара."},
-    "purchasing":       {"label": "🛒 Выкупаем",          "client_msg": "Мы выкупаем ваш товар на площадке. Дальше — доставка в Беларусь."},
-    "shipping":         {"label": "🚚 В пути",            "client_msg": "Ваш заказ едет из Китая. Обычно доставка занимает 2–3 недели."},
-    "ready":            {"label": "📦 Готов к выдаче",    "client_msg": "Ваш заказ прибыл! Можно примерить и забрать. Менеджер согласует время."},
-    "completed":        {"label": "🎉 Выдан",             "client_msg": "Заказ выдан. Спасибо, что выбрали нас! Будем рады видеть снова."},
-    "cancelled":        {"label": "❌ Отменён",           "client_msg": "Ваш заказ отменён. Если это ошибка — напишите нам, поможем."},
+    "in_progress":      {"label": "✋ В работе",          "client_msg": "Взяли ваш заказ в работу 🙌 Скоро вернёмся с деталями."},
+    "awaiting_payment": {"label": "💳 Ждёт оплаты",       "client_msg": "Всё подтвердили! Пришлём реквизиты для оплаты — и сразу выкупаем."},
+    "paid":             {"label": "✅ Оплачен",           "client_msg": "Оплату получили, спасибо! 🎉 Начинаем выкуп."},
+    "purchasing":       {"label": "🛒 Выкупаем",          "client_msg": "Выкупаем ваш товар. Следующий шаг — отправка в Беларусь."},
+    "shipping":         {"label": "🚚 В пути",            "client_msg": "Заказ уже едет к нам 🚚 Обычно дорога занимает 2–3 недели."},
+    "ready":            {"label": "📦 Готов к выдаче",    "client_msg": "Ваш заказ приехал! 🎁 Договоримся, когда вам удобно примерить и забрать."},
+    "completed":        {"label": "🎉 Выдан",             "client_msg": "Готово! Спасибо, что выбрали нас 💛 Будем рады видеть снова."},
+    "cancelled":        {"label": "❌ Отменён",           "client_msg": "Заказ отменили. Если что-то пошло не так — напишите, всё поправим."},
 }
 
 # Доступные переходы из каждого статуса (что показывать кнопками)
-ORDER_TRANSITIONS = {
-    "new":              ["in_progress", "cancelled"],
-    "in_progress":      ["awaiting_payment", "cancelled"],
-    "awaiting_payment": ["paid", "cancelled"],
-    "paid":             ["purchasing", "cancelled"],
-    "purchasing":       ["shipping", "cancelled"],
-    "shipping":         ["ready", "cancelled"],
-    "ready":            ["completed", "cancelled"],
-    "completed":        [],
-    "cancelled":        ["in_progress"],   # можно вернуть в работу, если отменили по ошибке
-}
-
 INQUIRY_STATUS = {
     "new":         {"label": "🆕 Новое",     "client_msg": None},
-    "in_progress": {"label": "✋ В работе",   "client_msg": "Ваше обращение принято в работу — менеджер скоро ответит."},
-    "closed":      {"label": "✅ Закрыто",    "client_msg": "Ваше обращение закрыто. Если остались вопросы — просто напишите нам."},
+    "in_progress": {"label": "✋ В работе",   "client_msg": "Получили ваше сообщение 🙌 Скоро ответим!"},
+    "closed":      {"label": "✅ Закрыто",    "client_msg": "Надеемся, всё помогло 💛 Будут вопросы — пишите в любой момент."},
 }
 INQUIRY_TRANSITIONS = {
     "new":         ["in_progress", "closed"],
@@ -317,13 +305,17 @@ INQUIRY_TRANSITIONS = {
 
 
 def order_keyboard(order_id: str, status: str) -> InlineKeyboardMarkup:
-    """Кнопки переходов статуса для заказа. callback_data = 'os:<order_id>:<new_status>'."""
-    rows = []
-    transitions = ORDER_TRANSITIONS.get(status, [])
-    row = []
-    for nxt in transitions:
-        label = ORDER_STATUS[nxt]["label"]
-        row.append(InlineKeyboardButton(text=label, callback_data=f"os:{order_id}:{nxt}"))
+    """Кнопки всех статусов заказа (кроме текущего). callback_data = 'os:<order_id>:<new_status>'.
+    Менеджер может перевести заказ в любой статус в один тап."""
+    # Порядок кнопок = порядок воронки. Текущий статус пропускаем.
+    order = ["new", "in_progress", "awaiting_payment", "paid",
+             "purchasing", "shipping", "ready", "completed", "cancelled"]
+    rows, row = [], []
+    for st in order:
+        if st == status:
+            continue
+        label = ORDER_STATUS[st]["label"]
+        row.append(InlineKeyboardButton(text=label, callback_data=f"os:{order_id}:{st}"))
         if len(row) == 2:
             rows.append(row); row = []
     if row:
@@ -420,9 +412,8 @@ async def send_welcome(message: Message) -> None:
         resize_keyboard=True,
     )
     await message.answer(
-        "👋 Добро пожаловать!\n\n"
-        "Нажмите кнопку ниже, чтобы открыть магазин — там можно "
-        "посмотреть товары в наличии или оформить заказ из Китая.",
+        "Привет! 👋 Рады видеть вас в LIZARD.\n\n"
+        "Нажмите кнопку ниже — внутри товары в наличии и заказ любых вещей из Китая.",
         reply_markup=kb,
     )
 
@@ -452,23 +443,34 @@ async def cmd_active(message: Message, bot: Bot) -> None:
         await message.answer("✅ Нет активных заказов и обращений. Всё обработано!")
         return
 
-    lines = ["📋 <b>АКТИВНЫЕ</b>", ""]
-    if orders:
-        lines.append("<b>Заказы:</b>")
-        for o in orders:
-            st = ORDER_STATUS.get(o.get("status"), {}).get("label", o.get("status"))
-            cur = o.get("currency") or "USD"
-            total = float(o.get(f"total_{cur.lower()}") or 0)
-            lines.append(f"• №{o['id']} — {st} — {fmt_price(total, cur)}")
-        lines.append("")
-    if inquiries:
-        lines.append("<b>Обращения:</b>")
-        for q in inquiries:
-            st = INQUIRY_STATUS.get(q.get("status"), {}).get("label", q.get("status"))
-            tp = "вопрос по товару" if q.get("type") == "product_question" else "запрос на подбор"
-            lines.append(f"• {tp} — {st}")
+    total_count = len(orders) + len(inquiries)
+    await message.answer(
+        f"📋 <b>Активные обращения: {total_count}</b>\n"
+        f"Заказов: {len(orders)} · Запросов: {len(inquiries)}\n"
+        f"Нажмите «Открыть» у нужного, чтобы перейти к карточке."
+    )
 
-    await message.answer("\n".join(lines))
+    # Каждый заказ — отдельным сообщением с кнопкой «Открыть»
+    for o in orders:
+        st = ORDER_STATUS.get(o.get("status"), {}).get("label", o.get("status"))
+        cur = o.get("currency") or "USD"
+        total = float(o.get(f"total_{cur.lower()}") or 0)
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🔍 Открыть заказ", callback_data=f"open_o:{o['id']}")
+        ]])
+        await message.answer(
+            f"🛒 Заказ №{o['id']} — {st} — {fmt_price(total, cur)}",
+            reply_markup=kb,
+        )
+
+    # Каждое обращение — отдельным сообщением с кнопкой «Открыть»
+    for q in inquiries:
+        st = INQUIRY_STATUS.get(q.get("status"), {}).get("label", q.get("status"))
+        tp = "❓ Вопрос по товару" if q.get("type") == "product_question" else "🆕 Запрос на подбор"
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🔍 Открыть обращение", callback_data=f"open_i:{q['id']}")
+        ]])
+        await message.answer(f"{tp} — {st}", reply_markup=kb)
 
 
 # ===================== HANDLERS DEEP-LINK ======================
@@ -476,9 +478,9 @@ async def cmd_active(message: Message, bot: Bot) -> None:
 async def handle_start_request(message: Message, bot: Bot) -> None:
     """Клиент пришёл написать общий запрос на подбор товара."""
     await message.answer(
-        "Здравствуйте! 👋\n\n"
-        "Расскажите, что вы хотели бы заказать — название, описание, ссылку или фото. "
-        "Я найду и привезу. Можно прислать несколько сообщений или фото."
+        "Привет! 👋\n\n"
+        "Расскажите, что хотите заказать — название, ссылку или просто фото. "
+        "Подберём и привезём 💛"
     )
     # Создаём обращение в БД
     inquiry = await supabase_post("inquiries", {
@@ -506,10 +508,10 @@ async def handle_start_ask(message: Message, bot: Bot, product_id: str) -> None:
     name = product_name(prod) if prod else f"товар {product_id}"
 
     await message.answer(
-        f"👋 Здравствуйте!\n\n"
-        f"Вы интересуетесь товаром «<b>{html.escape(name)}</b>». "
-        f"Менеджер свяжется с вами в ближайшее время и расскажет про доступные размеры и наличие.\n\n"
-        f"Если хотите — можете прямо сейчас написать дополнительные вопросы или прислать фото."
+        f"Привет! 👋\n\n"
+        f"Вы смотрите «<b>{html.escape(name)}</b>» — сейчас уточним размеры и наличие "
+        f"и вернёмся к вам совсем скоро.\n\n"
+        f"Можно сразу написать вопросы или прислать фото 📸"
     )
     inquiry = await supabase_post("inquiries", {
         "customer_tg_id": message.from_user.id,
@@ -536,8 +538,8 @@ async def handle_start_order(message: Message, bot: Bot, order_id: str) -> None:
     order = await fetch_order(order_id)
     if not order:
         await message.answer(
-            "⚠️ Не удалось найти ваш заказ. Возможно, он был только что создан — "
-            "попробуйте через несколько секунд, или напишите менеджеру вручную."
+            "Кажется, заказ ещё оформляется ⏳ Подождите пару секунд и загляните снова — "
+            "или просто напишите нам, поможем."
         )
         return
 
@@ -547,7 +549,7 @@ async def handle_start_order(message: Message, bot: Bot, order_id: str) -> None:
     status = order.get("status") or "new"
 
     # Резюме клиенту
-    client_lines = [f"🛒 <b>Ваш заказ №{order_id}</b>", ""]
+    client_lines = [f"Спасибо за заказ! 🎉 №{order_id}", ""]
     for it in items:
         prod = it.get("_product")
         name = product_name(prod)
@@ -562,7 +564,7 @@ async def handle_start_order(message: Message, bot: Bot, order_id: str) -> None:
     client_lines.append("")
     client_lines.append(f"<b>Итого:</b> {fmt_price(total, currency)}")
     client_lines.append("")
-    client_lines.append("Менеджер свяжется с вами для подтверждения и оплаты.")
+    client_lines.append("Уже проверяем детали и скоро напишем по оплате 💛")
     await message.answer("\n".join(client_lines))
 
     # Карточка заказа менеджеру — с заголовком, клиентом и кнопками статуса
@@ -736,7 +738,7 @@ async def cb_order_status(cb: CallbackQuery, bot: Bot) -> None:
         try:
             await bot.send_message(
                 order["customer_tg_id"],
-                f"📦 <b>Заказ №{order_id}</b>\n{client_msg}",
+                f"{client_msg}\n\n<i>Заказ №{order_id}</i>",
             )
         except Exception as e:
             log.warning("Failed to notify client about status: %s", e)
@@ -795,6 +797,68 @@ async def cb_inquiry_status(cb: CallbackQuery, bot: Bot) -> None:
                 log.warning("Failed to notify client about inquiry status: %s", e)
 
     await cb.answer(f"Статус: {INQUIRY_STATUS[new_status]['label']}")
+
+
+# ===================== ОТКРЫТЬ ИЗ /active =====================
+
+@router.callback_query(F.data.startswith("open_o:"))
+async def cb_open_order(cb: CallbackQuery, bot: Bot) -> None:
+    """Кнопка «Открыть заказ» из /active — присылаем свежую карточку с кнопками."""
+    if (cb.from_user.username or "").lower() != MANAGER_USERNAME:
+        await cb.answer("Недоступно", show_alert=False)
+        return
+    order_id = cb.data.split(":", 1)[1]
+    order = await fetch_order(order_id)
+    if not order:
+        await cb.answer("Заказ не найден", show_alert=True)
+        return
+    status = order.get("status") or "new"
+    card = f"🛒 <b>ЗАКАЗ</b>\n\n" + order_card_text(order, status)
+    msg_id = await notify_manager(
+        bot, card, order["customer_tg_id"],
+        reply_markup=order_keyboard(order_id, status),
+    )
+    # Обновляем привязку карточки, чтобы смена статуса редактировала именно её
+    if msg_id:
+        await supabase_patch("orders", {"id": f"eq.{order_id}"}, {"manager_msg_id": msg_id})
+    await cb.answer("Открыто ниже ⬇️")
+
+
+@router.callback_query(F.data.startswith("open_i:"))
+async def cb_open_inquiry(cb: CallbackQuery, bot: Bot) -> None:
+    """Кнопка «Открыть обращение» из /active — присылаем свежую карточку с кнопками."""
+    if (cb.from_user.username or "").lower() != MANAGER_USERNAME:
+        await cb.answer("Недоступно", show_alert=False)
+        return
+    inquiry_id = cb.data.split(":", 1)[1]
+    rows = await supabase_get("inquiries", {"id": f"eq.{inquiry_id}", "limit": "1"})
+    if not rows:
+        await cb.answer("Обращение не найдено", show_alert=True)
+        return
+    q = rows[0]
+    status = q.get("status") or "new"
+    is_product = q.get("type") == "product_question"
+
+    # Подтянем имя товара, если это вопрос по товару
+    product_line = ""
+    if is_product and q.get("product_id"):
+        prod = await fetch_product(q["product_id"])
+        if prod:
+            product_line = f"🛍 Товар: <b>{html.escape(product_name(prod))}</b>\n"
+
+    title = "❓ <b>ВОПРОС ПО ТОВАРУ</b>" if is_product else "🆕 <b>ЗАПРОС НА ПОДБОР</b>"
+    card = (
+        f"{title}\n"
+        f"{product_line}"
+        f"Статус: {INQUIRY_STATUS.get(status, {}).get('label', status)}"
+    )
+    msg_id = await notify_manager(
+        bot, card, q["customer_tg_id"],
+        reply_markup=inquiry_keyboard(inquiry_id, status),
+    )
+    if msg_id:
+        await supabase_patch("inquiries", {"id": f"eq.{inquiry_id}"}, {"manager_msg_id": msg_id})
+    await cb.answer("Открыто ниже ⬇️")
 
 
 # ============================ MAIN =============================

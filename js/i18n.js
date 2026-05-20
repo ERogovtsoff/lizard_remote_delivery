@@ -31,9 +31,9 @@ const STRINGS = {
     searchEmptyTitle: 'Ничего не найдено', searchEmptyText: 'Попробуйте изменить запрос.',
     catalogTitle: 'В наличии', catalogSub: 'Товары, которые можно заказать прямо сейчас.',
 
-    chatGreeting1: 'Здравствуйте! 👋',
-    chatGreeting2: 'Расскажите, что вы хотели бы заказать — название, описание, ссылку или фото. Я найду и привезу.',
-    chatGreeting3: 'Нажмите на поле ввода, чтобы продолжить диалог. Там можно отправить сообщение и приложить фото.',
+    chatGreeting1: 'Привет! 👋',
+    chatGreeting2: 'Расскажите, что хотите заказать — название, ссылку или просто фото. Подберём и привезём 💛',
+    chatGreeting3: 'Нажмите на поле ввода, чтобы начать диалог — там можно написать и приложить фото.',
     chatInputPlaceholder: 'Напишите сообщение…',
     chatAttachInfo: 'Фото и файлы можно прикрепить в чате с менеджером после нажатия на поле ввода',
 
@@ -156,8 +156,8 @@ const STRINGS = {
     catalogTitle: 'In Stock', catalogSub: 'Items you can order right now.',
 
     chatGreeting1: 'Hi! 👋',
-    chatGreeting2: 'Tell us what you would like to order — name, description, link or photo. We will find it and bring it.',
-    chatGreeting3: 'Tap the input field to continue the conversation. You can send messages and attach photos there.',
+    chatGreeting2: 'Tell us what you want to order — a name, a link, or just a photo. We will find it and bring it 💛',
+    chatGreeting3: 'Tap the input field to start the chat — you can write and attach photos there.',
     chatInputPlaceholder: 'Type a message…',
     chatAttachInfo: 'You can attach photos and files in the chat with the manager after tapping the input field',
 
