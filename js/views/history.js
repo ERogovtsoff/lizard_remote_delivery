@@ -10,6 +10,10 @@ import { t, getLang, localizedProduct } from '../i18n.js';
 import { escapeHtml, formatPrice, formatDate } from '../utils.js';
 import { api } from '../api/index.js';
 
+// In-memory кэш истории на время сессии апки. При повторном открытии показываем
+// сразу закэшированное, а свежие данные подгружаем в фоне (stale-while-revalidate).
+let historyCache = null;
+
 export async function renderHistory() {
   const page = document.getElementById('page-history');
   page.innerHTML = `
@@ -23,18 +27,41 @@ export async function renderHistory() {
     </div>
   `;
 
-  const items = await api.loadHistory();
+  const lang = getLang();
   const products = await api.loadProducts();
   const map = new Map(products.map(p => [p.id, p]));
-  const lang = getLang();
 
+  // 1. Если есть кэш — рисуем мгновенно (без пустого экрана)
+  if (historyCache) {
+    paintHistory(historyCache, map, lang);
+  }
+
+  // 2. Грузим свежие данные. Если кэша не было — покажем skeleton-заглушку,
+  //    чтобы не висел пустой список.
+  if (!historyCache) {
+    const list = document.getElementById('historyList');
+    list.innerHTML = `<div class="history-loading">${escapeHtml(t('loading'))}</div>`;
+  }
+
+  const items = await api.loadHistory();
+  historyCache = items;
+  paintHistory(items, map, lang);
+}
+
+// Сбросить кэш истории (например, после оформления нового заказа)
+export function invalidateHistoryCache() { historyCache = null; }
+
+function paintHistory(items, map, lang) {
   const list = document.getElementById('historyList');
   const empty = document.getElementById('historyEmpty');
+  if (!list || !empty) return;
+  list.innerHTML = '';
 
-  if (items.length === 0) {
+  if (!items || items.length === 0) {
     empty.style.display = 'block';
     return;
   }
+  empty.style.display = 'none';
   const sorted = [...items].sort((a, b) => new Date(b.date) - new Date(a.date));
   sorted.forEach(h => list.appendChild(buildItem(h, map, lang)));
 }
@@ -94,7 +121,8 @@ function buildItem(h, productsMap, lang) {
     }
   } else if (h.type === 'inquiry') {
     const isProductQ = h.payload?.inquiryType === 'product_question';
-    typeChip = `<span class="history-type inquiry">${escapeHtml(isProductQ ? t('typeProductQuestion') : t('typeRequest'))}</span>`;
+    const num = h.payload?.number ? ` №${h.payload.number}` : '';
+    typeChip = `<span class="history-type inquiry">${escapeHtml((isProductQ ? t('typeProductQuestion') : t('typeRequest')) + num)}</span>`;
     if (h.status) {
       statusChip = `<span class="history-status-badge inq-${escapeHtml(h.status)}">${escapeHtml(inquiryStatusLabel(h.status))}</span>`;
     }

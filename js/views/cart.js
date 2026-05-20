@@ -7,6 +7,7 @@ import { router } from '../router.js';
 import { showConfirm } from '../components/modal.js';
 import { showToast } from '../components/toast.js';
 import { haptic, openBotChat } from '../tg.js';
+import { invalidateHistoryCache } from './history.js';
 
 export async function renderCart() {
   const page = document.getElementById('page-cart');
@@ -153,6 +154,9 @@ async function checkout(totalUsd, totalByn) {
   // Чистим корзину, фидбек
   clearLocalCart();
   haptic('success');
+
+  // Новый заказ должен появиться в истории — сбрасываем её кэш
+  invalidateHistoryCache();
 
   // Тост + переход в историю до сворачивания апки
   showToast(t('orderPlaced'), 3000);

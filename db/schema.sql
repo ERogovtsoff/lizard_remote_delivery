@@ -8,7 +8,7 @@
 --    3. products    — каталог в наличии
 --    4. orders      — заказы (с status и is_paid)
 --    5. order_items — позиции в заказе
---    6. requests    — запросы на подбор (из чата)
+--    6. inquiries   — обращения клиентов (запросы на подбор, вопросы по товарам)
 --    7. favorites   — избранное клиента
 --    8. Триггер     — при is_paid TRUE прибавляет сумму к purchases_total клиента
 --    9. RLS         — базовые политики (закомментированы; ОБЯЗАТЕЛЬНО настройте перед прод-релизом)
@@ -108,22 +108,13 @@ CREATE TABLE IF NOT EXISTS order_items (
 );
 CREATE INDEX IF NOT EXISTS order_items_order_idx ON order_items(order_id);
 
--- 6. REQUESTS (запросы из чата «Заказать из Китая»)
-CREATE TABLE IF NOT EXISTS requests (
-  id             BIGSERIAL PRIMARY KEY,
-  customer_tg_id BIGINT NOT NULL REFERENCES customers(tg_id) ON DELETE CASCADE,
-  text           TEXT NOT NULL DEFAULT '',
-  photos_count   INTEGER NOT NULL DEFAULT 0,
-  status         TEXT NOT NULL DEFAULT 'new',          -- new | in_progress | done
-  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS requests_customer_idx ON requests(customer_tg_id, created_at DESC);
-
--- 6b. INQUIRIES — обращения-вопросы для воркфлоу менеджера.
--- В отличие от requests (исторический лог), здесь живёт активный статус обращения
--- и id карточки в чате менеджера для управления через inline-кнопки.
+-- 6. INQUIRIES — обращения клиентов (запросы на подбор и вопросы по товарам).
+-- Создаются ботом при переходе клиента из апки. Содержат активный статус
+-- (new/in_progress/closed) и id карточки в чате менеджера для inline-кнопок.
+-- В истории апки клиент видит свои обращения рядом с заказами.
 CREATE TABLE IF NOT EXISTS inquiries (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  number         BIGSERIAL,                          -- человекочитаемый номер (Обращение №N)
   customer_tg_id BIGINT NOT NULL REFERENCES customers(tg_id) ON DELETE CASCADE,
   type           TEXT NOT NULL DEFAULT 'request',   -- 'request' | 'product_question'
   product_id     TEXT REFERENCES products(id) ON DELETE SET NULL,
@@ -207,7 +198,6 @@ ALTER TABLE customers   DISABLE ROW LEVEL SECURITY;
 ALTER TABLE products    DISABLE ROW LEVEL SECURITY;
 ALTER TABLE orders      DISABLE ROW LEVEL SECURITY;
 ALTER TABLE order_items DISABLE ROW LEVEL SECURITY;
-ALTER TABLE requests    DISABLE ROW LEVEL SECURITY;
 ALTER TABLE favorites   DISABLE ROW LEVEL SECURITY;
 ALTER TABLE cart_items  DISABLE ROW LEVEL SECURITY;
 ALTER TABLE inquiries   DISABLE ROW LEVEL SECURITY;

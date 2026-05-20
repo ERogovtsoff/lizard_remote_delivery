@@ -13,7 +13,7 @@
 //     refreshGrid() сработает через подписку на каталог (он гарантированно отрабатывает
 //     после первой загрузки данных).
 
-import { initTelegram, onThemeChanged, onViewportChanged, tg } from './tg.js';
+import { initTelegram, onThemeChanged, onViewportChanged, tg, getUser } from './tg.js';
 import { applyTheme } from './theme.js';
 import { setLang, applyI18N } from './i18n.js';
 import {
@@ -169,6 +169,14 @@ async function bootstrap() {
   // Глобальные обработчики UI
   setupLightbox();
   setupOnboarding();
+
+  // Предзагружаем аватарку пользователя в кэш браузера — чтобы при открытии
+  // профиля она появилась мгновенно, без мигания/повторного запроса.
+  try {
+    const photo = getUser()?.photo_url;
+    if (photo) { const im = new Image(); im.src = photo; }
+  } catch (_) {}
+
   document.getElementById('headerLogo').onclick = () => router.navigate('home');
   document.getElementById('favBtn').onclick = () => router.navigate('favorites');
   document.getElementById('cartBtn').onclick = () => router.navigate('cart');
@@ -211,18 +219,15 @@ async function bootstrap() {
 
   // Стартовый экран — определяем по флагу онбординга.
   //
-  // Источник правды — customers.onboarded в БД. localStorage — быстрый кэш.
+  // Splash (#appSplashInit) уже виден из HTML с первого кадра — поэтому пользователь
+  // НИКОГДА не видит главную раньше онбординга. Мы прячем splash только после того,
+  // как решили, что показывать.
   //
-  // Логика гарантирует что новый клиент НИКОГДА не увидит главную раньше
-  // онбординга:
-  //   - Если есть localStorage флаг → показываем главную сразу (это уже точно
-  //     существующий клиент, прошёл онбординг). Параллельно проверяем БД,
-  //     и если админ сбросил флаг — переключаемся.
-  //   - Если localStorage пуст → НЕ показываем ничего пока не получим ответ из БД
-  //     (таймаут 1.5 сек). Splash-экран с логотипом виден всё это время.
-  //     Если БД сказала onboarded=true → главная. Иначе → онбординг.
+  //   - Есть localStorage флаг → существующий клиент → главная (БД проверяем в фоне).
+  //   - Нет флага → новый клиент → ждём БД (таймаут 1.5с), решаем онбординг/главная.
   if (isOnboarded()) {
     router.navigate('home');
+    hideSplash();
     loadCustomerData().then(customer => {
       if (customer && customer.onboarded === false) {
         clearOnboardedLocal();
@@ -230,13 +235,10 @@ async function bootstrap() {
       }
     });
   } else {
-    // Показываем splash — пустой экран с лого, пока ждём ответ из БД.
-    showSplash();
     const customer = await Promise.race([
       api.loadCustomer().catch(() => null),
       new Promise(resolve => setTimeout(() => resolve(null), 1500)),
     ]);
-    hideSplash();
 
     if (customer?.onboarded === true) {
       setOnboardedLocal();
@@ -244,23 +246,16 @@ async function bootstrap() {
     } else {
       router.navigate('onboarding');
     }
+    hideSplash();
     loadCustomerData();
   }
 }
 
-function showSplash() {
-  if (document.getElementById('appSplash')) return;
-  const splash = document.createElement('div');
-  splash.id = 'appSplash';
-  splash.className = 'app-splash';
-  splash.innerHTML = `<img src="./assets/logo.png" alt="" />`;
-  document.body.appendChild(splash);
-}
 function hideSplash() {
-  const s = document.getElementById('appSplash');
+  const s = document.getElementById('appSplashInit');
   if (!s) return;
   s.classList.add('fade-out');
-  setTimeout(() => s.remove(), 200);
+  setTimeout(() => s.remove(), 220);
 }
 
 bootstrap();

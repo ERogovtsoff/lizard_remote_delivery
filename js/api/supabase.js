@@ -221,26 +221,36 @@ async function ensureCustomer(sb) {
     photo_url: u.photo_url || '',
   };
 
-  // upsert по tg_id: один атомарный запрос вместо select+insert/update.
-  // Никаких гонок при параллельных вызовах из bootstrap. ignoreDuplicates: false
-  // означает что при существующей записи update применится — это нам и нужно,
-  // чтобы держать имя/photo актуальными.
-  //
-  // ВАЖНО: НЕ перезаписываем preferences и purchases_total на существующих записях.
-  // upsert без них — Postgres update обновит только перечисленные колонки.
-  const { data, error } = await sb
-    .from('customers')
-    .upsert(baseFields, { onConflict: 'tg_id' })
-    .select()
-    .single();
+  // Проверяем, есть ли уже запись клиента
+  const { data: existing } = await sb
+    .from('customers').select('*').eq('tg_id', u.id).maybeSingle();
 
+  if (!existing) {
+    // Первый заход: создаём запись СРАЗУ с дефолтными настройками клиента.
+    // Это фиксирует язык/тему/валюту, определённые при первом запуске.
+    const insertRow = {
+      ...baseFields,
+      preferences: state.settings || {},
+    };
+    const { data, error } = await sb
+      .from('customers').insert(insertRow).select().single();
+    if (error) {
+      // Возможна гонка: параллельный вызов уже создал запись. Перечитываем.
+      console.warn('[supabase] ensureCustomer insert race, re-reading:', error.message);
+      const { data: again } = await sb
+        .from('customers').select('*').eq('tg_id', u.id).maybeSingle();
+      return again || null;
+    }
+    return data;
+  }
+
+  // Запись уже есть: обновляем только идентификационные поля (имя/username/фото),
+  // НЕ трогая preferences и purchases_total.
+  const { data, error } = await sb
+    .from('customers').update(baseFields).eq('tg_id', u.id).select().single();
   if (error) {
-    console.error('[supabase] ensureCustomer upsert error:', error.message);
-    // Делаем ещё одну попытку — простой select, чтобы вернуть существующую запись
-    // если она уже есть в БД (например, после race condition)
-    const fallback = await sb
-      .from('customers').select('*').eq('tg_id', u.id).maybeSingle();
-    return fallback.data || null;
+    console.error('[supabase] ensureCustomer update error:', error.message);
+    return existing;
   }
   return data;
 }
@@ -349,6 +359,7 @@ export async function loadHistory() {
       payload: {
         inquiryType: q.type,            // request | product_question
         productId: q.product_id || null,
+        number: q.number || null,
       },
     }));
 
@@ -395,7 +406,7 @@ export async function addOrder(order) {
     total_usd: order.total_usd || 0,
     total_byn: order.total_byn || 0,
     currency: order.currency || 'USD',
-    status: 'processing',
+    status: 'new',
     is_paid: false,
   }).select().single();
 

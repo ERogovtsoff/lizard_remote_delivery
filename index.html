@@ -5,9 +5,26 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>Магазин</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<link rel="stylesheet" href="./styles.css?v=10" />
+<link rel="stylesheet" href="./styles.css?v=11" />
+<style>
+  /* Splash показывается мгновенно при загрузке (до styles.css и JS),
+     чтобы пользователь не увидел «вспышку» главной до решения про онбординг.
+     JS убирает его после того как определит, что показывать. */
+  #appSplashInit {
+    position: fixed; inset: 0; z-index: 10000;
+    background: #ffffff;
+    display: flex; align-items: center; justify-content: center;
+  }
+  @media (prefers-color-scheme: dark) { #appSplashInit { background: #0d0d0d; } }
+  #appSplashInit img { width: 96px; height: 96px; object-fit: contain; animation: splashPulse 1.4s ease-in-out infinite; }
+  @keyframes splashPulse { 0%,100% { opacity:.6; transform:scale(.97);} 50% { opacity:1; transform:scale(1.02);} }
+  #appSplashInit.fade-out { opacity: 0; transition: opacity .2s; }
+</style>
 </head>
 <body>
+
+<!-- Splash: виден сразу, JS его уберёт после решения про онбординг/главную -->
+<div id="appSplashInit"><img src="./assets/logo.png" alt="" /></div>
 
 <!-- Онбординг -->
 <section class="page" id="page-onboarding">
@@ -28,7 +45,7 @@
     </div>
     <div class="onb-feature">
       <div class="onb-feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
-      <div class="onb-feature-text"><strong data-i18n="onbF3Title">Доставка 2-3 недели</strong><span data-i18n="onbF3Text">Прямые поставки из Китая по всей Беларуси</span></div>
+      <div class="onb-feature-text"><strong data-i18n="onbF3Title">Доставка 3–4 недели</strong><span data-i18n="onbF3Text">Прямые поставки из Китая по всей Беларуси</span></div>
     </div>
   </div>
   <button class="onb-btn" id="onbBtn" data-i18n="onbBtnLabel">Начать</button>
@@ -53,7 +70,7 @@
 </header>
 
 <!-- Главная -->
-<section class="page active" id="page-home"></section>
+<section class="page" id="page-home"></section>
 <!-- Заказ (чат) -->
 <section class="page" id="page-chat"></section>
 <!-- В наличии -->

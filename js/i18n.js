@@ -8,7 +8,7 @@ const STRINGS = {
     onbText: 'Покупай оригинальные товары мировых брендов напрямую с китайских маркетплейсов — без переплат и подделок.',
     onbF1Title: '100% оригинал', onbF1Text: 'Проверяем подлинность каждой вещи перед отправкой',
     onbF2Title: 'Примерка перед оплатой', onbF2Text: 'Не подошло — возвращаем деньги без вопросов',
-    onbF3Title: 'Доставка 2–3 недели', onbF3Text: 'Прямые поставки из Китая по всей Беларуси',
+    onbF3Title: 'Доставка 3–4 недели', onbF3Text: 'Прямые поставки из Китая по всей Беларуси',
     onbBtnLabel: 'Начать',
 
     homeHeroTitle: 'Оригинальные товары мировых брендов',
@@ -50,6 +50,7 @@ const STRINGS = {
     orderFailed: 'Не удалось оформить заказ. Попробуйте ещё раз.',
 
     guest: 'Гость',
+    loading: 'Загрузка…',
     profileSpent: 'Выкуплено на сумму',
     historyTitle: 'История заказов', historySub: 'Запросы и заказы',
     historySubFull: 'Все ваши запросы и заказы.',
@@ -132,7 +133,7 @@ const STRINGS = {
     onbText: 'Buy authentic items from world brands directly from Chinese marketplaces — no markups, no fakes.',
     onbF1Title: '100% authentic', onbF1Text: 'We verify every item before shipping',
     onbF2Title: 'Try on before paying', onbF2Text: 'Does not fit — we refund without questions',
-    onbF3Title: 'Delivery in 2–3 weeks', onbF3Text: 'Direct shipping from China across Belarus',
+    onbF3Title: 'Delivery in 3–4 weeks', onbF3Text: 'Direct shipping from China across Belarus',
     onbBtnLabel: 'Start',
 
     homeHeroTitle: 'Authentic items from world brands',
@@ -174,6 +175,7 @@ const STRINGS = {
     orderFailed: 'Failed to place the order. Please try again.',
 
     guest: 'Guest',
+    loading: 'Loading…',
     profileSpent: 'Total bought',
     historyTitle: 'Order history', historySub: 'Requests and orders',
     historySubFull: 'All your requests and orders.',
