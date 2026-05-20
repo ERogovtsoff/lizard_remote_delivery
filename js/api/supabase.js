@@ -311,15 +311,15 @@ export async function loadHistory() {
     if (!u) return [];
     const sb = await getClient();
 
-    const [ordersRes, reqsRes] = await Promise.all([
+    const [ordersRes, inqRes] = await Promise.all([
       sb.from('orders').select('*, order_items(*)')
         .eq('customer_tg_id', u.id).order('created_at', { ascending: false }),
-      sb.from('requests').select('*')
+      sb.from('inquiries').select('*')
         .eq('customer_tg_id', u.id).order('created_at', { ascending: false }),
     ]);
 
     if (ordersRes.error) console.error('[supabase] loadHistory orders:', ordersRes.error.message);
-    if (reqsRes.error) console.error('[supabase] loadHistory requests:', reqsRes.error.message);
+    if (inqRes.error) console.error('[supabase] loadHistory inquiries:', inqRes.error.message);
 
     const orders = (ordersRes.data || []).map(o => ({
       id: 'o' + o.id,
@@ -340,17 +340,19 @@ export async function loadHistory() {
       },
     }));
 
-    const requests = (reqsRes.data || []).map(r => ({
-      id: 'r' + r.id,
-      type: 'request',
-      date: r.created_at,
+    // Обращения (запросы на подбор и вопросы по товарам)
+    const inquiries = (inqRes.data || []).map(q => ({
+      id: 'i' + q.id,
+      type: 'inquiry',
+      date: q.created_at,
+      status: q.status,                 // new | in_progress | closed
       payload: {
-        text: r.text || '',
-        photosCount: r.photos_count || 0,
+        inquiryType: q.type,            // request | product_question
+        productId: q.product_id || null,
       },
     }));
 
-    const all = [...orders, ...requests];
+    const all = [...orders, ...inquiries];
     all.sort((a, b) => new Date(b.date) - new Date(a.date));
     return all;
   } catch (e) {
@@ -440,37 +442,6 @@ export async function addOrder(order) {
       currency: newOrder.currency || 'USD',
     },
   };
-}
-
-// ============================== ЗАПРОСЫ ==============================
-
-export async function addRequest(req) {
-  try {
-    const u = getUser();
-    if (!u) throw new Error('No Telegram user');
-    const sb = await getClient();
-    await ensureCustomer(sb);
-
-    const { data, error } = await sb.from('requests').insert({
-      customer_tg_id: u.id,
-      text: req.text || '',
-      photos_count: req.photosCount || 0,
-    }).select().single();
-
-    if (error) {
-      console.error('[supabase] addRequest error:', error.message);
-      throw error;
-    }
-    return {
-      id: 'r' + data.id,
-      type: 'request',
-      date: data.created_at,
-      payload: { text: data.text, photosCount: data.photos_count || 0 },
-    };
-  } catch (e) {
-    console.error('[supabase] addRequest exception:', e);
-    throw e;
-  }
 }
 
 // ============================== FAVORITES ==============================

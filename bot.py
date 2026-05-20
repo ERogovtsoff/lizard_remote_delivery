@@ -61,11 +61,11 @@ from aiogram.types import (
 
 # ============================ КОНФИГ ============================
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "")
-WEBAPP_URL = os.getenv("WEBAPP_URL", "https://example.com/index.html")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8799556901:AAHqUPacTvqJPrITaZVgE9e1Cr81dF_nDCk")
+WEBAPP_URL = os.getenv("WEBAPP_URL", "https://erogovtsoff.github.io/lizard_remote_delivery/index.html")
 MANAGER_USERNAME = os.getenv("MANAGER_USERNAME", "rogovtsoff").lstrip("@").lower()
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY", "")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "https://nhnbprmyqqpwcofkaasi.supabase.co")
+SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5obmJwcm15cXFwd2NvZmthYXNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwOTc4NzEsImV4cCI6MjA5NDY3Mzg3MX0.85NtVma5cplLuhm_fRHga3Z1ZlyNuFQBOqlxGeQggJ0")
 
 MANAGER_FILE = Path("manager_chat.txt")
 # message_id (в чате менеджера) → tg_id клиента. Нужно для reply-routing.
@@ -306,8 +306,8 @@ ORDER_TRANSITIONS = {
 
 INQUIRY_STATUS = {
     "new":         {"label": "🆕 Новое",     "client_msg": None},
-    "in_progress": {"label": "✋ В работе",   "client_msg": None},
-    "closed":      {"label": "✅ Закрыто",    "client_msg": None},
+    "in_progress": {"label": "✋ В работе",   "client_msg": "Ваше обращение принято в работу — менеджер скоро ответит."},
+    "closed":      {"label": "✅ Закрыто",    "client_msg": "Ваше обращение закрыто. Если остались вопросы — просто напишите нам."},
 }
 INQUIRY_TRANSITIONS = {
     "new":         ["in_progress", "closed"],
@@ -783,6 +783,16 @@ async def cb_inquiry_status(cb: CallbackQuery, bot: Bot) -> None:
         )
     except Exception as e:
         log.warning("edit_text inquiry failed: %s", e)
+
+    # Уведомляем клиента (если для статуса задан текст)
+    client_msg = INQUIRY_STATUS[new_status].get("client_msg")
+    if client_msg:
+        rows = await supabase_get("inquiries", {"id": f"eq.{inquiry_id}", "select": "customer_tg_id", "limit": "1"})
+        if rows:
+            try:
+                await bot.send_message(rows[0]["customer_tg_id"], f"💬 {client_msg}")
+            except Exception as e:
+                log.warning("Failed to notify client about inquiry status: %s", e)
 
     await cb.answer(f"Статус: {INQUIRY_STATUS[new_status]['label']}")
 

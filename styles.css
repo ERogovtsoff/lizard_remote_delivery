@@ -873,7 +873,8 @@ img { display: block; max-width: 100%; }
 .history-item-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; gap: 8px; }
 .history-type { font-size: 13px; font-weight: 600; padding: 3px 8px; border-radius: 8px; display: inline-block; }
 .history-type.request { background: var(--accent-soft); color: var(--accent); }
-.history-type.order { background: rgba(107, 142, 35, 0.14); color: var(--success); }
+.history-type.inquiry { background: var(--accent-soft); color: var(--accent); }
+.history-type.order { background: rgba(1, 194, 195, 0.14); color: var(--accent); }
 .history-date { font-size: 12px; color: var(--hint); white-space: nowrap; }
 .history-body { font-size: 14px; color: var(--text); line-height: 1.4; word-wrap: break-word; }
 .history-body .label {
@@ -892,12 +893,20 @@ img { display: block; max-width: 100%; }
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
-.status-processing { background: rgba(217, 119, 6, 0.14); color: var(--warning); }
-.status-packing    { background: var(--accent-soft); color: var(--accent); }
-.status-shipping   { background: rgba(107, 142, 35, 0.14); color: var(--success); }
-.status-delivered  { background: rgba(107, 142, 35, 0.22); color: var(--success); }
-.status-cancelled  { background: rgba(176, 58, 46, 0.10); color: var(--danger); }
-.status-paid { background: rgba(107, 142, 35, 0.18); color: var(--success); }
+/* Статусы заказа (воронка выкупа): нейтральные/в работе/успех/отмена */
+.status-new              { background: var(--bg-tertiary); color: var(--text-secondary); }
+.status-in_progress      { background: rgba(1, 194, 195, 0.14); color: var(--accent); }
+.status-awaiting_payment { background: rgba(243, 156, 18, 0.16); color: var(--warning); }
+.status-paid             { background: rgba(46, 204, 113, 0.16); color: var(--success); }
+.status-purchasing       { background: rgba(1, 194, 195, 0.14); color: var(--accent); }
+.status-shipping         { background: rgba(1, 194, 195, 0.14); color: var(--accent); }
+.status-ready            { background: rgba(46, 204, 113, 0.16); color: var(--success); }
+.status-completed        { background: rgba(46, 204, 113, 0.22); color: var(--success); }
+.status-cancelled        { background: rgba(231, 76, 60, 0.12); color: var(--danger); }
+/* Статусы обращений */
+.inq-new          { background: var(--bg-tertiary); color: var(--text-secondary); }
+.inq-in_progress  { background: rgba(1, 194, 195, 0.14); color: var(--accent); }
+.inq-closed       { background: rgba(46, 204, 113, 0.16); color: var(--success); }
 
 /* ========== Empty states ========== */
 .empty-state { text-align: center; padding: 40px 20px; color: var(--text-secondary); }

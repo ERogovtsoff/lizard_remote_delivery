@@ -1,9 +1,11 @@
-// История заказов и запросов.
+// История: заказы и обращения клиента.
 //
-// Правка: цена и сумма всегда отображаются в валюте, в которой был оформлен
-// заказ (h.payload.currency), независимо от текущей настройки клиента.
-// То есть если клиент оформил в USD, а потом переключился на BYN — в истории
-// останется USD. Это корректное поведение с точки зрения учёта.
+// Заказы — со своим статусом (воронка выкупа) и суммой в валюте заказа.
+// Обращения (inquiry) — запросы на подбор и вопросы по товарам, со статусом
+// new/in_progress/closed. Клиент видит, на каком этапе его обращение.
+//
+// Цена/сумма заказа всегда в валюте, в которой он был оформлен (payload.currency),
+// независимо от текущей настройки клиента.
 import { t, getLang, localizedProduct } from '../i18n.js';
 import { escapeHtml, formatPrice, formatDate } from '../utils.js';
 import { api } from '../api/index.js';
@@ -37,40 +39,47 @@ export async function renderHistory() {
   sorted.forEach(h => list.appendChild(buildItem(h, map, lang)));
 }
 
-function statusLabel(status) {
+// Статус заказа → человекочитаемая подпись
+function orderStatusLabel(status) {
   return ({
-    processing: t('statusProcessing'),
-    packing:    t('statusPacking'),
-    shipping:   t('statusShipping'),
-    delivered:  t('statusDelivered'),
-    cancelled:  t('statusCancelled'),
+    new:              t('osNew'),
+    in_progress:      t('osInProgress'),
+    awaiting_payment: t('osAwaitingPayment'),
+    paid:             t('osPaid'),
+    purchasing:       t('osPurchasing'),
+    shipping:         t('osShipping'),
+    ready:            t('osReady'),
+    completed:        t('osCompleted'),
+    cancelled:        t('osCancelled'),
+  })[status] || status;
+}
+
+// Статус обращения → подпись
+function inquiryStatusLabel(status) {
+  return ({
+    new:         t('isNew'),
+    in_progress: t('isInProgress'),
+    closed:      t('isClosed'),
   })[status] || status;
 }
 
 function buildItem(h, productsMap, lang) {
   const el = document.createElement('div');
   el.className = 'history-item';
-
   const date = formatDate(h.date, lang);
+
   let typeChip = '';
-  if (h.type === 'order') typeChip = `<span class="history-type order">${escapeHtml(t('typeOrder'))}</span>`;
-  else typeChip = `<span class="history-type request">${escapeHtml(t('typeRequest'))}</span>`;
-
   let statusChip = '';
-  if (h.type === 'order' && h.status) {
-    statusChip = `<span class="history-status-badge status-${escapeHtml(h.status)}">${escapeHtml(statusLabel(h.status))}</span>`;
-    if (h.isPaid) statusChip += `<span class="history-status-badge status-paid">${escapeHtml(t('statusPaid'))}</span>`;
-  }
-
   let body = '';
-  if (h.type === 'request') {
-    if (h.payload?.text) body += `<div>${escapeHtml(h.payload.text)}</div>`;
-    if (h.payload?.photosCount) body += `<div class="label">${escapeHtml(t('photos'))}: ${h.payload.photosCount}</div>`;
-  } else if (h.type === 'order') {
-    // ВСЕГДА используем валюту заказа, а не текущую настройку клиента
+
+  if (h.type === 'order') {
+    typeChip = `<span class="history-type order">${escapeHtml(t('typeOrder'))}</span>`;
+    if (h.status) {
+      statusChip = `<span class="history-status-badge status-${escapeHtml(h.status)}">${escapeHtml(orderStatusLabel(h.status))}</span>`;
+    }
+
     const orderCur = h.payload?.currency || 'USD';
     const orderTotal = orderCur === 'USD' ? h.payload?.total_usd : h.payload?.total_byn;
-
     const items = h.payload?.items || [];
     items.forEach(it => {
       const prod = productsMap.get(it.productId);
@@ -82,6 +91,25 @@ function buildItem(h, productsMap, lang) {
     body += `<div class="history-total-line">${escapeHtml(t('cartTotal'))}: ${escapeHtml(formatPrice(orderTotal || 0, orderCur, lang))}</div>`;
     if (h.status === 'shipping' && h.eta) {
       body += `<div class="label">${escapeHtml(t('eta'))}: ${escapeHtml(formatDate(h.eta, lang))}</div>`;
+    }
+  } else if (h.type === 'inquiry') {
+    const isProductQ = h.payload?.inquiryType === 'product_question';
+    typeChip = `<span class="history-type inquiry">${escapeHtml(isProductQ ? t('typeProductQuestion') : t('typeRequest'))}</span>`;
+    if (h.status) {
+      statusChip = `<span class="history-status-badge inq-${escapeHtml(h.status)}">${escapeHtml(inquiryStatusLabel(h.status))}</span>`;
+    }
+    // Тело: для вопроса по товару — название товара; для запроса — общий текст
+    if (isProductQ && h.payload?.productId) {
+      const prod = productsMap.get(h.payload.productId);
+      if (prod) {
+        const cur = h.payload?.currency || 'USD';
+        const p = localizedProduct(prod, cur);
+        body += `<div>${escapeHtml(t('inquiryAboutProduct'))}: ${escapeHtml(p.name)}</div>`;
+      } else {
+        body += `<div>${escapeHtml(t('inquiryAboutProduct'))}</div>`;
+      }
+    } else {
+      body += `<div>${escapeHtml(t('inquiryRequestBody'))}</div>`;
     }
   }
 
