@@ -35,9 +35,12 @@
 --    подпись initData бота, чтобы пользователь не мог подменить tg_id в клиенте.
 -- =============================================================
 
--- 1. ENUM статусов
+-- 1. ENUM статусов заказа (полная воронка под выкуп из Китая)
 DO $$ BEGIN
-  CREATE TYPE order_status AS ENUM ('processing','packing','shipping','delivered','cancelled');
+  CREATE TYPE order_status AS ENUM (
+    'new', 'in_progress', 'awaiting_payment', 'paid',
+    'purchasing', 'shipping', 'ready', 'completed', 'cancelled'
+  );
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 
 -- 2. CUSTOMERS
@@ -82,10 +85,11 @@ CREATE TABLE IF NOT EXISTS orders (
   total_usd      NUMERIC(12,2) NOT NULL,
   total_byn      NUMERIC(12,2) NOT NULL,
   currency       TEXT NOT NULL DEFAULT 'USD',         -- валюта, в которой клиент видел сумму
-  status         order_status NOT NULL DEFAULT 'processing',
+  status         order_status NOT NULL DEFAULT 'new',
   is_paid        BOOLEAN NOT NULL DEFAULT FALSE,
   eta            DATE,                                -- ожидаемая дата доставки (заполняется, когда status='shipping')
   manager_note   TEXT,                                -- внутренние заметки
+  manager_msg_id BIGINT,                              -- id карточки заказа в чате менеджера (для редактирования)
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -114,6 +118,22 @@ CREATE TABLE IF NOT EXISTS requests (
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS requests_customer_idx ON requests(customer_tg_id, created_at DESC);
+
+-- 6b. INQUIRIES — обращения-вопросы для воркфлоу менеджера.
+-- В отличие от requests (исторический лог), здесь живёт активный статус обращения
+-- и id карточки в чате менеджера для управления через inline-кнопки.
+CREATE TABLE IF NOT EXISTS inquiries (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_tg_id BIGINT NOT NULL REFERENCES customers(tg_id) ON DELETE CASCADE,
+  type           TEXT NOT NULL DEFAULT 'request',   -- 'request' | 'product_question'
+  product_id     TEXT REFERENCES products(id) ON DELETE SET NULL,
+  status         TEXT NOT NULL DEFAULT 'new',        -- 'new' | 'in_progress' | 'closed'
+  manager_msg_id BIGINT,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS inquiries_status_idx ON inquiries(status);
+CREATE INDEX IF NOT EXISTS inquiries_customer_idx ON inquiries(customer_tg_id);
 
 -- 7. FAVORITES
 CREATE TABLE IF NOT EXISTS favorites (
@@ -190,6 +210,7 @@ ALTER TABLE order_items DISABLE ROW LEVEL SECURITY;
 ALTER TABLE requests    DISABLE ROW LEVEL SECURITY;
 ALTER TABLE favorites   DISABLE ROW LEVEL SECURITY;
 ALTER TABLE cart_items  DISABLE ROW LEVEL SECURITY;
+ALTER TABLE inquiries   DISABLE ROW LEVEL SECURITY;
 
 -- РЕЖИМ Б (для прод-релиза, требует Edge Function для валидации Telegram initData):
 -- 1. Закомментируйте все ALTER TABLE ... DISABLE ROW LEVEL SECURITY выше
