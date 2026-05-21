@@ -1015,6 +1015,29 @@ img { display: block; max-width: 100%; }
 .admin-product-info { flex: 1; min-width: 0; }
 .admin-product-name { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .admin-product-price { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+.admin-product-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--accent);
+  margin-top: 3px;
+  cursor: pointer;
+  display: inline-block;
+  user-select: all;
+}
+.admin-product-id:active { opacity: 0.6; }
+.admin-editor-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 4px 10px;
+  border-radius: 6px;
+  display: inline-block;
+  margin-bottom: 12px;
+  cursor: pointer;
+  user-select: all;
+}
+.admin-editor-id:active { opacity: 0.6; }
 .admin-product-actions { display: flex; gap: 4px; }
 .admin-icon-btn {
   background: var(--bg-secondary); border: none;

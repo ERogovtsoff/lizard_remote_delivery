@@ -1,6 +1,6 @@
 // Админка каталога: список товаров, редактор с несколькими картинками, экспорт/импорт.
 import { t, getLang, localizedProduct } from '../i18n.js';
-import { escapeHtml, escapeAttr, formatPrice, makeId, BADGE_COLORS } from '../utils.js';
+import { escapeHtml, escapeAttr, formatPrice, makeId, BADGE_COLORS, copyToClipboard } from '../utils.js';
 import { api } from '../api/index.js';
 import { router } from '../router.js';
 import { showToast } from '../components/toast.js';
@@ -59,6 +59,7 @@ function renderCatalogTab() {
       <div class="admin-product-info">
         <div class="admin-product-name">${escapeHtml(p.name)}${hiddenBadge}</div>
         <div class="admin-product-price">${escapeHtml(formatPrice(p.price, cur, lang))}</div>
+        <div class="admin-product-id" data-act="copyid" title="${escapeAttr(t('adminCopyId'))}">ID: ${escapeHtml(prod.id)}</div>
       </div>
       <div class="admin-product-actions">
         <button class="admin-icon-btn" data-act="edit" aria-label="Edit">
@@ -69,6 +70,15 @@ function renderCatalogTab() {
         </button>
       </div>
     `;
+    // Тап по ID — копирование в буфер (удобно для ручного оформления заказа в боте)
+    const idEl = row.querySelector('[data-act="copyid"]');
+    if (idEl) {
+      idEl.onclick = async (e) => {
+        e.stopPropagation();
+        const ok = await copyToClipboard(prod.id);
+        showToast(ok ? t('adminIdCopied') : prod.id);
+      };
+    }
     row.querySelector('[data-act="edit"]').onclick = () => { editingId = prod.id; renderAdmin(); };
     row.querySelector('[data-act="del"]').onclick = () => {
       showConfirm({
@@ -102,6 +112,7 @@ function renderEditor() {
   body.innerHTML = `
     <div class="admin-section">
       <h3>${escapeHtml(isNew ? t('adminAddProduct') : t('adminEditProduct'))}</h3>
+      ${!isNew ? `<div class="admin-editor-id" data-act="copyid" title="${escapeAttr(t('adminCopyId'))}">ID: ${escapeHtml(prod.id)}</div>` : ''}
       <div class="form-row">
         <label>${escapeHtml(t('adminFieldNameRu'))}</label>
         <input type="text" id="fNameRu" value="${escapeAttr(prod.name_ru || '')}">
@@ -191,6 +202,15 @@ function renderEditor() {
   }
   renderImages();
   document.getElementById('addImgBtn').onclick = () => { draft.images.push(''); renderImages(); };
+
+  // Копирование ID товара по тапу (в редакторе)
+  const editorIdEl = body.querySelector('.admin-editor-id[data-act="copyid"]');
+  if (editorIdEl) {
+    editorIdEl.onclick = async () => {
+      const ok = await copyToClipboard(prod.id);
+      showToast(ok ? t('adminIdCopied') : prod.id);
+    };
+  }
 
   // Редактор размеров с остатками: [{size, qty}]
   const sizeDraft = (prod.sizes || []).map(s => ({
