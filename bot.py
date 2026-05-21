@@ -53,6 +53,7 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
+    ReplyKeyboardRemove,
 )
 
 
@@ -500,7 +501,10 @@ async def send_welcome(message: Message) -> None:
     await message.answer(
         "Привет! 👋 Рады видеть вас в LIZARD.\n\n"
         "Нажмите кнопку <b>«Открыть»</b> рядом с полем ввода — внутри товары в наличии "
-        "и заказ любых вещей из Китая."
+        "и заказ любых вещей из Китая.",
+        # Убираем «залипшую» reply-клавиатуру [Открыть магазин], которая могла
+        # остаться у пользователей с прошлых версий бота.
+        reply_markup=ReplyKeyboardRemove(),
     )
 
 
