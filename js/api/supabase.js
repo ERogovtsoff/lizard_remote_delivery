@@ -273,6 +273,23 @@ export async function loadCustomer() {
   }
 }
 
+// Список менеджеров (для проверки доступа к админке). Возвращает массив
+// { tg_id, username, is_on_duty }. Суперадмин проверяется отдельно через config.
+export async function loadManagers() {
+  try {
+    const sb = await getClient();
+    const { data, error } = await sb.from('managers').select('tg_id, username, is_on_duty');
+    if (error) {
+      console.error('[supabase] loadManagers error:', error.message);
+      return [];
+    }
+    return data || [];
+  } catch (e) {
+    console.error('[supabase] loadManagers exception:', e);
+    return [];
+  }
+}
+
 export async function upsertCustomer(patch) {
   try {
     const u = getUser();
