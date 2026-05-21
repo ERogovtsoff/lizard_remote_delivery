@@ -61,7 +61,12 @@ from aiogram.types import (
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8799556901:AAHqUPacTvqJPrITaZVgE9e1Cr81dF_nDCk")
 WEBAPP_URL = os.getenv("WEBAPP_URL", "https://erogovtsoff.github.io/lizard_remote_delivery/index.html")
-MANAGER_USERNAME = os.getenv("MANAGER_USERNAME", "rogovtsoff").lstrip("@").lower()
+# Суперадмин — единственный, кто может добавлять/удалять менеджеров.
+# MANAGER_USERNAME оставлен для обратной совместимости: трактуется как суперадмин.
+SUPERADMIN_USERNAME = os.getenv(
+    "SUPERADMIN_USERNAME",
+    os.getenv("MANAGER_USERNAME", "rogovtsoff"),
+).lstrip("@").lower()
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://nhnbprmyqqpwcofkaasi.supabase.co")
 SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5obmJwcm15cXFwd2NvZmthYXNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwOTc4NzEsImV4cCI6MjA5NDY3Mzg3MX0.85NtVma5cplLuhm_fRHga3Z1ZlyNuFQBOqlxGeQggJ0")
 
@@ -79,7 +84,7 @@ router = Router()
 
 # ========================== ХРАНИЛИЩЕ ==========================
 
-def get_manager_chat_id() -> Optional[int]:
+def get_superadmin_chat_id() -> Optional[int]:
     if MANAGER_FILE.exists():
         try:
             return int(MANAGER_FILE.read_text().strip())
@@ -88,7 +93,7 @@ def get_manager_chat_id() -> Optional[int]:
     return None
 
 
-def set_manager_chat_id(chat_id: int) -> None:
+def set_superadmin_chat_id(chat_id: int) -> None:
     MANAGER_FILE.write_text(str(chat_id))
 
 
@@ -200,6 +205,125 @@ async def supabase_post(path: str, body: dict) -> Optional[dict]:
     except Exception as e:
         log.exception("Supabase POST error: %s", e)
         return None
+
+
+async def supabase_delete(path: str, params: dict) -> bool:
+    """DELETE к Supabase REST API. Возвращает True при успехе."""
+    if not supabase_ready():
+        return False
+    url = f"{SUPABASE_URL}/rest/v1/{path}"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Prefer": "return=minimal",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.delete(url, headers=headers, params=params)
+            if r.status_code >= 400:
+                log.error("Supabase DELETE %s failed: %s %s", path, r.status_code, r.text[:200])
+                return False
+            return True
+    except Exception as e:
+        log.exception("Supabase DELETE error: %s", e)
+        return False
+
+
+# ========================== МЕНЕДЖЕРЫ ==========================
+#
+# Суперадмин (SUPERADMIN_USERNAME) всегда имеет полные права и не хранится в БД.
+# Остальные менеджеры — в таблице managers, кешируются в памяти бота.
+
+_managers_cache: list = []           # список dict из таблицы managers
+_managers_cache_loaded: bool = False
+
+
+async def reload_managers() -> list:
+    """Перечитывает список менеджеров из БД в кеш."""
+    global _managers_cache, _managers_cache_loaded
+    rows = await supabase_get("managers", {"order": "created_at.asc"})
+    _managers_cache = rows or []
+    _managers_cache_loaded = True
+    return _managers_cache
+
+
+async def get_managers() -> list:
+    """Возвращает кешированный список менеджеров (грузит при первом обращении)."""
+    if not _managers_cache_loaded:
+        await reload_managers()
+    return _managers_cache
+
+
+def is_superadmin(user) -> bool:
+    return user is not None and (user.username or "").lower() == SUPERADMIN_USERNAME
+
+
+async def is_manager(user) -> bool:
+    """Менеджер = суперадмин ИЛИ есть в таблице managers (по tg_id или username)."""
+    if user is None:
+        return False
+    if is_superadmin(user):
+        return True
+    uname = (user.username or "").lower()
+    for m in await get_managers():
+        if m.get("tg_id") and user.id and int(m["tg_id"]) == int(user.id):
+            return True
+        if m.get("username") and uname and m["username"].lower() == uname:
+            return True
+    return False
+
+
+async def get_duty_chat_ids() -> list:
+    """
+    Чаты, куда слать новые заказы/обращения:
+    все дежурные менеджеры (is_on_duty=true) с известным chat_id.
+    Если дежурных нет — fallback на суперадмина.
+    """
+    chats = []
+    for m in await get_managers():
+        if m.get("is_on_duty") and m.get("chat_id"):
+            chats.append(int(m["chat_id"]))
+    if not chats:
+        sa = get_superadmin_chat_id()
+        if sa is not None:
+            chats.append(sa)
+    # уберём дубли, сохранив порядок
+    seen = set()
+    uniq = []
+    for c in chats:
+        if c not in seen:
+            seen.add(c); uniq.append(c)
+    return uniq
+
+
+async def update_manager_chat(user) -> None:
+    """Когда менеджер пишет боту — сохраняем его chat_id и tg_id в таблице."""
+    if user is None or is_superadmin(user):
+        return
+    uname = (user.username or "").lower()
+    # Ищем запись по tg_id или username
+    target = None
+    for m in await get_managers():
+        if m.get("tg_id") and int(m["tg_id"]) == int(user.id):
+            target = m; break
+        if m.get("username") and uname and m["username"].lower() == uname:
+            target = m; break
+    if not target:
+        return
+    patch = {}
+    if not target.get("chat_id"):
+        patch["chat_id"] = user.id
+    if not target.get("tg_id") and user.id:
+        patch["tg_id"] = user.id
+    if uname and target.get("username") != uname:
+        patch["username"] = uname
+    if patch:
+        # фильтр по существующему ключу (username или tg_id)
+        if target.get("tg_id"):
+            await supabase_patch("managers", {"tg_id": f"eq.{target['tg_id']}"}, patch)
+        elif target.get("username"):
+            await supabase_patch("managers", {"username": f"eq.{target['username']}"}, patch)
+        await reload_managers()
 
 
 async def fetch_product(product_id: str) -> Optional[dict]:
@@ -345,20 +469,34 @@ def fmt_price(amount: float, currency: str) -> str:
 async def notify_manager(bot: Bot, text: str, client_tg_id: int,
                          reply_markup: Optional[InlineKeyboardMarkup] = None) -> Optional[int]:
     """
-    Отправить сообщение менеджеру и запомнить, что reply на него
-    адресуется конкретному клиенту. Возвращает message_id отправленного сообщения.
+    Рассылает сообщение всем дежурным менеджерам (fallback — суперадмин).
+    Reply на любую из копий маршрутизируется обратно клиенту.
+    Возвращает message_id ПЕРВОЙ отправленной копии (для привязки manager_msg_id
+    к карточке — её редактирование делает тот, кто нажмёт кнопку).
     """
-    manager_chat = get_manager_chat_id()
-    if manager_chat is None:
-        log.warning("Manager chat_id не задан — менеджер должен сделать /start")
+    chats = await get_duty_chat_ids()
+    if not chats:
+        log.warning("Нет дежурных менеджеров и суперадмин не сделал /start")
         return None
-    try:
-        sent = await bot.send_message(manager_chat, text, reply_markup=reply_markup)
-        add_routing(sent.message_id, client_tg_id)
-        return sent.message_id
-    except Exception as e:
-        log.exception("Failed to notify manager: %s", e)
-        return None
+    first_msg_id = None
+    for chat in chats:
+        try:
+            sent = await bot.send_message(chat, text, reply_markup=reply_markup)
+            add_routing(sent.message_id, client_tg_id)
+            if first_msg_id is None:
+                first_msg_id = sent.message_id
+        except Exception as e:
+            log.warning("Failed to notify manager chat %s: %s", chat, e)
+    return first_msg_id
+
+
+async def notify_duty_plain(bot: Bot, text: str) -> None:
+    """Простое уведомление всем дежурным менеджерам (без routing-привязки)."""
+    for chat in await get_duty_chat_ids():
+        try:
+            await bot.send_message(chat, text)
+        except Exception as e:
+            log.warning("notify_duty_plain failed for %s: %s", chat, e)
 
 
 # ===================== СТАТУСЫ ЗАКАЗОВ =========================
@@ -481,17 +619,33 @@ async def cmd_start_deeplink(message: Message, command: CommandObject, bot: Bot)
 
 @router.message(CommandStart())
 async def cmd_start(message: Message) -> None:
-    """/start без параметров — приветствие + кнопка магазина. Для менеджера — регистрация."""
+    """/start без параметров. Для суперадмина и менеджеров — регистрация чата."""
     user = message.from_user
-    username = (user.username or "").lower() if user else ""
 
-    if username and username == MANAGER_USERNAME:
-        set_manager_chat_id(message.chat.id)
+    if is_superadmin(user):
+        set_superadmin_chat_id(message.chat.id)
         await message.answer(
-            "✅ Вы зарегистрированы как менеджер.\n"
-            f"Все запросы клиентов будут приходить сюда.\n"
-            f"Чтобы ответить — делайте <b>reply</b> на сообщение клиента.\n\n"
-            f"<i>Chat ID: {message.chat.id}</i>",
+            "✅ Вы вошли как <b>суперадмин</b>.\n"
+            "Новые заказы и обращения приходят дежурным менеджерам "
+            "(или сюда, если дежурных нет).\n\n"
+            "Управление менеджерами:\n"
+            "• /managers — список\n"
+            "• /addmanager @username или id — добавить\n"
+            "• /delmanager @username или id — удалить\n"
+            "• /duty @username — поставить/снять с дежурства\n"
+            "• /active — активные заказы и обращения",
+        )
+        return
+
+    if await is_manager(user):
+        await update_manager_chat(user)
+        await message.answer(
+            "✅ Вы вошли как <b>менеджер</b>.\n"
+            "Новые заказы и обращения будут приходить сюда, когда вы на дежурстве.\n\n"
+            "• /online — встать на дежурство\n"
+            "• /offline — снять дежурство\n"
+            "• /active — активные заказы и обращения\n"
+            "Чтобы ответить клиенту — делайте <b>reply</b> на его сообщение.",
         )
         return
     await send_welcome(message)
@@ -508,14 +662,173 @@ async def send_welcome(message: Message) -> None:
     )
 
 
+# ===================== УПРАВЛЕНИЕ МЕНЕДЖЕРАМИ =================
+# Все команды управления регистрируются ДО обработчика обычных сообщений.
+
+def _parse_manager_arg(text: str) -> dict:
+    """Разбирает аргумент команды: @username или числовой tg_id."""
+    parts = (text or "").split(maxsplit=1)
+    if len(parts) < 2:
+        return {}
+    arg = parts[1].strip()
+    if arg.startswith("@"):
+        return {"username": arg[1:].lower()}
+    if arg.lstrip("-").isdigit():
+        return {"tg_id": int(arg)}
+    return {"username": arg.lower()}
+
+
+@router.message(Command("managers"))
+async def cmd_managers(message: Message, bot: Bot) -> None:
+    """Список менеджеров. Только суперадмин."""
+    if not is_superadmin(message.from_user):
+        return
+    mgrs = await reload_managers()
+    if not mgrs:
+        await message.answer(
+            "Менеджеров пока нет.\n"
+            "Добавьте: /addmanager @username или /addmanager 12345"
+        )
+        return
+    lines = ["👥 <b>Менеджеры:</b>", ""]
+    for m in mgrs:
+        duty = "🟢 на дежурстве" if m.get("is_on_duty") else "⚪️ не дежурит"
+        who = f"@{m['username']}" if m.get("username") else f"id {m.get('tg_id')}"
+        lines.append(f"• {who} — {duty}")
+    lines.append("")
+    lines.append("Управление: /duty @username, /delmanager @username")
+    await message.answer("\n".join(lines))
+
+
+@router.message(Command("addmanager"))
+async def cmd_addmanager(message: Message, bot: Bot) -> None:
+    """Добавить менеджера по @username или tg_id. Только суперадмин."""
+    if not is_superadmin(message.from_user):
+        return
+    arg = _parse_manager_arg(message.text)
+    if not arg:
+        await message.answer("Укажите менеджера: /addmanager @username или /addmanager 12345")
+        return
+    for m in await get_managers():
+        if arg.get("tg_id") and m.get("tg_id") and int(m["tg_id"]) == arg["tg_id"]:
+            await message.answer("Этот менеджер уже добавлен.")
+            return
+        if arg.get("username") and m.get("username") and m["username"].lower() == arg["username"]:
+            await message.answer("Этот менеджер уже добавлен.")
+            return
+    row = {
+        "is_on_duty": True,
+        "added_by": (message.from_user.username or "").lower(),
+    }
+    row.update(arg)
+    created = await supabase_post("managers", row)
+    await reload_managers()
+    if created:
+        who = f"@{arg['username']}" if arg.get("username") else f"id {arg['tg_id']}"
+        await message.answer(
+            f"✅ {who} добавлен как менеджер (на дежурстве).\n"
+            f"Пусть напишет боту /start, чтобы начать получать заказы."
+        )
+    else:
+        await message.answer("⚠️ Не удалось добавить. Попробуйте ещё раз.")
+
+
+@router.message(Command("delmanager"))
+async def cmd_delmanager(message: Message, bot: Bot) -> None:
+    """Удалить менеджера. Только суперадмин."""
+    if not is_superadmin(message.from_user):
+        return
+    arg = _parse_manager_arg(message.text)
+    if not arg:
+        await message.answer("Укажите менеджера: /delmanager @username или /delmanager 12345")
+        return
+    if arg.get("tg_id"):
+        ok = await supabase_delete("managers", {"tg_id": f"eq.{arg['tg_id']}"})
+    else:
+        ok = await supabase_delete("managers", {"username": f"eq.{arg['username']}"})
+    await reload_managers()
+    if ok:
+        who = f"@{arg['username']}" if arg.get("username") else f"id {arg['tg_id']}"
+        await message.answer(f"✅ {who} больше не менеджер.")
+    else:
+        await message.answer("⚠️ Не удалось удалить (возможно, такого менеджера нет).")
+
+
+@router.message(Command("duty"))
+async def cmd_duty(message: Message, bot: Bot) -> None:
+    """Поставить/снять менеджера с дежурства. Только суперадмин.
+    Без аргумента — показывает список дежурных."""
+    if not is_superadmin(message.from_user):
+        return
+    arg = _parse_manager_arg(message.text)
+    mgrs = await get_managers()
+    if not arg:
+        if not mgrs:
+            await message.answer("Менеджеров нет. /addmanager @username")
+            return
+        lines = ["🟢 <b>Дежурство:</b>", ""]
+        for m in mgrs:
+            mark = "🟢" if m.get("is_on_duty") else "⚪️"
+            who = f"@{m['username']}" if m.get("username") else f"id {m.get('tg_id')}"
+            lines.append(f"{mark} {who}")
+        lines.append("")
+        lines.append("Переключить: /duty @username")
+        await message.answer("\n".join(lines))
+        return
+    target = None
+    for m in mgrs:
+        if arg.get("tg_id") and m.get("tg_id") and int(m["tg_id"]) == arg["tg_id"]:
+            target = m; break
+        if arg.get("username") and m.get("username") and m["username"].lower() == arg["username"]:
+            target = m; break
+    if not target:
+        await message.answer("Такого менеджера нет. Сначала /addmanager.")
+        return
+    new_duty = not target.get("is_on_duty")
+    if target.get("tg_id"):
+        await supabase_patch("managers", {"tg_id": f"eq.{target['tg_id']}"}, {"is_on_duty": new_duty})
+    else:
+        await supabase_patch("managers", {"username": f"eq.{target['username']}"}, {"is_on_duty": new_duty})
+    await reload_managers()
+    who = f"@{target['username']}" if target.get("username") else f"id {target['tg_id']}"
+    await message.answer(f"{'🟢 на дежурстве' if new_duty else '⚪️ снят с дежурства'}: {who}")
+
+
+@router.message(Command("online"))
+async def cmd_online(message: Message, bot: Bot) -> None:
+    """Менеджер встаёт на дежурство."""
+    if is_superadmin(message.from_user) or not await is_manager(message.from_user):
+        return
+    await update_manager_chat(message.from_user)
+    uname = (message.from_user.username or "").lower()
+    if uname:
+        await supabase_patch("managers", {"username": f"eq.{uname}"}, {"is_on_duty": True})
+    await supabase_patch("managers", {"tg_id": f"eq.{message.from_user.id}"}, {"is_on_duty": True})
+    await reload_managers()
+    await message.answer("🟢 Вы на дежурстве — новые заказы и обращения будут приходить вам.")
+
+
+@router.message(Command("offline"))
+async def cmd_offline(message: Message, bot: Bot) -> None:
+    """Менеджер снимает дежурство."""
+    if is_superadmin(message.from_user) or not await is_manager(message.from_user):
+        return
+    uname = (message.from_user.username or "").lower()
+    if uname:
+        await supabase_patch("managers", {"username": f"eq.{uname}"}, {"is_on_duty": False})
+    await supabase_patch("managers", {"tg_id": f"eq.{message.from_user.id}"}, {"is_on_duty": False})
+    await reload_managers()
+    await message.answer("⚪️ Вы сняли дежурство — новые заказы вам приходить не будут.")
+
+
 # ===================== КОМАНДА /active ========================
 # Регистрируется ДО обработчика обычных сообщений, иначе /active будет
 # воспринято как обычное сообщение и переслано (как клиентское).
 
 @router.message(Command("active"))
 async def cmd_active(message: Message, bot: Bot) -> None:
-    """Сводка всех незакрытых заказов и обращений. Только для менеджера."""
-    if (message.from_user.username or "").lower() != MANAGER_USERNAME:
+    """Сводка всех незакрытых заказов и обращений. Для менеджеров и суперадмина."""
+    if not await is_manager(message.from_user):
         return
 
     orders = await supabase_get("orders", {
@@ -592,28 +905,14 @@ async def handle_start_request(message: Message, bot: Bot) -> None:
             "У вас уже есть открытая заявка 🙌 Менеджер скоро свяжется — "
             "можно дописать детали прямо сюда."
         )
-        # Уведомляем менеджера, что клиент торопит (реплай на старую карточку, если есть)
-        manager_chat = get_manager_chat_id()
-        if manager_chat:
-            num = existing.get("number")
-            num_str = f"№{num}" if num else ""
-            try:
-                await bot.send_message(
-                    manager_chat,
-                    f"⚠️ Клиент {await customer_label(message.from_user.id)} повторно обратился "
-                    f"(запрос {num_str}). Стоит ответить быстрее.",
-                    reply_to_message_id=existing.get("manager_msg_id"),
-                )
-            except Exception:
-                # старое сообщение могло быть удалено — шлём без реплая
-                try:
-                    await bot.send_message(
-                        manager_chat,
-                        f"⚠️ Клиент {await customer_label(message.from_user.id)} повторно обратился "
-                        f"(запрос {num_str}). Стоит ответить быстрее.",
-                    )
-                except Exception:
-                    pass
+        # Уведомляем дежурных, что клиент торопит
+        num = existing.get("number")
+        num_str = f"№{num}" if num else ""
+        await notify_duty_plain(
+            bot,
+            f"⚠️ Клиент {await customer_label(message.from_user.id)} повторно обратился "
+            f"(запрос {num_str}). Стоит ответить быстрее."
+        )
         return
 
     await message.answer(
@@ -656,20 +955,13 @@ async def handle_start_ask(message: Message, bot: Bot, product_id: str) -> None:
             f"Вы уже спрашивали про «<b>{html.escape(name)}</b>» 🙌 "
             f"Менеджер скоро ответит — можно дописать детали сюда."
         )
-        manager_chat = get_manager_chat_id()
-        if manager_chat:
-            num = existing.get("number")
-            num_str = f"№{num}" if num else ""
-            txt = (f"⚠️ Клиент {await customer_label(message.from_user.id)} повторно спрашивает "
-                   f"про «{html.escape(name)}» (обращение {num_str}). Стоит ответить быстрее.")
-            try:
-                await bot.send_message(manager_chat, txt,
-                                       reply_to_message_id=existing.get("manager_msg_id"))
-            except Exception:
-                try:
-                    await bot.send_message(manager_chat, txt)
-                except Exception:
-                    pass
+        num = existing.get("number")
+        num_str = f"№{num}" if num else ""
+        await notify_duty_plain(
+            bot,
+            f"⚠️ Клиент {await customer_label(message.from_user.id)} повторно спрашивает "
+            f"про «{html.escape(name)}» (обращение {num_str}). Стоит ответить быстрее."
+        )
         return
 
     await message.answer(
@@ -759,7 +1051,7 @@ async def handle_manager_reply(message: Message, bot: Bot) -> None:
     user = message.from_user
     if not user:
         return
-    if (user.username or "").lower() != MANAGER_USERNAME:
+    if not await is_manager(user):
         # Это не менеджер — пусть отрабатывает обычный handle_client_message
         await forward_client_to_manager(message, bot)
         return
@@ -807,7 +1099,7 @@ async def handle_client_message(message: Message, bot: Bot) -> None:
     if not user:
         return
     # Менеджер вводит ID товара в процессе ручного создания заказа
-    if (user.username or "").lower() == MANAGER_USERNAME:
+    if await is_manager(user):
         draft = manager_order_draft.get(message.chat.id)
         if draft and draft.get("step") == "product" and message.text:
             product_id = message.text.strip()
@@ -820,35 +1112,33 @@ async def handle_client_message(message: Message, bot: Bot) -> None:
 
 
 async def forward_client_to_manager(message: Message, bot: Bot) -> None:
-    """Общая логика пересылки. Reply-target = заголовок (а не само сообщение)."""
-    manager_chat = get_manager_chat_id()
-    if manager_chat is None:
+    """Пересылка сообщения клиента всем дежурным менеджерам (fallback — суперадмин)."""
+    chats = await get_duty_chat_ids()
+    if not chats:
         await message.answer(
             "⚠️ Менеджер пока не подключен. Попробуйте позже или напишите ему вручную."
         )
         return
 
-    # 1. Заголовок — короткая шапка с упоминанием клиента. Это reply-target.
     header = f"💬 <b>Сообщение от клиента</b>\nОт: {client_mention(message)}"
-    try:
-        header_msg = await bot.send_message(manager_chat, header)
-        add_routing(header_msg.message_id, message.from_user.id)
-    except Exception as e:
-        log.exception("Failed to send header: %s", e)
-        return
-
-    # 2. Содержимое — копируется как есть (фото/документ/текст/etc)
-    try:
-        copied = await bot.copy_message(
-            chat_id=manager_chat,
-            from_chat_id=message.chat.id,
-            message_id=message.message_id,
-        )
-        # Также маршрутим reply на само сообщение — на случай если менеджер
-        # сделает reply на копию, а не на заголовок
-        add_routing(copied.message_id, message.from_user.id)
-    except Exception as e:
-        log.exception("Failed to copy message: %s", e)
+    for manager_chat in chats:
+        # 1. Заголовок — reply-target
+        try:
+            header_msg = await bot.send_message(manager_chat, header)
+            add_routing(header_msg.message_id, message.from_user.id)
+        except Exception as e:
+            log.warning("Failed to send header to %s: %s", manager_chat, e)
+            continue
+        # 2. Содержимое — копия как есть
+        try:
+            copied = await bot.copy_message(
+                chat_id=manager_chat,
+                from_chat_id=message.chat.id,
+                message_id=message.message_id,
+            )
+            add_routing(copied.message_id, message.from_user.id)
+        except Exception as e:
+            log.warning("Failed to copy message to %s: %s", manager_chat, e)
 
 
 # ===================== СМЕНА СТАТУСА (callback) ================
@@ -857,7 +1147,7 @@ async def forward_client_to_manager(message: Message, bot: Bot) -> None:
 async def cb_order_status(cb: CallbackQuery, bot: Bot) -> None:
     """Менеджер нажал кнопку смены статуса заказа."""
     # Только менеджер может менять статусы
-    if (cb.from_user.username or "").lower() != MANAGER_USERNAME:
+    if not await is_manager(cb.from_user):
         await cb.answer("Недоступно", show_alert=False)
         return
 
@@ -922,7 +1212,7 @@ async def cb_order_status(cb: CallbackQuery, bot: Bot) -> None:
 @router.callback_query(F.data.startswith("is:"))
 async def cb_inquiry_status(cb: CallbackQuery, bot: Bot) -> None:
     """Менеджер нажал кнопку смены статуса обращения."""
-    if (cb.from_user.username or "").lower() != MANAGER_USERNAME:
+    if not await is_manager(cb.from_user):
         await cb.answer("Недоступно", show_alert=False)
         return
     try:
@@ -977,7 +1267,7 @@ async def cb_inquiry_status(cb: CallbackQuery, bot: Bot) -> None:
 @router.callback_query(F.data.startswith("open_o:"))
 async def cb_open_order(cb: CallbackQuery, bot: Bot) -> None:
     """Кнопка «Открыть заказ» из /active — присылаем свежую карточку с кнопками."""
-    if (cb.from_user.username or "").lower() != MANAGER_USERNAME:
+    if not await is_manager(cb.from_user):
         await cb.answer("Недоступно", show_alert=False)
         return
     order_id = cb.data.split(":", 1)[1]
@@ -1000,7 +1290,7 @@ async def cb_open_order(cb: CallbackQuery, bot: Bot) -> None:
 @router.callback_query(F.data.startswith("open_i:"))
 async def cb_open_inquiry(cb: CallbackQuery, bot: Bot) -> None:
     """Кнопка «Открыть обращение» из /active — присылаем свежую карточку с кнопками."""
-    if (cb.from_user.username or "").lower() != MANAGER_USERNAME:
+    if not await is_manager(cb.from_user):
         await cb.answer("Недоступно", show_alert=False)
         return
     inquiry_id = cb.data.split(":", 1)[1]
@@ -1048,7 +1338,7 @@ STATUS_CHOICES = ["new", "in_progress", "awaiting_payment", "paid",
 @router.callback_query(F.data.startswith("mko:"))
 async def cb_make_order_start(cb: CallbackQuery, bot: Bot) -> None:
     """Старт оформления заказа для клиента из обращения."""
-    if (cb.from_user.username or "").lower() != MANAGER_USERNAME:
+    if not await is_manager(cb.from_user):
         await cb.answer("Недоступно", show_alert=False)
         return
     inquiry_id = cb.data.split(":", 1)[1]
@@ -1096,7 +1386,7 @@ async def cb_make_order_start(cb: CallbackQuery, bot: Bot) -> None:
 @router.callback_query(F.data.startswith("mkp:"))
 async def cb_make_order_product(cb: CallbackQuery, bot: Bot) -> None:
     """Товар выбран кнопкой."""
-    if (cb.from_user.username or "").lower() != MANAGER_USERNAME:
+    if not await is_manager(cb.from_user):
         await cb.answer("Недоступно", show_alert=False)
         return
     draft = manager_order_draft.get(cb.message.chat.id)
@@ -1111,7 +1401,7 @@ async def cb_make_order_product(cb: CallbackQuery, bot: Bot) -> None:
 @router.callback_query(F.data.startswith("mks:"))
 async def cb_make_order_status(cb: CallbackQuery, bot: Bot) -> None:
     """Статус выбран — создаём заказ."""
-    if (cb.from_user.username or "").lower() != MANAGER_USERNAME:
+    if not await is_manager(cb.from_user):
         await cb.answer("Недоступно", show_alert=False)
         return
     draft = manager_order_draft.get(cb.message.chat.id)
@@ -1224,9 +1514,15 @@ async def main() -> None:
     dp.include_router(router)
 
     await bot.delete_webhook(drop_pending_updates=False)
-    log.info("Bot started. Manager: @%s, WebApp: %s", MANAGER_USERNAME, WEBAPP_URL)
-    if get_manager_chat_id() is None:
-        log.warning("Manager chat_id не задан — менеджер должен сделать /start боту.")
+    log.info("Bot started. Superadmin: @%s, WebApp: %s", SUPERADMIN_USERNAME, WEBAPP_URL)
+    # Прогреваем кеш менеджеров
+    try:
+        await reload_managers()
+        log.info("Загружено менеджеров: %d", len(_managers_cache))
+    except Exception as e:
+        log.warning("Не удалось загрузить менеджеров: %s", e)
+    if get_superadmin_chat_id() is None:
+        log.warning("Суперадмин не сделал /start — fallback-уведомления некуда слать.")
 
     await dp.start_polling(bot)
 

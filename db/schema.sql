@@ -129,6 +129,19 @@ CREATE TABLE IF NOT EXISTS inquiries (
 CREATE INDEX IF NOT EXISTS inquiries_status_idx ON inquiries(status);
 CREATE INDEX IF NOT EXISTS inquiries_customer_idx ON inquiries(customer_tg_id);
 
+-- 6c. MANAGERS — список менеджеров с флагом дежурства.
+-- Суперадмин задаётся в боте через env и тут не обязателен.
+CREATE TABLE IF NOT EXISTS managers (
+  tg_id       BIGINT,
+  username    TEXT,
+  is_on_duty  BOOLEAN NOT NULL DEFAULT TRUE,
+  chat_id     BIGINT,
+  added_by    TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS managers_tg_id_uniq ON managers(tg_id) WHERE tg_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS managers_username_uniq ON managers(username) WHERE username IS NOT NULL;
+
 -- 7. FAVORITES
 CREATE TABLE IF NOT EXISTS favorites (
   customer_tg_id BIGINT NOT NULL REFERENCES customers(tg_id) ON DELETE CASCADE,
@@ -210,6 +223,7 @@ ALTER TABLE order_items DISABLE ROW LEVEL SECURITY;
 ALTER TABLE favorites   DISABLE ROW LEVEL SECURITY;
 ALTER TABLE cart_items  DISABLE ROW LEVEL SECURITY;
 ALTER TABLE inquiries   DISABLE ROW LEVEL SECURITY;
+ALTER TABLE managers    DISABLE ROW LEVEL SECURITY;
 
 -- РЕЖИМ Б (для прод-релиза, требует Edge Function для валидации Telegram initData):
 -- 1. Закомментируйте все ALTER TABLE ... DISABLE ROW LEVEL SECURITY выше
