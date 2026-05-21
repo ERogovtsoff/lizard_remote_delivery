@@ -40,6 +40,7 @@ import html
 import json
 import logging
 import os
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -466,6 +467,82 @@ def fmt_price(amount: float, currency: str) -> str:
     return f"${s}" if currency == "USD" else f"{s} BYN"
 
 
+# Часовой пояс Беларуси (UTC+3, без перехода на летнее время с 2011)
+BELARUS_TZ = timezone(timedelta(hours=3))
+
+
+def _parse_ts(ts: str) -> Optional[datetime]:
+    """Парсит ISO-таймстемп из Supabase (с 'Z' или смещением) в aware datetime."""
+    if not ts:
+        return None
+    try:
+        s = ts.replace("Z", "+00:00")
+        # Supabase иногда отдаёт микросекунды с переменной длиной — datetime справится
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        return None
+
+
+def fmt_dt(ts: str) -> str:
+    """Точное время в поясе Беларуси: '20.05 в 14:30'."""
+    dt = _parse_ts(ts)
+    if not dt:
+        return "—"
+    local = dt.astimezone(BELARUS_TZ)
+    return local.strftime("%d.%m в %H:%M")
+
+
+def fmt_ago(ts: str) -> str:
+    """Относительное время: 'только что', '5 мин назад', '3 ч назад', '2 дня назад'."""
+    dt = _parse_ts(ts)
+    if not dt:
+        return ""
+    now = datetime.now(timezone.utc)
+    sec = (now - dt).total_seconds()
+    if sec < 0:
+        sec = 0
+    if sec < 60:
+        return "только что"
+    mins = int(sec // 60)
+    if mins < 60:
+        return f"{mins} мин назад"
+    hours = int(sec // 3600)
+    if hours < 24:
+        return f"{hours} ч назад"
+    days = int(sec // 86400)
+    if days < 30:
+        # склонение «день/дня/дней»
+        d = days % 10
+        dd = days % 100
+        if d == 1 and dd != 11:
+            word = "день"
+        elif d in (2, 3, 4) and dd not in (12, 13, 14):
+            word = "дня"
+        else:
+            word = "дней"
+        return f"{days} {word} назад"
+    months = int(days // 30)
+    return f"{months} мес назад"
+
+
+def fmt_created_line(ts: str) -> str:
+    """Строка 'Создан' с точным временем и относительным."""
+    return f"🕐 Создан: {fmt_dt(ts)} ({fmt_ago(ts)})"
+
+
+def fmt_activity_line(ts: str) -> str:
+    """Строка 'Активность' (последнее обновление)."""
+    return f"⏱ Активность: {fmt_ago(ts)}"
+
+
+def now_iso() -> str:
+    """Текущее время в UTC ISO — для записи в updated_at."""
+    return datetime.now(timezone.utc).isoformat()
+
+
 async def notify_manager(bot: Bot, text: str, client_tg_id: int,
                          reply_markup: Optional[InlineKeyboardMarkup] = None) -> Optional[int]:
     """
@@ -576,8 +653,12 @@ def order_card_text(order: dict, status: str) -> str:
     lines = [
         f"🛒 <b>Заказ №{order_id}</b>",
         f"Статус: {ORDER_STATUS.get(status, {}).get('label', status)}",
-        "─────────────",
     ]
+    if order.get("created_at"):
+        lines.append(fmt_created_line(order["created_at"]))
+    if order.get("updated_at"):
+        lines.append(fmt_activity_line(order["updated_at"]))
+    lines.append("─────────────")
     for it in items:
         prod = it.get("_product")
         name = product_name(prod)
@@ -861,8 +942,14 @@ async def cmd_active(message: Message, bot: Bot) -> None:
         kb = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="🔍 Открыть заказ", callback_data=f"open_o:{o['id']}")
         ]])
+        sub = []
+        if o.get("created_at"):
+            sub.append(f"создан {fmt_ago(o['created_at'])}")
+        if o.get("updated_at"):
+            sub.append(f"активность {fmt_ago(o['updated_at'])}")
+        sub_str = ("\n   " + " · ".join(sub)) if sub else ""
         await message.answer(
-            f"🛒 Заказ №{o['id']} — {st} — {fmt_price(total, cur)}",
+            f"🛒 Заказ №{o['id']} — {st} — {fmt_price(total, cur)}{sub_str}",
             reply_markup=kb,
         )
 
@@ -875,7 +962,13 @@ async def cmd_active(message: Message, bot: Bot) -> None:
         kb = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="🔍 Открыть обращение", callback_data=f"open_i:{q['id']}")
         ]])
-        await message.answer(f"{tp} {num_str}— {st}", reply_markup=kb)
+        sub = []
+        if q.get("created_at"):
+            sub.append(f"создано {fmt_ago(q['created_at'])}")
+        if q.get("updated_at"):
+            sub.append(f"активность {fmt_ago(q['updated_at'])}")
+        sub_str = ("\n   " + " · ".join(sub)) if sub else ""
+        await message.answer(f"{tp} {num_str}— {st}{sub_str}", reply_markup=kb)
 
 
 # ===================== HANDLERS DEEP-LINK ======================
@@ -913,6 +1006,8 @@ async def handle_start_request(message: Message, bot: Bot) -> None:
             f"⚠️ Клиент {await customer_label(message.from_user.id)} повторно обратился "
             f"(запрос {num_str}). Стоит ответить быстрее."
         )
+        # Повторное обращение = активность
+        await supabase_patch("inquiries", {"id": f"eq.{existing['id']}"}, {"updated_at": now_iso()})
         return
 
     await message.answer(
@@ -962,6 +1057,7 @@ async def handle_start_ask(message: Message, bot: Bot, product_id: str) -> None:
             f"⚠️ Клиент {await customer_label(message.from_user.id)} повторно спрашивает "
             f"про «{html.escape(name)}» (обращение {num_str}). Стоит ответить быстрее."
         )
+        await supabase_patch("inquiries", {"id": f"eq.{existing['id']}"}, {"updated_at": now_iso()})
         return
 
     await message.answer(
@@ -1081,6 +1177,16 @@ async def handle_manager_reply(message: Message, bot: Bot) -> None:
             await message.react([ReactionTypeEmoji(emoji="👌")])
         except Exception:
             pass  # реакции могут быть недоступны в групповых чатах или старых клиентах
+        # Обновляем «последнюю активность» открытых обращений клиента —
+        # менеджер ответил, значит заявка в движении.
+        try:
+            await supabase_patch(
+                "inquiries",
+                {"customer_tg_id": f"eq.{client_tg_id}", "status": "in.(new,in_progress)"},
+                {"updated_at": now_iso()},
+            )
+        except Exception:
+            pass
     except Exception as e:
         log.exception("Failed to relay manager reply: %s", e)
         await message.answer(f"⚠️ Не удалось доставить сообщение клиенту: {e}")
@@ -1162,7 +1268,7 @@ async def cb_order_status(cb: CallbackQuery, bot: Bot) -> None:
         return
 
     # Обновляем статус в БД. Для 'paid' заодно ставим is_paid=true (триггер начислит сумму).
-    patch = {"status": new_status}
+    patch = {"status": new_status, "updated_at": now_iso()}
     if new_status == "paid":
         patch["is_paid"] = True
     if new_status == "cancelled":
@@ -1314,10 +1420,16 @@ async def cb_open_inquiry(cb: CallbackQuery, bot: Bot) -> None:
     title = (f"❓ <b>ВОПРОС ПО ТОВАРУ{num_str}</b>" if is_product
              else f"🆕 <b>ЗАПРОС НА ПОДБОР{num_str}</b>")
     who = await customer_label(q["customer_tg_id"])
+    time_lines = ""
+    if q.get("created_at"):
+        time_lines += f"{fmt_created_line(q['created_at'])}\n"
+    if q.get("updated_at"):
+        time_lines += f"{fmt_activity_line(q['updated_at'])}\n"
     card = (
         f"{title}\n"
         f"От: {who}\n"
         f"{product_line}"
+        f"{time_lines}"
         f"Статус: {INQUIRY_STATUS.get(status, {}).get('label', status)}"
     )
     msg_id = await notify_manager(
