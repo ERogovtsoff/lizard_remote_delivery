@@ -5,7 +5,7 @@ Telegram-бот «Магазин одежды + заказ из Китая».
 Стек: Python 3.10+, aiogram 3.x, httpx.
 
 Что делает бот:
-1. Команда /start без параметров — показывает приветствие и кнопку «Открыть магазин» (мини-апп).
+1. Команда /start без параметров — показывает приветствие (магазин открывается штатной кнопкой «Открыть»).
 2. Команда /start request — клиент пришёл из апки оформить общий запрос на подбор.
    Бот пишет клиенту приветствие и ждёт сообщения, чтобы переслать менеджеру.
 3. Команда /start ask_<product_id> — клиент пришёл уточнить размеры конкретного товара.
@@ -52,10 +52,7 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    KeyboardButton,
     Message,
-    ReplyKeyboardMarkup,
-    WebAppInfo,
 )
 
 
@@ -500,14 +497,10 @@ async def cmd_start(message: Message) -> None:
 
 
 async def send_welcome(message: Message) -> None:
-    kb = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="🛍 Открыть магазин", web_app=WebAppInfo(url=WEBAPP_URL))]],
-        resize_keyboard=True,
-    )
     await message.answer(
         "Привет! 👋 Рады видеть вас в LIZARD.\n\n"
-        "Нажмите кнопку ниже — внутри товары в наличии и заказ любых вещей из Китая.",
-        reply_markup=kb,
+        "Нажмите кнопку <b>«Открыть»</b> рядом с полем ввода — внутри товары в наличии "
+        "и заказ любых вещей из Китая."
     )
 
 
