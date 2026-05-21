@@ -26,7 +26,10 @@ export function createProductCard(prod, opts = {}) {
   const images = (prod.images && prod.images.length) ? prod.images : (prod.img ? [prod.img] : []);
 
   const card = document.createElement('div');
-  card.className = 'product-card' + (opts.showSize ? ' fav-with-size' : '');
+  // Размер для бейджа в избранном — только если реально задан (иначе пустой белый квадрат)
+  const sizeLabel = (opts.showSize == null) ? '' : String(opts.showSize).trim();
+  const hasSize = !!sizeLabel && sizeLabel !== 'null' && sizeLabel !== 'undefined';
+  card.className = 'product-card' + (hasSize ? ' fav-with-size' : '');
 
   // Карусель
   const carousel = createCarousel({
@@ -47,11 +50,12 @@ export function createProductCard(prod, opts = {}) {
     carousel.appendChild(badgeEl);
   }
 
-  // Бейдж с размером (для страницы «Избранное»)
-  if (opts.showSize) {
+  // Бейдж с размером (для страницы «Избранное»).
+  // Показываем ТОЛЬКО если размер реально задан — иначе был пустой белый квадрат.
+  if (hasSize) {
     const badge = document.createElement('div');
     badge.className = 'product-card-size';
-    badge.textContent = opts.showSize;
+    badge.textContent = sizeLabel;
     carousel.appendChild(badge);
   }
 
