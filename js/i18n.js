@@ -51,6 +51,9 @@ const STRINGS = {
 
     guest: 'Гость',
     loading: 'Загрузка…',
+    ok: 'Понятно',
+    reopenNeededTitle: 'Откройте магазин заново',
+    reopenNeededText: 'Чтобы оформить заказ, откройте магазин через кнопку «Открыть» в чате с ботом — так мы сможем вас узнать.',
     profileSpent: 'Выкуплено на сумму',
     historyTitle: 'История заказов', historySub: 'Запросы и заказы',
     historySubFull: 'Все ваши запросы и заказы.',
@@ -184,6 +187,9 @@ const STRINGS = {
 
     guest: 'Guest',
     loading: 'Loading…',
+    ok: 'Got it',
+    reopenNeededTitle: 'Please reopen the shop',
+    reopenNeededText: 'To place an order, open the shop via the «Open» button in the chat with the bot — that lets us recognize you.',
     profileSpent: 'Total bought',
     historyTitle: 'Order history', historySub: 'Requests and orders',
     historySubFull: 'All your requests and orders.',

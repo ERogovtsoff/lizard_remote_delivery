@@ -14,7 +14,26 @@ export function initTelegram() {
 }
 
 export function getUser() {
-  return tg?.initDataUnsafe?.user || null;
+  // Основной источник — initDataUnsafe (заполняется когда апка открыта
+  // через web_app кнопку с зарегистрированным доменом).
+  const u = tg?.initDataUnsafe?.user;
+  if (u && u.id) return u;
+
+  // Fallback: парсим подписанную строку initData вручную. В некоторых сценариях
+  // запуска initDataUnsafe пуст, но initData содержит user=...
+  try {
+    const raw = tg?.initData;
+    if (raw && typeof raw === 'string') {
+      const params = new URLSearchParams(raw);
+      const userStr = params.get('user');
+      if (userStr) {
+        const parsed = JSON.parse(userStr);
+        if (parsed && parsed.id) return parsed;
+      }
+    }
+  } catch (e) {}
+
+  return null;
 }
 
 export function getUserLanguage() {

@@ -15,13 +15,17 @@ export function showConfirm({ icon = '⚠️', title, text, yes, no, danger = fa
   if (danger) btnYes.style.background = 'var(--danger)';
   btnYes.textContent = yes || t('yes');
   btnYes.onclick = () => { modal.classList.remove('show'); onYes && onYes(); };
+  actions.append(btnYes);
 
-  const btnNo = document.createElement('button');
-  btnNo.className = 'secondary-btn';
-  btnNo.textContent = no || t('cancel');
-  btnNo.onclick = () => { modal.classList.remove('show'); onNo && onNo(); };
+  // Вторая кнопка («Отмена») — только если no не передан как null явно
+  if (no !== null) {
+    const btnNo = document.createElement('button');
+    btnNo.className = 'secondary-btn';
+    btnNo.textContent = no || t('cancel');
+    btnNo.onclick = () => { modal.classList.remove('show'); onNo && onNo(); };
+    actions.append(btnNo);
+  }
 
-  actions.append(btnYes, btnNo);
   modal.classList.add('show');
 }
 

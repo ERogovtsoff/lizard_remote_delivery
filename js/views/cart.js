@@ -6,7 +6,7 @@ import { api } from '../api/index.js';
 import { router } from '../router.js';
 import { showConfirm } from '../components/modal.js';
 import { showToast } from '../components/toast.js';
-import { haptic, openBotChat } from '../tg.js';
+import { haptic, openBotChat, getUser } from '../tg.js';
 import { invalidateHistoryCache } from './history.js';
 
 // Доступное количество для размера товара. Если stock не задан — без ограничения.
@@ -151,6 +151,19 @@ export async function renderCart() {
 }
 
 async function checkout(totalUsd, totalByn) {
+  // Без данных пользователя Telegram (апка открыта вне нормального контекста)
+  // оформить заказ нельзя — показываем понятную подсказку вместо общей ошибки.
+  if (!getUser()) {
+    showConfirm({
+      icon: '🔄',
+      title: t('reopenNeededTitle'),
+      text: t('reopenNeededText'),
+      yes: t('ok'), no: null,
+      onYes: () => {},
+    });
+    return;
+  }
+
   const cur = state.settings.currency;
   const items = state.cart.map(c => ({ productId: c.productId, size: c.size, qty: c.qty }));
 
