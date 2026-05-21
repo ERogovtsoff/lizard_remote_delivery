@@ -76,3 +76,24 @@ export const BADGE_COLORS = {
 export function badgeColor(key) {
   return BADGE_COLORS[key] || BADGE_COLORS.accent;
 }
+
+// ====================== Картинки товаров ======================
+// Единый помощник для <img> товара: lazy-loading, асинхронное декодирование,
+// плавное появление и fallback при битой ссылке.
+//
+// Использование: imageHtml(src, { className, alt, eager })
+//   eager=true — для первого экрана (детальная, главное фото), без lazy.
+//
+// Класс product-img управляет плейсхолдером и переходом (см. styles.css).
+// onload снимает класс loading; onerror подставляет заглушку «нет фото».
+export function imageHtml(src, opts = {}) {
+  const { className = '', alt = '', eager = false } = opts;
+  const cls = ('product-img loading ' + className).trim();
+  const loading = eager ? 'eager' : 'lazy';
+  const safeSrc = escapeAttr(src || '');
+  // onerror: помечаем контейнер как сломанный, прячем сам img
+  return `<img src="${safeSrc}" alt="${escapeAttr(alt)}" `
+    + `class="${cls}" loading="${loading}" decoding="async" `
+    + `onload="this.classList.remove('loading')" `
+    + `onerror="this.classList.remove('loading');this.classList.add('img-broken')">`;
+}

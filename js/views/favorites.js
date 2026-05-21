@@ -22,6 +22,12 @@ export async function renderFavorites() {
       <p>${escapeHtml(t('favEmptyText'))}</p>
       <a class="empty-state-link" id="favEmptyLink">${escapeHtml(t('favEmptyLink'))}</a>
     </div>
+    <div class="empty-state" id="favError" style="display:none">
+      <div class="icon">📡</div>
+      <h3>${escapeHtml(t('loadErrorTitle'))}</h3>
+      <p>${escapeHtml(t('loadErrorText'))}</p>
+      <button class="primary-btn retry-btn" id="favRetry">${escapeHtml(t('retry'))}</button>
+    </div>
   `;
 
   const container = document.getElementById('favGridContainer');
@@ -32,9 +38,20 @@ export async function renderFavorites() {
   });
   container.appendChild(grid.element);
 
-  const products = await api.loadProducts();
-  productsMap = new Map(products.map(p => [p.id, p]));
-  refreshGrid();
+  const favRetry = document.getElementById('favRetry');
+  if (favRetry) favRetry.onclick = () => renderFavorites();
+
+  try {
+    const products = await api.loadProducts();
+    productsMap = new Map(products.map(p => [p.id, p]));
+    document.getElementById('favError').style.display = 'none';
+    refreshGrid();
+  } catch (e) {
+    console.error('[favorites] load failed:', e);
+    grid.clear();
+    document.getElementById('favEmpty').style.display = 'none';
+    document.getElementById('favError').style.display = 'block';
+  }
 
   // Кнопка-ссылка в empty-state становится доступна сразу после render
   const emptyLink = document.getElementById('favEmptyLink');

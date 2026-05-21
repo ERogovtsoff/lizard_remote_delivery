@@ -25,10 +25,24 @@ export async function renderHistory() {
       <h3>${escapeHtml(t('historyEmptyTitle'))}</h3>
       <p>${escapeHtml(t('historyEmptyText'))}</p>
     </div>
+    <div class="empty-state" id="historyError" style="display:none">
+      <div class="icon">📡</div>
+      <h3>${escapeHtml(t('loadErrorTitle'))}</h3>
+      <p>${escapeHtml(t('loadErrorText'))}</p>
+      <button class="primary-btn retry-btn" id="historyRetry">${escapeHtml(t('retry'))}</button>
+    </div>
   `;
 
+  const retryBtn = document.getElementById('historyRetry');
+  if (retryBtn) retryBtn.onclick = () => renderHistory();
+
   const lang = getLang();
-  const products = await api.loadProducts();
+  let products = [];
+  try {
+    products = await api.loadProducts();
+  } catch (_) {
+    products = [];   // каталог не критичен для истории — продолжаем без него
+  }
   const map = new Map(products.map(p => [p.id, p]));
 
   // 1. Если есть кэш — рисуем мгновенно (без пустого экрана)
@@ -36,16 +50,27 @@ export async function renderHistory() {
     paintHistory(historyCache, map, lang);
   }
 
-  // 2. Грузим свежие данные. Если кэша не было — покажем skeleton-заглушку,
-  //    чтобы не висел пустой список.
+  // 2. Грузим свежие данные. Если кэша не было — показываем «Загрузка…».
   if (!historyCache) {
     const list = document.getElementById('historyList');
     list.innerHTML = `<div class="history-loading">${escapeHtml(t('loading'))}</div>`;
   }
 
-  const items = await api.loadHistory();
-  historyCache = items;
-  paintHistory(items, map, lang);
+  try {
+    const items = await api.loadHistory();
+    historyCache = items;
+    document.getElementById('historyError').style.display = 'none';
+    paintHistory(items, map, lang);
+  } catch (e) {
+    console.error('[history] load failed:', e);
+    // Если есть кэш — оставляем его показанным, ошибку не навязываем.
+    if (!historyCache) {
+      const list = document.getElementById('historyList');
+      if (list) list.innerHTML = '';
+      document.getElementById('historyEmpty').style.display = 'none';
+      document.getElementById('historyError').style.display = 'block';
+    }
+  }
 }
 
 // Сбросить кэш истории (например, после оформления нового заказа)

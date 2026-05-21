@@ -30,6 +30,12 @@ export async function renderCatalog() {
       <p>${escapeHtml(t('searchEmptyText'))}</p>
       <a class="empty-state-link" id="catalogSearchEmptyLink">${escapeHtml(t('catalogEmptyLink'))}</a>
     </div>
+    <div class="empty-state" id="catalogError" style="display:none">
+      <div class="icon">📡</div>
+      <h3>${escapeHtml(t('loadErrorTitle'))}</h3>
+      <p>${escapeHtml(t('loadErrorText'))}</p>
+      <button class="primary-btn retry-btn" id="catalogRetry">${escapeHtml(t('retry'))}</button>
+    </div>
   `;
 
   const searchBar = createSearchBar({
@@ -48,13 +54,28 @@ export async function renderCatalog() {
   grid = createProductGrid({ source: 'catalog' });
   container.appendChild(grid.element);
 
-  const cached = await api.loadProducts();
-  if (!cached || cached.length === 0) {
-    container.replaceChild(createSkeletonGrid(6), grid.element);
-    allProducts = await api.loadProducts();
-    container.replaceChild(grid.element, container.firstChild);
-  } else {
-    allProducts = cached;
+  const errorEl = document.getElementById('catalogError');
+  const retryBtn = document.getElementById('catalogRetry');
+  if (retryBtn) retryBtn.onclick = () => renderCatalog();
+
+  try {
+    const cached = await api.loadProducts();
+    if (!cached || cached.length === 0) {
+      container.replaceChild(createSkeletonGrid(6), grid.element);
+      allProducts = await api.loadProducts();
+      container.replaceChild(grid.element, container.firstChild);
+    } else {
+      allProducts = cached;
+    }
+    if (errorEl) errorEl.style.display = 'none';
+  } catch (e) {
+    // Ни кэша, ни сети, ни сида — показываем ошибку с кнопкой «Повторить»
+    console.error('[catalog] load failed:', e);
+    grid.clear();
+    document.getElementById('catalogEmpty').style.display = 'none';
+    document.getElementById('catalogSearchEmpty').style.display = 'none';
+    if (errorEl) errorEl.style.display = 'block';
+    return;
   }
 
   refreshGrid();

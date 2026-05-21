@@ -7,7 +7,7 @@
 //     отпружинивает в исходное)
 //
 // onSlideClick(index): открыть лайтбокс при тапе на слайд
-import { escapeAttr } from '../utils.js';
+import { escapeAttr, imageHtml } from '../utils.js';
 
 const SWIPE_THRESHOLD_RATIO = 0.2;   // палец прошёл > 20% ширины — листаем
 const RUBBER_BAND_RATIO = 0.25;      // на границе следуем только 25% движения пальца
@@ -22,10 +22,10 @@ export function createCarousel({ images, variant = 'full', onSlideClick }) {
 
   const track = document.createElement('div');
   track.className = variant === 'mini' ? 'product-card-track' : 'carousel-track';
-  track.innerHTML = images.map(src =>
+  track.innerHTML = images.map((src, i) =>
     variant === 'mini'
-      ? `<div class="product-card-slide"><img src="${escapeAttr(src)}" alt="" loading="lazy"></div>`
-      : `<div class="carousel-slide"><img src="${escapeAttr(src)}" alt=""></div>`
+      ? `<div class="product-card-slide">${imageHtml(src, { eager: false })}</div>`
+      : `<div class="carousel-slide">${imageHtml(src, { eager: i === 0 })}</div>`
   ).join('');
   root.appendChild(track);
 

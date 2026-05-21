@@ -141,12 +141,32 @@ export async function loadProducts() {
   }
 
   // 2. Кэша нет — придётся подождать сеть.
+  //    Если сеть упала и кэша нет — пробрасываем ошибку, чтобы view показал
+  //    error-state (а не пустой каталог, который путают с «товаров нет»).
   try {
     const fresh = await refreshFromDb();
     return fresh || [];
   } catch (e) {
     console.error('[supabase] loadProducts exception:', e);
-    return [];
+    // Последняя попытка — отдать сид-каталог как фолбэк
+    const fallback = await loadSeedCatalog().catch(() => null);
+    if (fallback && fallback.length) return fallback;
+    throw e;   // ни кэша, ни сети, ни сида — пусть view покажет ошибку
+  }
+}
+
+// Сид-каталог из catalog.json — последний фолбэк при недоступной БД.
+async function loadSeedCatalog() {
+  try {
+    const res = await fetch(CONFIG.CATALOG_URL, { cache: 'no-store' });
+    if (!res.ok) return null;
+    const j = await res.json();
+    const arr = Array.isArray(j?.catalog) ? j.catalog
+              : Array.isArray(j) ? j
+              : (j.products || []);
+    return arr.map(rowToProduct);
+  } catch {
+    return null;
   }
 }
 
@@ -354,6 +374,11 @@ export async function loadHistory() {
     if (ordersRes.error) console.error('[supabase] loadHistory orders:', ordersRes.error.message);
     if (inqRes.error) console.error('[supabase] loadHistory inquiries:', inqRes.error.message);
 
+    // Если оба запроса упали — это сетевая ошибка, а не «история пуста».
+    if (ordersRes.error && inqRes.error) {
+      throw new Error('history load failed');
+    }
+
     const orders = (ordersRes.data || []).map(o => ({
       id: 'o' + o.id,
       type: 'order',
@@ -391,7 +416,7 @@ export async function loadHistory() {
     return all;
   } catch (e) {
     console.error('[supabase] loadHistory exception:', e);
-    return [];
+    throw e;   // пусть view покажет error-state с кнопкой «Повторить»
   }
 }
 

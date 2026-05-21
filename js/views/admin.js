@@ -1,6 +1,6 @@
 // Админка каталога: список товаров, редактор с несколькими картинками, экспорт/импорт.
 import { t, getLang, localizedProduct } from '../i18n.js';
-import { escapeHtml, escapeAttr, formatPrice, makeId, BADGE_COLORS, copyToClipboard } from '../utils.js';
+import { escapeHtml, escapeAttr, formatPrice, makeId, BADGE_COLORS, copyToClipboard, imageHtml } from '../utils.js';
 import { api } from '../api/index.js';
 import { router } from '../router.js';
 import { showToast } from '../components/toast.js';
@@ -55,7 +55,7 @@ function renderCatalogTab() {
       ? `<span class="admin-hidden-badge">${escapeHtml(t('adminHidden'))}</span>`
       : '';
     row.innerHTML = `
-      <img src="${escapeAttr(img)}" alt="">
+      ${imageHtml(img, { className: 'admin-thumb' })}
       <div class="admin-product-info">
         <div class="admin-product-name">${escapeHtml(p.name)}${hiddenBadge}</div>
         <div class="admin-product-price">${escapeHtml(formatPrice(p.price, cur, lang))}</div>

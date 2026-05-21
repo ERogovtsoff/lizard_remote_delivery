@@ -15,7 +15,7 @@
 
 import { initTelegram, onThemeChanged, onViewportChanged, tg, getUser, setManagers } from './tg.js';
 import { applyTheme } from './theme.js';
-import { setLang, applyI18N } from './i18n.js';
+import { setLang, applyI18N, t } from './i18n.js';
 import {
   state, isOnboarded, cartTotalCount, saveState,
   setFavoritesSyncer, setCartSyncer,
@@ -169,6 +169,21 @@ async function bootstrap() {
   // Глобальные обработчики UI
   setupLightbox();
   setupOnboarding();
+
+  // Индикатор отсутствия интернета. Браузер шлёт online/offline события.
+  const offlineBar = document.getElementById('offlineBar');
+  function updateOnlineStatus() {
+    if (!offlineBar) return;
+    if (navigator.onLine) {
+      offlineBar.style.display = 'none';
+    } else {
+      offlineBar.textContent = t('offline');
+      offlineBar.style.display = 'block';
+    }
+  }
+  window.addEventListener('online', updateOnlineStatus);
+  window.addEventListener('offline', updateOnlineStatus);
+  updateOnlineStatus();
 
   // Предзагружаем аватарку пользователя в кэш браузера — чтобы при открытии
   // профиля она появилась мгновенно, без мигания/повторного запроса.

@@ -14,9 +14,24 @@ let selectedSize = null;
 
 export async function renderDetail(opts = {}) {
   const productId = opts.productId;
-  const products = await api.loadProducts();
-  const prod = products.find(p => p.id === productId);
   const page = document.getElementById('page-detail');
+  let products = [];
+  try {
+    products = await api.loadProducts();
+  } catch (e) {
+    console.error('[detail] load failed:', e);
+    page.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">📡</div>
+        <h3>${escapeHtml(t('loadErrorTitle'))}</h3>
+        <p>${escapeHtml(t('loadErrorText'))}</p>
+        <button class="primary-btn retry-btn" id="detailRetry">${escapeHtml(t('retry'))}</button>
+      </div>`;
+    const rb = document.getElementById('detailRetry');
+    if (rb) rb.onclick = () => renderDetail(opts);
+    return;
+  }
+  const prod = products.find(p => p.id === productId);
   if (!prod) {
     page.innerHTML = `<p>Product not found.</p>`;
     return;

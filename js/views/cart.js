@@ -1,6 +1,6 @@
 // Корзина: список позиций с возможностью править количество, удалять и оформить заказ.
 import { t, getLang, localizedProduct } from '../i18n.js';
-import { escapeHtml, formatPrice } from '../utils.js';
+import { escapeHtml, formatPrice, imageHtml } from '../utils.js';
 import { state, changeCartQty, removeFromCart, cartKey, clearLocalCart } from '../state.js';
 import { api } from '../api/index.js';
 import { router } from '../router.js';
@@ -46,7 +46,25 @@ export async function renderCart() {
   if (catLink) catLink.onclick = () => router.navigate('catalog');
   if (ordLink) ordLink.onclick = () => router.navigate('chat');
 
-  const products = await api.loadProducts();
+  let products = [];
+  try {
+    products = await api.loadProducts();
+  } catch (e) {
+    console.error('[cart] load failed:', e);
+    const list = document.getElementById('cartList');
+    if (list) {
+      list.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">📡</div>
+          <h3>${escapeHtml(t('loadErrorTitle'))}</h3>
+          <p>${escapeHtml(t('loadErrorText'))}</p>
+          <button class="primary-btn retry-btn" id="cartRetry">${escapeHtml(t('retry'))}</button>
+        </div>`;
+      const rb = document.getElementById('cartRetry');
+      if (rb) rb.onclick = () => renderCart();
+    }
+    return;
+  }
   const map = new Map(products.map(p => [p.id, p]));
 
   function render() {
@@ -88,7 +106,7 @@ export async function renderCart() {
       row.className = 'cart-item';
       const mainImg = (prod.images && prod.images[0]) || prod.img || '';
       row.innerHTML = `
-        <img class="cart-item-clickable" src="${escapeHtml(mainImg)}" alt="">
+        ${imageHtml(mainImg, { className: 'cart-item-clickable' })}
         <div class="cart-item-info">
           <div class="cart-item-name cart-item-clickable">${escapeHtml(p.name)}</div>
           ${item.size ? `<div class="cart-item-size">${escapeHtml(item.size)}</div>` : ''}

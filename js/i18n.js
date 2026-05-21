@@ -51,6 +51,10 @@ const STRINGS = {
 
     guest: 'Гость',
     loading: 'Загрузка…',
+    loadErrorTitle: 'Не удалось загрузить',
+    loadErrorText: 'Проверьте интернет-соединение и попробуйте снова.',
+    retry: 'Повторить',
+    offline: 'Нет соединения с интернетом',
     ok: 'Понятно',
     reopenNeededTitle: 'Откройте магазин заново',
     reopenNeededText: 'Чтобы оформить заказ, откройте магазин через кнопку «Открыть» в чате с ботом — так мы сможем вас узнать.',
@@ -189,6 +193,10 @@ const STRINGS = {
 
     guest: 'Guest',
     loading: 'Loading…',
+    loadErrorTitle: 'Failed to load',
+    loadErrorText: 'Check your internet connection and try again.',
+    retry: 'Retry',
+    offline: 'No internet connection',
     ok: 'Got it',
     reopenNeededTitle: 'Please reopen the shop',
     reopenNeededText: 'To place an order, open the shop via the «Open» button in the chat with the bot — that lets us recognize you.',
