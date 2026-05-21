@@ -187,7 +187,13 @@ async function checkout(totalUsd, totalByn) {
 
   // Блокируем кнопку checkout на время отправки — защита от двойного клика
   const btn = document.getElementById('checkoutBtn');
-  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+  let btnOriginal = '';
+  if (btn) {
+    btnOriginal = btn.textContent;
+    btn.disabled = true;
+    btn.style.opacity = '0.6';
+    btn.textContent = t('checkoutProcessing');
+  }
 
   // Retry: 3 попытки с задержками 0/400/1200 мс. Большинство ошибок при оформлении —
   // временные (гонка с ensureCustomer, сетевые сбои Supabase). Простое повторение спасает.
@@ -208,7 +214,7 @@ async function checkout(totalUsd, totalByn) {
   }
 
   // Восстанавливаем кнопку
-  if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+  if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.textContent = btnOriginal; }
 
   if (!order) {
     console.error('[checkout] all attempts failed:', lastError);

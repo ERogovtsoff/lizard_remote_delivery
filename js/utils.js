@@ -97,3 +97,21 @@ export function imageHtml(src, opts = {}) {
     + `onload="this.classList.remove('loading')" `
     + `onerror="this.classList.remove('loading');this.classList.add('img-broken')">`;
 }
+
+// Блокировка кнопки на время асинхронного действия: предотвращает повторные
+// нажатия, показывает «занятое» состояние. fn — async-функция.
+// Использование: await withButtonLock(btn, async () => { ... }, 'Отправляем…')
+export async function withButtonLock(btn, fn, busyText) {
+  if (!btn) return fn();
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.classList.add('btn-loading');
+  if (busyText) btn.textContent = busyText;
+  try {
+    return await fn();
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('btn-loading');
+    btn.textContent = original;
+  }
+}

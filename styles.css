@@ -138,7 +138,15 @@ img { display: block; max-width: 100%; }
 /* Правка: нижний паддинг — на самой странице (не на body), так как в Telegram WebView
    на мобилке padding на body иногда обрезается viewport-логикой. Это надёжнее. */
 .page { display: none; padding: 16px 16px calc(var(--nav-h) + 16px); max-width: 720px; margin: 0 auto; }
-.page.active { display: block; }
+.page.active { display: block; animation: pageEnter 0.22s ease; }
+@keyframes pageEnter {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+/* Уважаем системную настройку «уменьшить движение» */
+@media (prefers-reduced-motion: reduce) {
+  .page.active { animation: none; }
+}
 .page h2 { font-size: 22px; font-weight: 700; margin: 0 0 8px 0; }
 .page-sub { color: var(--text-secondary); margin: 0 0 20px 0; font-size: 14px; }
 
@@ -1276,4 +1284,53 @@ img { display: block; max-width: 100%; }
 .retry-btn {
   margin-top: 14px;
   max-width: 220px;
+}
+
+/* ====================== Прогресс-полоска заказа ====================== */
+.order-progress {
+  display: flex;
+  gap: 4px;
+  margin-top: 12px;
+}
+.progress-step {
+  flex: 1;
+  position: relative;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-tertiary);
+  transition: background 0.3s;
+}
+.progress-step.done { background: var(--accent); }
+.progress-step.current { background: var(--accent); }
+.progress-step.current::after {
+  content: '';
+  position: absolute;
+  right: -2px; top: 50%;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  transform: translateY(-50%);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.progress-label {
+  position: absolute;
+  top: 8px; left: 0;
+  font-size: 9px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  display: none;
+}
+/* Подпись показываем только у текущего этапа, чтобы не загромождать */
+.progress-step.current .progress-label {
+  display: block;
+  color: var(--accent);
+  font-weight: 600;
+}
+.order-progress { margin-bottom: 18px; }
+
+/* Кнопка в состоянии загрузки (защита от двойного нажатия) */
+.btn-loading {
+  opacity: 0.6;
+  pointer-events: none;
+  cursor: default;
 }

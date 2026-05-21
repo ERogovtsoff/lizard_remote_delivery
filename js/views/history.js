@@ -9,6 +9,7 @@
 import { t, getLang, localizedProduct } from '../i18n.js';
 import { escapeHtml, formatPrice, formatDate } from '../utils.js';
 import { api } from '../api/index.js';
+import { router } from '../router.js';
 
 // In-memory кэш истории на время сессии апки. При повторном открытии показываем
 // сразу закэшированное, а свежие данные подгружаем в фоне (stale-while-revalidate).
@@ -24,6 +25,7 @@ export async function renderHistory() {
       <div class="icon">📋</div>
       <h3>${escapeHtml(t('historyEmptyTitle'))}</h3>
       <p>${escapeHtml(t('historyEmptyText'))}</p>
+      <a class="empty-state-link" id="historyEmptyLink">${escapeHtml(t('catalogEmptyLink'))}</a>
     </div>
     <div class="empty-state" id="historyError" style="display:none">
       <div class="icon">📡</div>
@@ -35,6 +37,9 @@ export async function renderHistory() {
 
   const retryBtn = document.getElementById('historyRetry');
   if (retryBtn) retryBtn.onclick = () => renderHistory();
+
+  const emptyLink = document.getElementById('historyEmptyLink');
+  if (emptyLink) emptyLink.onclick = () => router.navigate('catalog');
 
   const lang = getLang();
   let products = [];
@@ -115,6 +120,32 @@ function inquiryStatusLabel(status) {
   })[status] || status;
 }
 
+// Прогресс-полоска воронки заказа. Показывает 6 ключевых этапов и подсвечивает
+// пройденные + текущий. Для отменённых заказов не показывается.
+const PROGRESS_STEPS = ['in_progress', 'awaiting_payment', 'paid', 'purchasing', 'shipping', 'ready'];
+function orderProgressHtml(status) {
+  if (status === 'cancelled') return '';
+  // completed — все этапы пройдены
+  let currentIdx;
+  if (status === 'completed') {
+    currentIdx = PROGRESS_STEPS.length; // всё пройдено
+  } else if (status === 'new') {
+    currentIdx = 0; // ещё не начали двигаться по воронке
+  } else {
+    currentIdx = PROGRESS_STEPS.indexOf(status);
+    if (currentIdx < 0) return '';
+  }
+
+  const dots = PROGRESS_STEPS.map((step, i) => {
+    let cls = 'progress-step';
+    if (i < currentIdx) cls += ' done';
+    else if (i === currentIdx) cls += ' current';
+    return `<div class="${cls}"><span class="progress-label">${escapeHtml(orderStatusLabel(step))}</span></div>`;
+  }).join('');
+
+  return `<div class="order-progress">${dots}</div>`;
+}
+
 function buildItem(h, productsMap, lang) {
   const el = document.createElement('div');
   el.className = 'history-item';
@@ -144,6 +175,8 @@ function buildItem(h, productsMap, lang) {
     if (h.status === 'shipping' && h.eta) {
       body += `<div class="label">${escapeHtml(t('eta'))}: ${escapeHtml(formatDate(h.eta, lang))}</div>`;
     }
+    // Прогресс-полоска воронки заказа (кроме отменённых)
+    body += orderProgressHtml(h.status);
   } else if (h.type === 'inquiry') {
     const isProductQ = h.payload?.inquiryType === 'product_question';
     const num = h.payload?.number ? ` №${h.payload.number}` : '';

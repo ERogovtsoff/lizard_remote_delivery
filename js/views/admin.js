@@ -1,6 +1,6 @@
 // Админка каталога: список товаров, редактор с несколькими картинками, экспорт/импорт.
 import { t, getLang, localizedProduct } from '../i18n.js';
-import { escapeHtml, escapeAttr, formatPrice, makeId, BADGE_COLORS, copyToClipboard, imageHtml } from '../utils.js';
+import { escapeHtml, escapeAttr, formatPrice, makeId, BADGE_COLORS, copyToClipboard, imageHtml, withButtonLock } from '../utils.js';
 import { api } from '../api/index.js';
 import { router } from '../router.js';
 import { showToast } from '../components/toast.js';
@@ -290,10 +290,16 @@ function renderEditor() {
       const idx = workingProducts.findIndex(p => p.id === prod.id);
       if (idx >= 0) workingProducts[idx] = obj;
     }
-    await api.saveProducts(workingProducts);
-    showToast(t('adminProductSaved'));
-    editingId = null;
-    renderAdmin();
+    const saveBtn = document.getElementById('saveProdBtn');
+    try {
+      await withButtonLock(saveBtn, () => api.saveProducts(workingProducts), t('adminSaving'));
+      showToast(t('adminProductSaved'));
+      editingId = null;
+      renderAdmin();
+    } catch (e) {
+      console.error('[admin] save failed:', e);
+      showToast(t('loadErrorTitle'));
+    }
   };
 }
 
