@@ -72,7 +72,10 @@ CREATE TABLE IF NOT EXISTS products (
   price_byn    NUMERIC(10,2) NOT NULL DEFAULT 0,
   images       TEXT[] NOT NULL DEFAULT '{}',         -- массив URL картинок
   sizes        TEXT[] NOT NULL DEFAULT '{}',         -- например {'XS','S','M','L','XL'}
+  stock        JSONB NOT NULL DEFAULT '{}'::jsonb,   -- остатки по размерам {"S":5,"M":0}
   is_active    BOOLEAN NOT NULL DEFAULT TRUE,        -- скрыть из выдачи без удаления
+  badge_text   TEXT,                                 -- текст плашки (напр. «Топ», «Хит»). NULL = нет плашки
+  badge_color  TEXT,                                 -- ключ цвета плашки из фиксированной палитры
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -150,16 +153,22 @@ CREATE TABLE IF NOT EXISTS cart_items (
 -- 8. ТРИГГЕР: пересчёт purchases_total в USD и BYN при оплате
 CREATE OR REPLACE FUNCTION update_purchases_total() RETURNS TRIGGER AS $$
 BEGIN
-  IF NEW.is_paid IS TRUE AND OLD.is_paid IS FALSE THEN
+  IF (TG_OP = 'UPDATE' AND COALESCE(OLD.is_paid, FALSE) = FALSE AND NEW.is_paid = TRUE) THEN
     UPDATE customers
       SET purchases_total     = purchases_total     + COALESCE(NEW.total_usd, 0),
           purchases_total_byn = purchases_total_byn + COALESCE(NEW.total_byn, 0),
           updated_at = now()
       WHERE tg_id = NEW.customer_tg_id;
-  ELSIF NEW.is_paid IS FALSE AND OLD.is_paid IS TRUE THEN
+  ELSIF (TG_OP = 'UPDATE' AND COALESCE(OLD.is_paid, FALSE) = TRUE AND NEW.is_paid = FALSE) THEN
     UPDATE customers
       SET purchases_total     = GREATEST(0, purchases_total     - COALESCE(OLD.total_usd, 0)),
           purchases_total_byn = GREATEST(0, purchases_total_byn - COALESCE(OLD.total_byn, 0)),
+          updated_at = now()
+      WHERE tg_id = NEW.customer_tg_id;
+  ELSIF (TG_OP = 'INSERT' AND NEW.is_paid = TRUE) THEN
+    UPDATE customers
+      SET purchases_total     = purchases_total     + COALESCE(NEW.total_usd, 0),
+          purchases_total_byn = purchases_total_byn + COALESCE(NEW.total_byn, 0),
           updated_at = now()
       WHERE tg_id = NEW.customer_tg_id;
   END IF;
@@ -169,7 +178,7 @@ $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS orders_paid_trigger ON orders;
 CREATE TRIGGER orders_paid_trigger
-  AFTER UPDATE OF is_paid ON orders
+  AFTER INSERT OR UPDATE OF is_paid ON orders
   FOR EACH ROW EXECUTE FUNCTION update_purchases_total();
 
 -- Поддержание updated_at

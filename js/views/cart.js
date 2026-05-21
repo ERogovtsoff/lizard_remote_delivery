@@ -55,6 +55,17 @@ export async function renderCart() {
     const totalBox = document.getElementById('cartTotalBox');
     list.innerHTML = '';
 
+    // Подтверждение удаления позиции из корзины (для урны и для «минус» при qty=1)
+    function confirmRemove(item) {
+      showConfirm({
+        icon: '🗑️',
+        title: t('confirmRemoveCartTitle'),
+        text: t('confirmRemoveCartText'),
+        yes: t('confirmYes'), no: t('confirmNo'), danger: true,
+        onYes: () => { removeFromCart(item.productId, item.size); render(); haptic('warning'); }
+      });
+    }
+
     if (state.cart.length === 0) {
       empty.style.display = 'block';
       totalBox.innerHTML = '';
@@ -109,15 +120,17 @@ export async function renderCart() {
             }
             changeCartQty(item.productId, item.size, 1); render(); haptic('light');
           }
-          else if (act === 'dec') { changeCartQty(item.productId, item.size, -1); render(); haptic('light'); }
+          else if (act === 'dec') {
+            // Если остался один экземпляр — уменьшение означает удаление,
+            // поэтому спрашиваем подтверждение, как при нажатии на урну.
+            if (item.qty <= 1) {
+              confirmRemove(item);
+            } else {
+              changeCartQty(item.productId, item.size, -1); render(); haptic('light');
+            }
+          }
           else if (act === 'rm') {
-            showConfirm({
-              icon: '🗑️',
-              title: t('confirmRemoveCartTitle'),
-              text: t('confirmRemoveCartText'),
-              yes: t('confirmYes'), no: t('confirmNo'), danger: true,
-              onYes: () => { removeFromCart(item.productId, item.size); render(); haptic('warning'); }
-            });
+            confirmRemove(item);
           }
         };
       });
