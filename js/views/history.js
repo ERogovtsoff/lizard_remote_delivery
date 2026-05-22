@@ -220,17 +220,16 @@ function buildItem(h, productsMap, lang) {
       </div>
     </div>
     <div class="history-body">${body}</div>
-    <div class="history-timeline" style="display:none">${timeline}</div>
+    <div class="history-timeline"><div class="history-timeline-inner">${timeline}</div></div>
   `;
 
-  // Раскрытие таймлайна по тапу на заголовок
+  // Раскрытие таймлайна по тапу на заголовок (плавно через grid)
   const head = el.querySelector('.clickable-head');
   const timelineEl = el.querySelector('.history-timeline');
   const chevron = el.querySelector('.history-expand-chevron');
   if (head && timelineEl) {
     head.onclick = () => {
-      const open = timelineEl.style.display === 'none';
-      timelineEl.style.display = open ? 'block' : 'none';
+      const open = timelineEl.classList.toggle('open');
       if (chevron) chevron.classList.toggle('expanded', open);
     };
   }

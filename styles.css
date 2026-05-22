@@ -974,14 +974,18 @@ img { display: block; max-width: 100%; }
 
 .modal-backdrop {
   position: fixed; inset: 0; background: rgba(0,0,0,0.5);
-  display: none; align-items: center; justify-content: center;
+  display: flex; align-items: center; justify-content: center;
   z-index: 250; padding: 20px;
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transition: opacity 0.2s ease, visibility 0.2s;
 }
-.modal-backdrop.show { display: flex; }
+.modal-backdrop.show { opacity: 1; visibility: visible; pointer-events: auto; }
 .modal {
   background: var(--bg); border-radius: var(--radius-lg);
   padding: 24px; max-width: 360px; width: 100%; text-align: center;
+  transform: scale(0.95); transition: transform 0.2s ease;
 }
+.modal-backdrop.show .modal { transform: scale(1); }
 .modal-icon { font-size: 40px; margin-bottom: 12px; }
 .modal h3 { margin: 0 0 8px; font-size: 18px; font-weight: 600; color: var(--brown); }
 .modal p { margin: 0 0 18px; color: var(--text-secondary); font-size: 14px; }
@@ -1437,7 +1441,19 @@ img { display: block; max-width: 100%; }
 .history-expand-chevron.expanded svg { transform: rotate(180deg); }
 
 .history-timeline {
+  display: grid;
+  grid-template-rows: 0fr;
+  overflow: hidden;
+  transition: grid-template-rows 0.3s ease, margin 0.3s ease;
+  margin-top: 0;
+}
+.history-timeline.open {
+  grid-template-rows: 1fr;
   margin-top: 12px;
+}
+.history-timeline-inner {
+  min-height: 0;
+  overflow: hidden;
   padding-top: 12px;
   border-top: 1px solid var(--border);
 }
