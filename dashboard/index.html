@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>LIZARD · Панель управления</title>
 <link rel="preconnect" href="https://nhnbprmyqqpwcofkaasi.supabase.co" crossorigin />
-<link rel="stylesheet" href="./styles.css?v=1" />
+<link rel="stylesheet" href="./styles.css?v=2" />
 </head>
 <body>
 
@@ -56,9 +56,11 @@
         </div>
       </header>
       <div class="messages" id="messages"></div>
-      <!-- Поле ответа появится на Шаге 3 -->
-      <div class="composer-placeholder">
-        Ответы из панели появятся в следующем обновлении. Пока отвечайте через бота — вся переписка отображается здесь.
+      <div class="composer">
+        <textarea id="composerInput" placeholder="Напишите ответ клиенту…" rows="1"></textarea>
+        <button class="composer-send" id="composerSend" title="Отправить">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
       </div>
     </div>
   </main>

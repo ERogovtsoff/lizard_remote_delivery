@@ -104,3 +104,19 @@ export async function markRead(customerTgId) {
     console.warn('markRead failed:', e);
   }
 }
+
+// Отправить ответ клиенту: пишем в очередь outbox, бот её разберёт и отправит
+// в Telegram. Возвращает true при успешной постановке в очередь.
+export async function sendReply(customerTgId, text, managerUsername) {
+  const res = await fetch(`${BASE}/outbox`, {
+    method: 'POST',
+    headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+    body: JSON.stringify({
+      customer_tg_id: customerTgId,
+      text: text,
+      manager_username: managerUsername,
+    }),
+  });
+  if (!res.ok) throw new Error(`sendReply failed: ${res.status}`);
+  return true;
+}

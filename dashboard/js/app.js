@@ -219,6 +219,25 @@ function init() {
   });
   document.getElementById('logoutBtn').onclick = logout;
 
+  // Композер: отправка ответа
+  const input = document.getElementById('composerInput');
+  const sendBtn = document.getElementById('composerSend');
+  if (input && sendBtn) {
+    sendBtn.onclick = sendCurrentReply;
+    // Enter — отправить, Shift+Enter — перенос строки
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendCurrentReply();
+      }
+    });
+    // Авто-рост высоты поля
+    input.addEventListener('input', () => {
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+    });
+  }
+
   // Автовход, если уже заходили
   const saved = loadAuth();
   if (saved && saved.username) {
@@ -227,6 +246,45 @@ function init() {
   } else {
     document.getElementById('login').style.display = 'flex';
   }
+}
+
+async function sendCurrentReply() {
+  const input = document.getElementById('composerInput');
+  const sendBtn = document.getElementById('composerSend');
+  if (!input || activeChatId == null) return;
+  const text = input.value.trim();
+  if (!text) return;
+
+  sendBtn.disabled = true;
+  input.disabled = true;
+  try {
+    await api.sendReply(activeChatId, text, currentManager.username);
+    input.value = '';
+    input.style.height = 'auto';
+    // Оптимистично дорисуем сообщение в переписку (бот подтвердит при следующем refresh)
+    appendOptimisticOut(text);
+  } catch (e) {
+    console.error('sendReply failed:', e);
+    alert('Не удалось отправить. Проверьте соединение и попробуйте снова.');
+  } finally {
+    sendBtn.disabled = false;
+    input.disabled = false;
+    input.focus();
+  }
+}
+
+// Мгновенно показываем отправленное сообщение (до подтверждения ботом).
+function appendOptimisticOut(text) {
+  const box = document.getElementById('messages');
+  if (!box) return;
+  const div = document.createElement('div');
+  div.className = 'msg msg-out';
+  div.innerHTML = `<div class="msg-bubble">
+    <div class="msg-text">${escapeHtml(text)}</div>
+    <div class="msg-meta">@${escapeHtml(currentManager.username)} · отправляется…</div>
+  </div>`;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
 }
 
 init();

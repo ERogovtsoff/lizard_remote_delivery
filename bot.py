@@ -2069,6 +2069,91 @@ async def abandoned_cart_worker(bot: Bot) -> None:
         await asyncio.sleep(3600)   # раз в час
 
 
+async def process_outbox(bot: Bot) -> None:
+    """
+    Один проход по очереди исходящих с dashboard: берём неотправленные записи,
+    шлём клиенту в Telegram, сохраняем в messages, помечаем sent_at.
+    """
+    if not supabase_ready():
+        return
+    try:
+        # Неотправленные записи (sent_at IS NULL), старейшие первыми
+        rows = await supabase_get("outbox", {
+            "select": "*",
+            "sent_at": "is.null",
+            "order": "created_at.asc",
+            "limit": "20",
+        })
+        if not rows:
+            return
+
+        for row in rows:
+            outbox_id = row["id"]
+            customer_tg_id = row["customer_tg_id"]
+            text = row.get("text")
+            attachment_url = row.get("attachment_url")
+            manager_username = row.get("manager_username")
+
+            try:
+                # Отправляем клиенту. Если есть вложение — шлём по URL, иначе текст.
+                if attachment_url:
+                    caption = text or None
+                    await bot.send_photo(customer_tg_id, attachment_url, caption=caption)
+                elif text:
+                    await bot.send_message(customer_tg_id, text)
+                else:
+                    # Пустая запись — нечего слать, просто закрываем
+                    await supabase_patch("outbox", {"id": f"eq.{outbox_id}"},
+                                         {"sent_at": now_iso(), "error": "empty"})
+                    continue
+
+                # Сохраняем в историю переписки (как ответ менеджера с сайта)
+                await save_message(
+                    customer_tg_id, "out",
+                    text=text, sender="manager",
+                    manager_username=manager_username,
+                    attachment_url=attachment_url,
+                    attachment_type=("photo" if attachment_url else None),
+                    source="dashboard",
+                )
+                # Помечаем отправленным
+                await supabase_patch("outbox", {"id": f"eq.{outbox_id}"},
+                                     {"sent_at": now_iso()})
+
+                # Активность по открытым обращениям клиента
+                try:
+                    await supabase_patch(
+                        "inquiries",
+                        {"customer_tg_id": f"eq.{customer_tg_id}", "status": "in.(new,in_progress)"},
+                        {"updated_at": now_iso()},
+                    )
+                except Exception:
+                    pass
+
+            except TelegramForbiddenError:
+                # Клиент заблокировал бота — помечаем ошибкой, чтобы не зацикливаться
+                await supabase_patch("outbox", {"id": f"eq.{outbox_id}"},
+                                     {"sent_at": now_iso(), "error": "blocked"})
+                log.info("Outbox %s: клиент %s заблокировал бота", outbox_id, customer_tg_id)
+            except Exception as e:
+                # Прочая ошибка — помечаем, чтобы не застряло навсегда
+                await supabase_patch("outbox", {"id": f"eq.{outbox_id}"},
+                                     {"sent_at": now_iso(), "error": str(e)[:200]})
+                log.warning("Outbox %s send failed: %s", outbox_id, e)
+    except Exception as e:
+        log.warning("process_outbox error: %s", e)
+
+
+async def outbox_worker(bot: Bot) -> None:
+    """Периодически разбирает очередь исходящих с dashboard (каждые ~2 секунды)."""
+    while True:
+        try:
+            await process_outbox(bot)
+        except Exception as e:
+            log.warning("outbox_worker iteration failed: %s", e)
+        await asyncio.sleep(2)   # быстрый отклик для чата
+
+
 async def main() -> None:
     if not BOT_TOKEN:
         raise RuntimeError("BOT_TOKEN не задан")
@@ -2095,6 +2180,8 @@ async def main() -> None:
 
     # Фоновый процесс напоминаний о брошенной корзине
     asyncio.create_task(abandoned_cart_worker(bot))
+    # Фоновый процесс отправки ответов из dashboard
+    asyncio.create_task(outbox_worker(bot))
 
     await dp.start_polling(bot)
 
