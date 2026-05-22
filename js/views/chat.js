@@ -23,6 +23,15 @@ export function renderChat() {
     page.innerHTML = `
       <div class="chat-scroll" id="chatScroll"></div>
       <div class="chat-reply-time">${escapeHtml(t('chatReplyTime'))}</div>
+      <div class="chat-presets">
+        <div class="chat-presets-title">${escapeHtml(t('chatPresetsTitle'))}</div>
+        <div class="chat-presets-row">
+          <button class="chat-preset" data-preset="shoes">${escapeHtml(t('presetShoes'))}</button>
+          <button class="chat-preset" data-preset="bag">${escapeHtml(t('presetBag'))}</button>
+          <button class="chat-preset" data-preset="clothing">${escapeHtml(t('presetClothing'))}</button>
+          <button class="chat-preset" data-preset="brand">${escapeHtml(t('presetBrand'))}</button>
+        </div>
+      </div>
       <div class="chat-steps">
         <div class="chat-steps-title">${escapeHtml(t('chatStepsTitle'))}</div>
         <div class="chat-step"><span class="chat-step-num">1</span>${escapeHtml(t('chatStep1'))}</div>
@@ -83,6 +92,15 @@ function setupChatHandlers() {
     e.stopPropagation();
     haptic('light');
     showToast(t('chatAttachInfo'), 4000);
+  });
+
+  // Быстрые пресеты — открывают чат с ботом с уже выбранной категорией
+  document.querySelectorAll('.chat-preset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      haptic('light');
+      const preset = btn.getAttribute('data-preset');
+      openBotChat('request_' + preset);
+    });
   });
 }
 

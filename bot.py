@@ -712,6 +712,9 @@ async def cmd_start_deeplink(message: Message, command: CommandObject, bot: Bot)
 
     if param == "request":
         await handle_start_request(message, bot)
+    elif param.startswith("request_"):
+        preset = param[len("request_"):]
+        await handle_start_request(message, bot, preset)
     elif param.startswith("ask_"):
         product_id = param[len("ask_"):]
         await handle_start_ask(message, bot, product_id)
@@ -1014,8 +1017,18 @@ async def customer_label(customer_tg_id: int) -> str:
     return f"<a href=\"tg://user?id={customer_tg_id}\">клиент</a>"
 
 
-async def handle_start_request(message: Message, bot: Bot) -> None:
-    """Клиент пришёл написать общий запрос на подбор товара."""
+async def handle_start_request(message: Message, bot: Bot, preset: str = None) -> None:
+    """Клиент пришёл написать общий запрос на подбор товара.
+    preset — необязательная категория из быстрых кнопок апки (shoes/bag/clothing/brand)."""
+    # Человекочитаемые названия пресетов
+    preset_names = {
+        "shoes": "кроссовки / обувь",
+        "bag": "сумку",
+        "clothing": "одежду",
+        "brand": "вещь конкретного бренда",
+    }
+    preset_label = preset_names.get(preset)
+
     # Антиспам: уже есть открытый запрос?
     existing = await find_open_inquiry(message.from_user.id, "request")
     if existing:
@@ -1023,7 +1036,6 @@ async def handle_start_request(message: Message, bot: Bot) -> None:
             "У вас уже есть открытая заявка 🙌 Менеджер скоро свяжется — "
             "можно дописать детали прямо сюда."
         )
-        # Уведомляем дежурных, что клиент торопит
         num = existing.get("number")
         num_str = f"№{num}" if num else ""
         await notify_duty_plain(
@@ -1031,15 +1043,21 @@ async def handle_start_request(message: Message, bot: Bot) -> None:
             f"⚠️ Клиент {await customer_label(message.from_user.id)} повторно обратился "
             f"(запрос {num_str}). Стоит ответить быстрее."
         )
-        # Повторное обращение = активность
         await supabase_patch("inquiries", {"id": f"eq.{existing['id']}"}, {"updated_at": now_iso()})
         return
 
-    await message.answer(
-        "Привет! 👋\n\n"
-        "Расскажите, что хотите заказать — название, ссылку или просто фото. "
-        "Подберём и привезём 💛"
-    )
+    if preset_label:
+        await message.answer(
+            f"Привет! 👋\n\n"
+            f"Вы хотите заказать <b>{preset_label}</b> — отлично! "
+            f"Пришлите ссылку, фото или опишите, что именно ищете, и мы подберём 💛"
+        )
+    else:
+        await message.answer(
+            "Привет! 👋\n\n"
+            "Расскажите, что хотите заказать — название, ссылку или просто фото. "
+            "Подберём и привезём 💛"
+        )
     # Создаём обращение в БД
     inquiry = await supabase_post("inquiries", {
         "customer_tg_id": message.from_user.id,
@@ -1049,10 +1067,12 @@ async def handle_start_request(message: Message, bot: Bot) -> None:
     inquiry_id = inquiry.get("id") if inquiry else None
     number = inquiry.get("number") if inquiry else None
 
+    preset_line = f"🔎 Интересует: {preset_label}\n" if preset_label else ""
     card = (
         f"🆕 <b>ЗАПРОС НА ПОДБОР №{number}</b>\n" if number else "🆕 <b>НОВЫЙ ЗАПРОС НА ПОДБОР</b>\n"
     ) + (
         f"От: {client_mention(message)}\n"
+        f"{preset_line}"
         f"Статус: {INQUIRY_STATUS['new']['label']}\n\n"
         "<i>Клиент опишет, что ему нужно — сообщения придут следующими.</i>"
     )
@@ -1100,11 +1120,22 @@ async def handle_start_ask(message: Message, bot: Bot, product_id: str) -> None:
     inquiry_id = inquiry.get("id") if inquiry else None
     number = inquiry.get("number") if inquiry else None
 
+    price_line = ""
+    if prod:
+        pu = prod.get("price_usd")
+        pb = prod.get("price_byn")
+        parts = []
+        if pu: parts.append(f"${pu}")
+        if pb: parts.append(f"{pb} BYN")
+        if parts:
+            price_line = f"💵 Цена: {' / '.join(parts)}\n"
     card = (
         f"❓ <b>ВОПРОС ПО ТОВАРУ №{number}</b>\n" if number else "❓ <b>ВОПРОС ПО ТОВАРУ</b>\n"
     ) + (
         f"От: {client_mention(message)}\n"
         f"🛍 Товар: <b>{html.escape(name)}</b>\n"
+        f"{price_line}"
+        f"🆔 <code>{html.escape(product_id)}</code>\n"
         f"Статус: {INQUIRY_STATUS['new']['label']}"
     )
     kb = inquiry_keyboard(inquiry_id, "new") if inquiry_id else None

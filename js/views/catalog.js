@@ -18,6 +18,10 @@ export async function renderCatalog() {
     <p class="page-sub">${escapeHtml(t('catalogSub'))}</p>
     <div id="catalogSearchSlot"></div>
     <div id="catalogGridContainer"></div>
+    <div class="catalog-cta" id="catalogCta" style="display:none">
+      <span>${escapeHtml(t('catalogCtaText'))}</span>
+      <button class="catalog-cta-btn" id="catalogCtaBtn">${escapeHtml(t('catalogCtaBtn'))}</button>
+    </div>
     <div class="empty-state" id="catalogEmpty" style="display:none">
       <div class="icon">📦</div>
       <h3>${escapeHtml(t('catalogEmptyTitle'))}</h3>
@@ -49,6 +53,10 @@ export async function renderCatalog() {
   const searchEmptyLink = document.getElementById('catalogSearchEmptyLink');
   if (emptyLink) emptyLink.onclick = () => router.navigate('chat');
   if (searchEmptyLink) searchEmptyLink.onclick = () => router.navigate('chat');
+
+  // Призыв «не нашли? закажем под заказ» под товарами
+  const ctaBtn = document.getElementById('catalogCtaBtn');
+  if (ctaBtn) ctaBtn.onclick = () => router.navigate('chat');
 
   const container = document.getElementById('catalogGridContainer');
   grid = createProductGrid({ source: 'catalog' });
@@ -85,11 +93,13 @@ function refreshGrid() {
   if (!grid) return;
   const empty = document.getElementById('catalogEmpty');
   const emptySearch = document.getElementById('catalogSearchEmpty');
+  const cta = document.getElementById('catalogCta');
 
   if (!allProducts || allProducts.length === 0) {
     grid.clear();
     empty.style.display = 'block';
     emptySearch.style.display = 'none';
+    if (cta) cta.style.display = 'none';
     return;
   }
   const filtered = allProducts.filter(p => matches(p, searchQuery));
@@ -97,11 +107,14 @@ function refreshGrid() {
     grid.clear();
     empty.style.display = 'none';
     emptySearch.style.display = 'block';
+    if (cta) cta.style.display = 'none';
     return;
   }
   empty.style.display = 'none';
   emptySearch.style.display = 'none';
   grid.update(filtered);
+  // Призыв «не нашли? закажем» показываем под товарами
+  if (cta) cta.style.display = 'flex';
 }
 
 export async function onCatalogChanged() {

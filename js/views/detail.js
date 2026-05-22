@@ -79,6 +79,10 @@ export async function renderDetail(opts = {}) {
       </button>
       <button class="primary-btn" id="addToCartBtn">${escapeHtml(t('addToCart'))}</button>
     </div>
+    <button class="detail-ask-btn" id="detailAskBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <span>${escapeHtml(t('askAboutProduct'))}</span>
+    </button>
   `;
 
   // Карусель + лайтбокс
@@ -91,6 +95,13 @@ export async function renderDetail(opts = {}) {
   // Кнопка «Поделиться» — формирует deep-link на этот товар и открывает шеринг Telegram
   const shareBtn = document.getElementById('detailShareBtn');
   if (shareBtn) shareBtn.onclick = () => shareProduct(prod, p);
+
+  // Кнопка «Задать вопрос менеджеру» — всегда доступна, открывает чат с контекстом товара
+  const askBtn = document.getElementById('detailAskBtn');
+  if (askBtn) askBtn.onclick = () => {
+    haptic('light');
+    openBotChat('ask_' + prod.id);
+  };
 
   // Размеры
   if (prod.sizes && prod.sizes.length > 0) {

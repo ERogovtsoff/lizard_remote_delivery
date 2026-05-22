@@ -62,6 +62,7 @@ export async function renderHome() {
       </ul>
 
       <div class="home-bottom">
+        <div class="manager-online">${escapeHtml(t('managerOnline'))}</div>
         <button class="home-cta-btn" id="homeCtaBtn">
           ${escapeHtml(t('orderFromChina'))}
         </button>
