@@ -18,7 +18,7 @@
 import { CONFIG } from '../config.js';
 
 const STORAGE_KEY = CONFIG.STORAGE.CATALOG + '_cache';
-const TTL_FRESH_MS = 10_000;       // В пределах TTL не идём в сеть (отдаём кэш). После — фоновое обновление.
+const TTL_FRESH_MS = 5_000;        // В пределах TTL не идём в сеть (отдаём кэш). После — фоновое обновление.
 let _cached = null;                 // массив продуктов в памяти
 let _lastFetchAt = 0;               // timestamp последнего успешного fetch
 let _subscribers = new Set();

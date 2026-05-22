@@ -601,6 +601,19 @@ img { display: block; max-width: 100%; }
 /* Фейк-поле для псевдо-чата: тап открывает чат с ботом. Курсор не показываем. */
 .chat-input-row-fake { cursor: pointer; }
 .chat-input-row-fake:active { opacity: 0.7; }
+/* Фирменная обводка + мягкое пульсирующее свечение — подсказка «жми сюда».
+   box-shadow не влияет на размер, поэтому не закрывает соседние элементы. */
+.chat-input-row-fake .chat-input-field {
+  border: 1.5px solid var(--accent);
+  animation: composerGlow 2s ease-in-out infinite;
+}
+@keyframes composerGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(1, 194, 195, 0.0); }
+  50%      { box-shadow: 0 0 0 4px rgba(1, 194, 195, 0.18); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-input-row-fake .chat-input-field { animation: none; box-shadow: 0 0 0 3px rgba(1,194,195,0.15); }
+}
 .chat-input-field-fake {
   color: var(--hint);
   user-select: none;
@@ -1676,7 +1689,7 @@ img { display: block; max-width: 100%; }
   margin: 24px auto 8px;
   padding: 18px;
   background: var(--bg-secondary);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   text-align: center;
 }
 .catalog-cta span {

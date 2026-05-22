@@ -74,6 +74,10 @@ export async function renderCatalog() {
       container.replaceChild(grid.element, container.firstChild);
     } else {
       allProducts = cached;
+      // Принудительно обновляем из БД в фоне при каждом заходе в каталог,
+      // чтобы клиент сразу видел изменения наличия/скрытия товаров.
+      // Результат придёт через подписку onProductsChange → onCatalogChanged.
+      api.refreshProducts?.();
     }
     if (errorEl) errorEl.style.display = 'none';
   } catch (e) {

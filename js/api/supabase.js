@@ -190,6 +190,12 @@ export async function loadAllProducts() {
 // Экспортируем подписку — чтобы view могли реагировать на обновление каталога.
 export const onProductsChange = productsCache.subscribe;
 
+// Принудительное фоновое обновление каталога из БД (минуя TTL).
+// Результат придёт подписчикам через onProductsChange. Без await — не блокирует UI.
+export function refreshProducts() {
+  refreshFromDb().catch(e => console.warn('[supabase] forced refresh failed:', e));
+}
+
 // Полная синхронизация каталога:
 // 1. Получаем текущие id в БД
 // 2. Делаем upsert переданных

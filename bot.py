@@ -280,17 +280,25 @@ async def is_manager(user) -> bool:
 async def get_duty_chat_ids() -> list:
     """
     Чаты, куда слать новые заказы/обращения:
-    все дежурные менеджеры (is_on_duty=true) с известным chat_id.
-    Если дежурных нет — fallback на суперадмина.
+    — все дежурные менеджеры (is_on_duty=true) с известным chat_id;
+    — суперадмин ВСЕГДА получает дубль (если сделал /start).
+    Если совсем некому слать — пустой список.
     """
     chats = []
     for m in await get_managers():
-        if m.get("is_on_duty") and m.get("chat_id"):
-            chats.append(int(m["chat_id"]))
-    if not chats:
-        sa = get_superadmin_chat_id()
-        if sa is not None:
-            chats.append(sa)
+        if m.get("is_on_duty"):
+            if m.get("chat_id"):
+                chats.append(int(m["chat_id"]))
+            else:
+                # Дежурный без chat_id — не делал /start, не сможем доставить
+                log.warning(
+                    "Дежурный менеджер @%s (id=%s) без chat_id — пусть напишет боту /start",
+                    m.get("username"), m.get("tg_id"),
+                )
+    # Суперадмин получает дубль всех заказов/обращений всегда
+    sa = get_superadmin_chat_id()
+    if sa is not None:
+        chats.append(sa)
     # уберём дубли, сохранив порядок
     seen = set()
     uniq = []
@@ -593,6 +601,21 @@ async def notify_duty_plain(bot: Bot, text: str) -> None:
             await bot.send_message(chat, text)
         except Exception as e:
             log.warning("notify_duty_plain failed for %s: %s", chat, e)
+
+
+async def send_card_to_chat(bot: Bot, chat_id: int, text: str, client_tg_id: int,
+                            reply_markup: Optional[InlineKeyboardMarkup] = None) -> Optional[int]:
+    """
+    Отправляет карточку В ОДИН чат (тому, кто нажал «Открыть») + привязывает routing.
+    В отличие от notify_manager, не рассылает всем дежурным.
+    """
+    try:
+        sent = await bot.send_message(chat_id, text, reply_markup=reply_markup)
+        add_routing(sent.message_id, client_tg_id)
+        return sent.message_id
+    except Exception as e:
+        log.warning("send_card_to_chat failed for %s: %s", chat_id, e)
+        return None
 
 
 # ===================== СТАТУСЫ ЗАКАЗОВ =========================
@@ -1469,8 +1492,9 @@ async def cb_open_order(cb: CallbackQuery, bot: Bot) -> None:
         return
     status = order.get("status") or "new"
     card = f"🛒 <b>ЗАКАЗ</b>\n\n" + order_card_text(order, status)
-    msg_id = await notify_manager(
-        bot, card, order["customer_tg_id"],
+    # Шлём карточку ТОМУ, КТО НАЖАЛ (а не всем дежурным)
+    msg_id = await send_card_to_chat(
+        bot, cb.message.chat.id, card, order["customer_tg_id"],
         reply_markup=order_keyboard(order_id, status),
     )
     # Обновляем привязку карточки, чтобы смена статуса редактировала именно её
@@ -1518,8 +1542,8 @@ async def cb_open_inquiry(cb: CallbackQuery, bot: Bot) -> None:
         f"{time_lines}"
         f"Статус: {INQUIRY_STATUS.get(status, {}).get('label', status)}"
     )
-    msg_id = await notify_manager(
-        bot, card, q["customer_tg_id"],
+    msg_id = await send_card_to_chat(
+        bot, cb.message.chat.id, card, q["customer_tg_id"],
         reply_markup=inquiry_keyboard(inquiry_id, status),
     )
     if msg_id:
