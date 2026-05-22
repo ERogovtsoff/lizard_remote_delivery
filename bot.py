@@ -48,6 +48,7 @@ import httpx
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramForbiddenError
 from aiogram.filters import Command, CommandStart, CommandObject
 from aiogram.types import (
     CallbackQuery,
@@ -60,16 +61,16 @@ from aiogram.types import (
 
 # ============================ КОНФИГ ============================
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "")
-WEBAPP_URL = os.getenv("WEBAPP_URL", "https://example.com/index.html")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8799556901:AAHqUPacTvqJPrITaZVgE9e1Cr81dF_nDCk")
+WEBAPP_URL = os.getenv("WEBAPP_URL", "https://erogovtsoff.github.io/lizard_remote_delivery/index.html")
 # Суперадмин — единственный, кто может добавлять/удалять менеджеров.
 # MANAGER_USERNAME оставлен для обратной совместимости: трактуется как суперадмин.
 SUPERADMIN_USERNAME = os.getenv(
     "SUPERADMIN_USERNAME",
     os.getenv("MANAGER_USERNAME", "rogovtsoff"),
 ).lstrip("@").lower()
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY", "")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "https://nhnbprmyqqpwcofkaasi.supabase.co")
+SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5obmJwcm15cXFwd2NvZmthYXNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwOTc4NzEsImV4cCI6MjA5NDY3Mzg3MX0.85NtVma5cplLuhm_fRHga3Z1ZlyNuFQBOqlxGeQggJ0")
 
 MANAGER_FILE = Path("manager_chat.txt")
 # message_id (в чате менеджера) → tg_id клиента. Нужно для reply-routing.
@@ -231,6 +232,122 @@ async def supabase_delete(path: str, params: dict) -> bool:
     except Exception as e:
         log.exception("Supabase DELETE error: %s", e)
         return False
+
+
+# ===================== СООБЩЕНИЯ (для dashboard) =====================
+#
+# Бот сохраняет всю переписку в таблицу messages, продолжая работать как раньше.
+# Вложения клиента перезаливаются в Supabase Storage (bucket "chat-files"),
+# чтобы у dashboard был постоянный публичный URL.
+
+STORAGE_BUCKET = "chat-files"
+
+
+async def upload_to_storage(bot: Bot, file_id: str, suffix: str = "") -> Optional[str]:
+    """
+    Скачивает файл из Telegram по file_id и заливает в Supabase Storage.
+    Возвращает публичный URL или None.
+    """
+    if not supabase_ready() or not file_id:
+        return None
+    try:
+        # 1. Получаем файл из Telegram
+        tg_file = await bot.get_file(file_id)
+        file_bytes_io = await bot.download_file(tg_file.file_path)
+        data = file_bytes_io.read()
+
+        # 2. Имя в Storage: уникальное по file_id
+        ext = ""
+        if tg_file.file_path and "." in tg_file.file_path:
+            ext = "." + tg_file.file_path.rsplit(".", 1)[-1]
+        elif suffix:
+            ext = suffix
+        object_name = f"{file_id[:40]}{ext}"
+
+        # 3. Заливаем через Storage REST API
+        url = f"{SUPABASE_URL}/storage/v1/object/{STORAGE_BUCKET}/{object_name}"
+        headers = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+            "Content-Type": "application/octet-stream",
+            "x-upsert": "true",
+        }
+        async with httpx.AsyncClient(timeout=30) as client:
+            r = await client.post(url, headers=headers, content=data)
+            if r.status_code >= 400:
+                log.warning("Storage upload failed: %s %s", r.status_code, r.text[:200])
+                return None
+        # 4. Публичный URL
+        return f"{SUPABASE_URL}/storage/v1/object/public/{STORAGE_BUCKET}/{object_name}"
+    except Exception as e:
+        log.warning("upload_to_storage error: %s", e)
+        return None
+
+
+async def save_message(customer_tg_id: int, direction: str, *, text: str = None,
+                       sender: str = "client", manager_username: str = None,
+                       attachment_url: str = None, attachment_type: str = None,
+                       tg_file_id: str = None, source: str = "bot") -> None:
+    """Сохраняет сообщение в БД (для отображения в dashboard). Не критично к сбоям."""
+    if not supabase_ready():
+        return
+    try:
+        await supabase_post("messages", {
+            "customer_tg_id": customer_tg_id,
+            "direction": direction,
+            "sender": sender,
+            "manager_username": manager_username,
+            "text": text,
+            "attachment_url": attachment_url,
+            "attachment_type": attachment_type,
+            "tg_file_id": tg_file_id,
+            "source": source,
+        })
+    except Exception as e:
+        log.warning("save_message error: %s", e)
+
+
+async def extract_and_save_incoming(message: Message, bot: Bot) -> None:
+    """
+    Сохраняет входящее сообщение клиента в БД (текст + вложение в Storage).
+    Вызывается из forward_client_to_manager, не влияет на пересылку менеджеру.
+    """
+    text = message.text or message.caption or None
+    att_url = None
+    att_type = None
+    file_id = None
+
+    try:
+        if message.photo:
+            att_type = "photo"
+            file_id = message.photo[-1].file_id        # самое большое разрешение
+        elif message.document:
+            att_type = "document"
+            file_id = message.document.file_id
+        elif message.video:
+            att_type = "video"
+            file_id = message.video.file_id
+        elif message.voice:
+            att_type = "voice"
+            file_id = message.voice.file_id
+        elif message.video_note:
+            att_type = "video_note"
+            file_id = message.video_note.file_id
+        elif message.audio:
+            att_type = "audio"
+            file_id = message.audio.file_id
+
+        if file_id:
+            att_url = await upload_to_storage(bot, file_id)
+    except Exception as e:
+        log.warning("extract incoming attachment failed: %s", e)
+
+    await save_message(
+        message.from_user.id, "in",
+        text=text, sender="client",
+        attachment_url=att_url, attachment_type=att_type, tg_file_id=file_id,
+        source="bot",
+    )
 
 
 # ========================== МЕНЕДЖЕРЫ ==========================
@@ -1266,9 +1383,49 @@ async def handle_manager_reply(message: Message, bot: Bot) -> None:
             )
         except Exception:
             pass
+        # Сохраняем ответ менеджера в БД (историчность + dashboard)
+        await _save_manager_reply(message, bot, client_tg_id)
+    except TelegramForbiddenError:
+        # Клиент заблокировал бота — доставить нельзя. Сообщаем менеджеру понятно.
+        await message.answer(
+            "🚫 Не удалось доставить — клиент <b>заблокировал бота</b>.\n"
+            "Сообщение не дошло. Связаться с клиентом сейчас нельзя, "
+            "пока он сам не разблокирует бота и не напишет снова."
+        )
+        # Всё равно сохраняем в БД попытку ответа (для истории)
+        await _save_manager_reply(message, bot, client_tg_id, delivered=False)
     except Exception as e:
         log.exception("Failed to relay manager reply: %s", e)
-        await message.answer(f"⚠️ Не удалось доставить сообщение клиенту: {e}")
+        await message.answer("⚠️ Не удалось доставить сообщение клиенту. Попробуйте ещё раз.")
+
+
+async def _save_manager_reply(message: Message, bot: Bot, client_tg_id: int,
+                              delivered: bool = True) -> None:
+    """Сохраняет ответ менеджера в таблицу messages (direction=out)."""
+    text = message.text or message.caption or None
+    att_url = None
+    att_type = None
+    file_id = None
+    try:
+        if message.photo:
+            att_type = "photo"; file_id = message.photo[-1].file_id
+        elif message.document:
+            att_type = "document"; file_id = message.document.file_id
+        elif message.video:
+            att_type = "video"; file_id = message.video.file_id
+        elif message.voice:
+            att_type = "voice"; file_id = message.voice.file_id
+        if file_id:
+            att_url = await upload_to_storage(bot, file_id)
+    except Exception as e:
+        log.warning("save manager reply attachment failed: %s", e)
+    await save_message(
+        client_tg_id, "out",
+        text=text, sender="manager",
+        manager_username=(message.from_user.username or str(message.from_user.id)),
+        attachment_url=att_url, attachment_type=att_type, tg_file_id=file_id,
+        source="bot",
+    )
 
 
 # ===================== СООБЩЕНИЯ ОТ КЛИЕНТА ====================
@@ -1310,6 +1467,9 @@ async def handle_client_message(message: Message, bot: Bot) -> None:
 
 async def forward_client_to_manager(message: Message, bot: Bot) -> None:
     """Пересылка сообщения клиента всем дежурным менеджерам (fallback — суперадмин)."""
+    # Сохраняем входящее в БД (историчность + dashboard). Не мешает пересылке.
+    await extract_and_save_incoming(message, bot)
+
     chats = await get_duty_chat_ids()
     if not chats:
         await message.answer(

@@ -33,8 +33,19 @@ export async function renderDetail(opts = {}) {
     return;
   }
   const prod = products.find(p => p.id === productId);
-  if (!prod) {
-    page.innerHTML = `<p>Product not found.</p>`;
+  if (!prod || prod.is_active === false) {
+    page.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">🔍</div>
+        <h3>${escapeHtml(t('productGoneTitle'))}</h3>
+        <p>${escapeHtml(t('productGoneText'))}</p>
+        <a class="empty-state-link" id="detailGoneCatalog">${escapeHtml(t('toCatalog'))}</a>
+        <a class="empty-state-link" id="detailGoneChat">${escapeHtml(t('catalogEmptyLink'))}</a>
+      </div>`;
+    const toCat = document.getElementById('detailGoneCatalog');
+    const toChat = document.getElementById('detailGoneChat');
+    if (toCat) toCat.onclick = () => router.navigate('catalog');
+    if (toChat) toChat.onclick = () => router.navigate('chat');
     return;
   }
   const lang = getLang();
@@ -51,9 +62,15 @@ export async function renderDetail(opts = {}) {
     selectedSize = null;
   }
 
+  const badgeOnImage = (prod.badge_text && prod.badge_text.trim())
+    ? `<div class="detail-badge-overlay" style="background:${badgeColor(prod.badge_color).bg};color:${badgeColor(prod.badge_color).fg}">${escapeHtml(prod.badge_text.trim())}</div>`
+    : '';
+
   page.innerHTML = `
-    <div id="detailCarouselSlot"></div>
-    ${prod.badge_text && prod.badge_text.trim() ? `<div class="detail-badge" style="background:${badgeColor(prod.badge_color).bg};color:${badgeColor(prod.badge_color).fg}">${escapeHtml(prod.badge_text.trim())}</div><br>` : ''}
+    <div class="detail-carousel-wrap">
+      <div id="detailCarouselSlot"></div>
+      ${badgeOnImage}
+    </div>
     <div class="detail-name-row">
       <h2 class="product-detail-name">${escapeHtml(p.name)}</h2>
       <button class="detail-share-btn" id="detailShareBtn" aria-label="${escapeHtml(t('share'))}">
@@ -67,22 +84,18 @@ export async function renderDetail(opts = {}) {
       <div class="product-section">
         <h4>${escapeHtml(t('sizeChart'))}</h4>
         <div class="size-picker" id="sizePicker"></div>
-        <button class="size-ask-btn" id="askSizesBtn">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          <span>${escapeHtml(t('askOtherSizes'))}</span>
-        </button>
       </div>
     ` : ''}
+    <button class="detail-ask-btn" id="detailAskBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <span>${escapeHtml(t('askAboutProduct'))}</span>
+    </button>
     <div class="detail-actions">
       <button class="detail-fav-btn" id="detailFavBtn" aria-label="Favorite">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
       </button>
       <button class="primary-btn" id="addToCartBtn">${escapeHtml(t('addToCart'))}</button>
     </div>
-    <button class="detail-ask-btn" id="detailAskBtn">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-      <span>${escapeHtml(t('askAboutProduct'))}</span>
-    </button>
   `;
 
   // Карусель + лайтбокс
@@ -106,10 +119,6 @@ export async function renderDetail(opts = {}) {
   // Размеры
   if (prod.sizes && prod.sizes.length > 0) {
     renderSizes(prod);
-    document.getElementById('askSizesBtn').onclick = () => {
-      haptic('light');
-      openBotChat('ask_' + prod.id);
-    };
   }
 
   // Кнопка избранного

@@ -148,7 +148,11 @@ async function loadCustomerData() {
     const favsChanged = mergeFavorites(favs);
     const cartChanged = mergeCart(cart);
 
-    if (favsChanged || cartChanged) {
+    // Подчищаем «мёртвые» позиции: товар скрыт/удалён или размера больше нет.
+    // Это устраняет рассинхрон счётчиков между устройствами и битые карточки.
+    const prunedChanged = await pruneDeadItems();
+
+    if (favsChanged || cartChanged || prunedChanged) {
       updateBadges();
     }
     if (prefsChanged) {
@@ -160,6 +164,57 @@ async function loadCustomerData() {
     console.warn('[bootstrap] customer load skipped:', e);
     return null;
   }
+}
+
+// Удаляет из избранного и корзины позиции, которых больше нет в продаже:
+// товар отсутствует/неактивен, либо указанного размера уже нет (или сток 0
+// для размерных товаров). Чистит и локальный state, и БД.
+async function pruneDeadItems() {
+  let products;
+  try {
+    products = await api.loadProducts();
+  } catch (_) {
+    return false;   // нет данных о товарах — не трогаем, чтобы не удалить лишнее
+  }
+  if (!Array.isArray(products) || products.length === 0) return false;
+  const byId = new Map(products.map(p => [p.id, p]));
+
+  // «Жива» ли позиция (productId + size)
+  const isAlive = (productId, size) => {
+    const p = byId.get(productId);
+    if (!p) return false;                       // товара нет в каталоге
+    if (p.is_active === false) return false;    // товар скрыт
+    const sizes = p.sizes || [];
+    if (sizes.length === 0) return true;        // безразмерный товар — жив
+    if (size == null || size === '') return true; // позиция без размера у размерного — оставим
+    if (!sizes.includes(size)) return false;    // такого размера больше нет
+    // Размер есть — проверим сток (если задан)
+    if (p.stock && Object.keys(p.stock).length > 0) {
+      return (Number(p.stock[size]) || 0) > 0;
+    }
+    return true;
+  };
+
+  let changed = false;
+
+  // Избранное
+  const deadFavs = state.favorites.filter(f => !isAlive(f.productId, f.size));
+  if (deadFavs.length > 0) {
+    deadFavs.forEach(f => { try { api.removeFavorite(f.productId, f.size); } catch (_) {} });
+    state.favorites = state.favorites.filter(f => isAlive(f.productId, f.size));
+    changed = true;
+  }
+
+  // Корзина
+  const deadCart = state.cart.filter(c => !isAlive(c.productId, c.size));
+  if (deadCart.length > 0) {
+    deadCart.forEach(c => { try { api.removeCartItem(c.productId, c.size); } catch (_) {} });
+    state.cart = state.cart.filter(c => isAlive(c.productId, c.size));
+    changed = true;
+  }
+
+  if (changed) saveState();
+  return changed;
 }
 
 async function bootstrap() {

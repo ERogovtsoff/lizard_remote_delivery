@@ -604,15 +604,15 @@ img { display: block; max-width: 100%; }
 /* Фирменная обводка + мягкое пульсирующее свечение — подсказка «жми сюда».
    box-shadow не влияет на размер, поэтому не закрывает соседние элементы. */
 .chat-input-row-fake .chat-input-field {
-  border: 1.5px solid var(--accent);
-  animation: composerGlow 2s ease-in-out infinite;
+  border: 2px solid var(--accent);
+  animation: composerGlow 1.6s ease-in-out infinite;
 }
 @keyframes composerGlow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(1, 194, 195, 0.0); }
-  50%      { box-shadow: 0 0 0 4px rgba(1, 194, 195, 0.18); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(1, 194, 195, 0.15); }
+  50%      { box-shadow: 0 0 14px 3px rgba(1, 194, 195, 0.55); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .chat-input-row-fake .chat-input-field { animation: none; box-shadow: 0 0 0 3px rgba(1,194,195,0.15); }
+  .chat-input-row-fake .chat-input-field { animation: none; box-shadow: 0 0 10px 2px rgba(1,194,195,0.4); }
 }
 .chat-input-field-fake {
   color: var(--hint);
@@ -1575,9 +1575,13 @@ img { display: block; max-width: 100%; }
 }
 .chat-hints-row {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
 }
+.chat-hints-row::-webkit-scrollbar { display: none; }
 .chat-hint-chip {
   font-size: 12px;
   background: var(--bg-secondary);
@@ -1585,6 +1589,7 @@ img { display: block; max-width: 100%; }
   padding: 5px 10px;
   border-radius: 14px;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* ====================== Время ответа и шаги на экране «Заказать» ====================== */
@@ -1720,9 +1725,13 @@ img { display: block; max-width: 100%; }
 }
 .chat-presets-row {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
 }
+.chat-presets-row::-webkit-scrollbar { display: none; }
 .chat-preset {
   font-size: 13px;
   background: var(--accent-soft);
@@ -1733,6 +1742,8 @@ img { display: block; max-width: 100%; }
   font-weight: 500;
   cursor: pointer;
   transition: transform 0.1s, background 0.15s;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .chat-preset:active { transform: scale(0.95); }
 
@@ -1742,4 +1753,20 @@ img { display: block; max-width: 100%; }
   font-size: 12px;
   color: var(--text-secondary);
   margin-bottom: 8px;
+}
+
+/* ====================== Плашка поверх изображения на детальной ====================== */
+.detail-carousel-wrap {
+  position: relative;
+}
+.detail-badge-overlay {
+  position: absolute;
+  top: 10px; left: 10px;
+  z-index: 3;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 12px;
+  pointer-events: none;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
 }
