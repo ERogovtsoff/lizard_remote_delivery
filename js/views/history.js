@@ -206,22 +206,70 @@ function buildItem(h, productsMap, lang) {
     }
   }
 
+  // Таймлайн статусов (раскрывается по тапу)
+  const timeline = buildTimeline(h, lang);
+
   el.innerHTML = `
-    <div class="history-item-head">
+    <div class="history-item-head clickable-head">
       <div>${typeChip}${statusChip}</div>
-      <span class="history-date">${escapeHtml(date)}</span>
+      <div class="history-head-right">
+        <span class="history-date">${escapeHtml(date)}</span>
+        <span class="history-expand-chevron">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </span>
+      </div>
     </div>
     <div class="history-body">${body}</div>
+    <div class="history-timeline" style="display:none">${timeline}</div>
   `;
+
+  // Раскрытие таймлайна по тапу на заголовок
+  const head = el.querySelector('.clickable-head');
+  const timelineEl = el.querySelector('.history-timeline');
+  const chevron = el.querySelector('.history-expand-chevron');
+  if (head && timelineEl) {
+    head.onclick = () => {
+      const open = timelineEl.style.display === 'none';
+      timelineEl.style.display = open ? 'block' : 'none';
+      if (chevron) chevron.classList.toggle('expanded', open);
+    };
+  }
 
   // Повтор заказа
   if (h.type === 'order') {
     const reorderBtn = el.querySelector('[data-reorder]');
     if (reorderBtn) {
-      reorderBtn.onclick = () => reorderItems(h.payload?.items || [], productsMap);
+      reorderBtn.onclick = (e) => { e.stopPropagation(); reorderItems(h.payload?.items || [], productsMap); };
     }
   }
   return el;
+}
+
+// Вертикальный таймлайн статусов. Для заказа — воронка из этапов, для обращения — 3 шага.
+function buildTimeline(h, lang) {
+  let steps, current, labelFn;
+  if (h.type === 'order') {
+    if (h.status === 'cancelled') {
+      // Для отменённого показываем только факт отмены
+      return `<div class="timeline-step done"><span class="timeline-dot"></span><span class="timeline-label">${escapeHtml(orderStatusLabel('cancelled'))}</span></div>`;
+    }
+    steps = ['new', 'in_progress', 'awaiting_payment', 'paid', 'purchasing', 'shipping', 'ready', 'completed'];
+    labelFn = orderStatusLabel;
+    current = (h.status === 'completed') ? steps.length - 1 : steps.indexOf(h.status);
+  } else {
+    steps = ['new', 'in_progress', 'closed'];
+    labelFn = inquiryStatusLabel;
+    current = steps.indexOf(h.status);
+  }
+  if (current < 0) current = 0;
+
+  return steps.map((step, i) => {
+    let cls = 'timeline-step';
+    if (i < current) cls += ' done';
+    else if (i === current) cls += ' current';
+    else cls += ' future';
+    return `<div class="${cls}"><span class="timeline-dot"></span><span class="timeline-label">${escapeHtml(labelFn(step))}</span></div>`;
+  }).join('');
 }
 
 // Повтор заказа: добавляем доступные позиции в корзину, предупреждаем о недоступных.

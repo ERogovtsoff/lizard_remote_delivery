@@ -75,6 +75,21 @@ export async function renderProfile() {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
         </div>
       </div>
+      <div class="settings-row clickable" id="rowHowItWorks">
+        <div class="settings-row-content">
+          <div class="settings-row-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          </div>
+          <div>
+            <div class="settings-row-label">${escapeHtml(t('howItWorksTitle'))}</div>
+            <div class="settings-row-sub">${escapeHtml(t('howItWorksSub'))}</div>
+          </div>
+        </div>
+        <div class="chevron" id="howChevron">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
+      </div>
+      <div id="faqContainer" class="faq-container" style="display:none"></div>
       ${isAdmin() ? `
       <div class="settings-row clickable" id="rowAdmin">
         <div class="settings-row-content">
@@ -97,6 +112,40 @@ export async function renderProfile() {
   document.getElementById('rowSettings').onclick = () => router.navigate('settings');
   const adminRow = document.getElementById('rowAdmin');
   if (adminRow) adminRow.onclick = () => router.navigate('admin');
+
+  // «Как это работает» — раскрывающийся FAQ
+  const howRow = document.getElementById('rowHowItWorks');
+  const faqContainer = document.getElementById('faqContainer');
+  const howChevron = document.getElementById('howChevron');
+  let faqOpen = false;
+  if (howRow && faqContainer) {
+    // Наполняем FAQ один раз
+    const faqItems = t('faqItems');   // массив { q, a }
+    if (Array.isArray(faqItems)) {
+      faqContainer.innerHTML = faqItems.map((item, i) => `
+        <div class="faq-item" data-faq="${i}">
+          <div class="faq-question">
+            <span>${escapeHtml(item.q)}</span>
+            <span class="faq-toggle">+</span>
+          </div>
+          <div class="faq-answer">${escapeHtml(item.a)}</div>
+        </div>
+      `).join('');
+      // Раскрытие отдельных вопросов
+      faqContainer.querySelectorAll('.faq-item').forEach(el => {
+        const q = el.querySelector('.faq-question');
+        q.onclick = () => {
+          const open = el.classList.toggle('open');
+          el.querySelector('.faq-toggle').textContent = open ? '−' : '+';
+        };
+      });
+    }
+    howRow.onclick = () => {
+      faqOpen = !faqOpen;
+      faqContainer.style.display = faqOpen ? 'block' : 'none';
+      if (howChevron) howChevron.classList.toggle('expanded', faqOpen);
+    };
+  }
 
   // Подгружаем сумму выкупа из БД в фоне — обновляем только цифру на месте,
   // без перерисовки всей страницы. Если БД ещё не ответила, останется $0

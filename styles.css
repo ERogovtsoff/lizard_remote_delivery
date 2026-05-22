@@ -1357,3 +1357,107 @@ img { display: block; max-width: 100%; }
   transition: opacity 0.15s;
 }
 .reorder-btn:active { opacity: 0.7; }
+
+/* ====================== FAQ «Как это работает» ====================== */
+.faq-container {
+  margin-top: 4px;
+  margin-bottom: 8px;
+}
+.faq-item {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  margin-bottom: 6px;
+  overflow: hidden;
+}
+.faq-question {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+.faq-toggle {
+  color: var(--accent);
+  font-size: 18px;
+  font-weight: 400;
+  flex-shrink: 0;
+  width: 18px;
+  text-align: center;
+}
+.faq-answer {
+  max-height: 0;
+  overflow: hidden;
+  padding: 0 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  transition: max-height 0.25s ease, padding 0.25s ease;
+}
+.faq-item.open .faq-answer {
+  max-height: 400px;
+  padding: 0 14px 14px;
+}
+/* Поворот шеврона у строки «Как это работает» */
+.chevron.expanded svg { transform: rotate(90deg); transition: transform 0.2s; }
+.chevron svg { transition: transform 0.2s; }
+
+/* ====================== Раскрываемый таймлайн заказа/обращения ====================== */
+.clickable-head { cursor: pointer; }
+.history-head-right {
+  display: flex; align-items: center; gap: 8px;
+}
+.history-expand-chevron svg {
+  width: 16px; height: 16px;
+  color: var(--text-secondary);
+  transition: transform 0.2s;
+}
+.history-expand-chevron.expanded svg { transform: rotate(180deg); }
+
+.history-timeline {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.timeline-step {
+  position: relative;
+  padding-left: 24px;
+  padding-bottom: 14px;
+  font-size: 13px;
+}
+.timeline-step:last-child { padding-bottom: 0; }
+/* Вертикальная линия между точками */
+.timeline-step::before {
+  content: '';
+  position: absolute;
+  left: 6px; top: 14px;
+  width: 2px; height: calc(100% - 14px);
+  background: var(--border);
+}
+.timeline-step:last-child::before { display: none; }
+.timeline-dot {
+  position: absolute;
+  left: 0; top: 2px;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+  border: 2px solid var(--border);
+  box-sizing: border-box;
+}
+.timeline-step.done .timeline-dot {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.timeline-step.done::before { background: var(--accent); }
+.timeline-step.current .timeline-dot {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+.timeline-label { color: var(--text); }
+.timeline-step.done .timeline-label { color: var(--text-secondary); }
+.timeline-step.current .timeline-label { color: var(--accent); font-weight: 600; }
+.timeline-step.future .timeline-label { color: var(--text-secondary); opacity: 0.5; }
