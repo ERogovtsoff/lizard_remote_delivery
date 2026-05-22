@@ -27,17 +27,9 @@ export function renderChat() {
         <div class="chat-presets-title">${escapeHtml(t('chatPresetsTitle'))}</div>
         <div class="chat-presets-row">
           <button class="chat-preset" data-preset="shoes">${escapeHtml(t('presetShoes'))}</button>
-          <button class="chat-preset" data-preset="bag">${escapeHtml(t('presetBag'))}</button>
           <button class="chat-preset" data-preset="clothing">${escapeHtml(t('presetClothing'))}</button>
+          <button class="chat-preset" data-preset="accessories">${escapeHtml(t('presetAccessories'))}</button>
           <button class="chat-preset" data-preset="brand">${escapeHtml(t('presetBrand'))}</button>
-        </div>
-      </div>
-      <div class="chat-hints">
-        <div class="chat-hints-title">${escapeHtml(t('chatHintsTitle'))}</div>
-        <div class="chat-hints-row">
-          <span class="chat-hint-chip">${escapeHtml(t('chatHintLink'))}</span>
-          <span class="chat-hint-chip">${escapeHtml(t('chatHintPhoto'))}</span>
-          <span class="chat-hint-chip">${escapeHtml(t('chatHintDesc'))}</span>
         </div>
       </div>
       <div class="chat-composer">
@@ -67,6 +59,7 @@ export function renderChat() {
     appendBubble('in', t('chatGreeting1'));
     appendBubble('in', t('chatGreeting2'));
     appendBubble('in', t('chatGreeting3'));
+    appendBubble('in', t('chatWhatToSend'));
     rendered = true;
   }
 }
