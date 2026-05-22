@@ -264,12 +264,19 @@ function buildTimeline(h, lang) {
   }
   if (current < 0) current = 0;
 
+  // Описание «что это значит» берём из i18n по ключу статуса
+  const descMap = (h.type === 'order') ? t('orderStatusDesc') : t('inquiryStatusDesc');
+
   return steps.map((step, i) => {
     let cls = 'timeline-step';
     if (i < current) cls += ' done';
     else if (i === current) cls += ' current';
     else cls += ' future';
-    return `<div class="${cls}"><span class="timeline-dot"></span><span class="timeline-label">${escapeHtml(labelFn(step))}</span></div>`;
+    // Пояснение показываем только у текущего этапа — чтобы не перегружать таймлайн
+    const desc = (i === current && descMap && descMap[step])
+      ? `<div class="timeline-desc">${escapeHtml(descMap[step])}</div>`
+      : '';
+    return `<div class="${cls}"><span class="timeline-dot"></span><div class="timeline-content"><span class="timeline-label">${escapeHtml(labelFn(step))}</span>${desc}</div></div>`;
   }).join('');
 }
 

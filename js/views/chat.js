@@ -22,6 +22,14 @@ export function renderChat() {
   if (!page.innerHTML) {
     page.innerHTML = `
       <div class="chat-scroll" id="chatScroll"></div>
+      <div class="chat-reply-time">${escapeHtml(t('chatReplyTime'))}</div>
+      <div class="chat-steps">
+        <div class="chat-steps-title">${escapeHtml(t('chatStepsTitle'))}</div>
+        <div class="chat-step"><span class="chat-step-num">1</span>${escapeHtml(t('chatStep1'))}</div>
+        <div class="chat-step"><span class="chat-step-num">2</span>${escapeHtml(t('chatStep2'))}</div>
+        <div class="chat-step"><span class="chat-step-num">3</span>${escapeHtml(t('chatStep3'))}</div>
+        <div class="chat-step"><span class="chat-step-num">4</span>${escapeHtml(t('chatStep4'))}</div>
+      </div>
       <div class="chat-hints">
         <div class="chat-hints-title">${escapeHtml(t('chatHintsTitle'))}</div>
         <div class="chat-hints-row">

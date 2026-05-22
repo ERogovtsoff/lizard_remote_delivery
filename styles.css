@@ -1573,3 +1573,48 @@ img { display: block; max-width: 100%; }
   border-radius: 14px;
   white-space: nowrap;
 }
+
+/* ====================== Время ответа и шаги на экране «Заказать» ====================== */
+.chat-reply-time {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 6px 14px 0;
+}
+.chat-steps {
+  padding: 10px 14px 4px;
+}
+.chat-steps-title {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+.chat-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.chat-step-num {
+  flex-shrink: 0;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Пояснение под текущим этапом таймлайна */
+.timeline-content { display: inline-block; vertical-align: top; }
+.timeline-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+  line-height: 1.4;
+}
