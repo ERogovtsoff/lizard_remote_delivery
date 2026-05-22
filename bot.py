@@ -131,6 +131,9 @@ def get_routed_client(manager_msg_id: int) -> Optional[int]:
 #   { manager_chat_id: { "step": ..., "customer_tg_id": ..., "product_id": ..., ... } }
 manager_order_draft: dict = {}
 
+# Ожидание ввода заметки к заказу: { manager_chat_id: order_id }
+manager_note_wait: dict = {}
+
 
 # ========================== SUPABASE ===========================
 
@@ -388,26 +391,43 @@ async def find_open_inquiry(customer_tg_id: int, inq_type: str,
     return rows[0] if rows else None
 
 
-async def create_order_for_customer(customer_tg_id: int, product_id: str,
-                                    size: Optional[str], qty: int,
+async def create_order_for_customer(customer_tg_id: int, items: list,
                                     status: str) -> Optional[dict]:
     """
-    Создаёт заказ для клиента (ручное оформление менеджером).
-    Дублирует логику addOrder из апки, но на стороне бота через REST.
-    Возвращает созданный заказ (с id) или None.
+    Создаёт заказ для клиента (ручное оформление менеджером) с одной или
+    несколькими позициями. items = [{product_id, size, qty}, ...].
+    Возвращает созданный заказ (с items) или None.
     """
-    prod = await fetch_product(product_id)
-    if not prod:
+    if not items:
         return None
 
-    currency = "USD"  # базовая валюта заказа; клиент видит в своей валюте через snapshot
-    price_usd = float(prod.get("price_usd") or 0)
-    price_byn = float(prod.get("price_byn") or 0)
-    total_usd = price_usd * qty
-    total_byn = price_byn * qty
+    currency = "USD"
+    total_usd = 0.0
+    total_byn = 0.0
+    resolved = []   # позиции с подгруженными товарами и ценами
+
+    for it in items:
+        prod = await fetch_product(it["product_id"])
+        if not prod:
+            continue
+        qty = int(it.get("qty") or 1)
+        price_usd = float(prod.get("price_usd") or 0)
+        price_byn = float(prod.get("price_byn") or 0)
+        total_usd += price_usd * qty
+        total_byn += price_byn * qty
+        resolved.append({
+            "product_id": it["product_id"],
+            "size": it.get("size"),
+            "qty": qty,
+            "price_usd_snapshot": price_usd,
+            "price_byn_snapshot": price_byn,
+            "_product": prod,
+        })
+
+    if not resolved:
+        return None
 
     is_paid = (status == "paid")
-
     order = await supabase_post("orders", {
         "customer_tg_id": customer_tg_id,
         "total_usd": total_usd,
@@ -419,26 +439,25 @@ async def create_order_for_customer(customer_tg_id: int, product_id: str,
     if not order:
         return None
 
-    # Позиция заказа со снапшотами цен
-    item_ok = await supabase_post("order_items", {
-        "order_id": order["id"],
-        "product_id": product_id,
-        "size": size,
-        "qty": qty,
-        "price_usd_snapshot": price_usd,
-        "price_byn_snapshot": price_byn,
-    })
-    if item_ok is None:
-        # откат — удаляем заказ, чтобы не висел пустым
+    # Вставляем все позиции
+    inserted_any = False
+    for r in resolved:
+        item_ok = await supabase_post("order_items", {
+            "order_id": order["id"],
+            "product_id": r["product_id"],
+            "size": r["size"],
+            "qty": r["qty"],
+            "price_usd_snapshot": r["price_usd_snapshot"],
+            "price_byn_snapshot": r["price_byn_snapshot"],
+        })
+        if item_ok is not None:
+            inserted_any = True
+
+    if not inserted_any:
         await supabase_patch("orders", {"id": f"eq.{order['id']}"}, {"status": "cancelled"})
         return None
 
-    # подгружаем позиции для карточки
-    order["items"] = [{
-        "product_id": product_id, "size": size, "qty": qty,
-        "price_usd_snapshot": price_usd, "price_byn_snapshot": price_byn,
-        "_product": prod,
-    }]
+    order["items"] = resolved
     return order
 
 
@@ -624,6 +643,8 @@ def order_keyboard(order_id: str, status: str) -> InlineKeyboardMarkup:
             rows.append(row); row = []
     if row:
         rows.append(row)
+    # Кнопка добавления/изменения внутренней заметки
+    rows.append([InlineKeyboardButton(text="📝 Заметка", callback_data=f"note:{order_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows) if rows else InlineKeyboardMarkup(inline_keyboard=[[]])
 
 
@@ -669,6 +690,10 @@ def order_card_text(order: dict, status: str) -> str:
         lines.append(f"• {html.escape(name)}{size_str} × {qty} — {fmt_price(snap, currency)}")
     lines.append("")
     lines.append(f"<b>Итого:</b> {fmt_price(total, currency)}")
+    note = order.get("manager_note")
+    if note:
+        lines.append("")
+        lines.append(f"📝 <i>{html.escape(note)}</i>")
     return "\n".join(lines)
 
 
@@ -1204,12 +1229,24 @@ async def handle_client_message(message: Message, bot: Bot) -> None:
     user = message.from_user
     if not user:
         return
-    # Менеджер вводит ID товара в процессе ручного создания заказа
     if await is_manager(user):
+        # 1) Ожидание текста заметки к заказу
+        if message.chat.id in manager_note_wait and message.text:
+            order_id = manager_note_wait.pop(message.chat.id)
+            note_text = message.text.strip()
+            if note_text == "-":
+                note_text = None
+            await supabase_patch("orders", {"id": f"eq.{order_id}"},
+                                 {"manager_note": note_text, "updated_at": now_iso()})
+            await message.answer(
+                "📝 Заметка очищена." if note_text is None
+                else f"📝 Заметка сохранена для заказа №{order_id}."
+            )
+            return
+        # 2) Шаги ручного создания заказа
         draft = manager_order_draft.get(message.chat.id)
-        if draft and draft.get("step") == "product" and message.text:
-            product_id = message.text.strip()
-            await _proceed_to_status(message.chat.id, product_id, bot)
+        if draft and message.text:
+            await handle_order_draft_input(message, bot, draft)
             return
         # Иначе менеджер пишет сам себе — игнорируем
         return
@@ -1248,6 +1285,24 @@ async def forward_client_to_manager(message: Message, bot: Bot) -> None:
 
 
 # ===================== СМЕНА СТАТУСА (callback) ================
+
+@router.callback_query(F.data.startswith("note:"))
+async def cb_order_note(cb: CallbackQuery, bot: Bot) -> None:
+    """Менеджер нажал «Заметка» — ждём текст следующим сообщением."""
+    if not await is_manager(cb.from_user):
+        await cb.answer("Недоступно", show_alert=False)
+        return
+    order_id = cb.data.split(":", 1)[1]
+    manager_note_wait[cb.message.chat.id] = order_id
+    # Чтобы не пересекалось с черновиком заказа
+    manager_order_draft.pop(cb.message.chat.id, None)
+    await bot.send_message(
+        cb.message.chat.id,
+        f"📝 Пришлите текст заметки к заказу №{order_id}.\n"
+        f"Она видна только менеджерам. Чтобы очистить — отправьте «-».",
+    )
+    await cb.answer()
+
 
 @router.callback_query(F.data.startswith("os:"))
 async def cb_order_status(cb: CallbackQuery, bot: Bot) -> None:
@@ -1455,49 +1510,56 @@ async def cb_make_order_start(cb: CallbackQuery, bot: Bot) -> None:
         return
     inquiry_id = cb.data.split(":", 1)[1]
 
-    # Узнаём клиента из обращения
     rows = await supabase_get("inquiries", {"id": f"eq.{inquiry_id}", "limit": "1"})
     if not rows:
         await cb.answer("Обращение не найдено", show_alert=True)
         return
     customer_tg_id = rows[0]["customer_tg_id"]
 
-    # Сохраняем черновик
+    # Черновик с пустым списком позиций
     manager_order_draft[cb.message.chat.id] = {
         "step": "product",
         "inquiry_id": inquiry_id,
         "customer_tg_id": customer_tg_id,
+        "items": [],
+        "pending": None,   # позиция в процессе добавления {product_id, size, qty}
     }
+    await _show_product_picker(cb.message.chat.id, bot)
+    await cb.answer()
 
-    # Показываем последние скрытые товары кнопками + подсказку про ручной ввод
+
+async def _show_product_picker(chat_id: int, bot: Bot) -> None:
+    """Показывает кнопки последних скрытых товаров + подсказку про ручной ввод ID."""
+    draft = manager_order_draft.get(chat_id)
+    if draft:
+        draft["step"] = "product"
     hidden = await fetch_hidden_products(8)
     rows_kb = []
     for p in hidden:
         name = product_name(p)
         price = p.get("price_usd")
         label = f"{name}" + (f" — ${price}" if price else "")
-        rows_kb.append([InlineKeyboardButton(
-            text=label[:60], callback_data=f"mkp:{p['id']}"
-        )])
+        rows_kb.append([InlineKeyboardButton(text=label[:60], callback_data=f"mkp:{p['id']}")])
     rows_kb.append([InlineKeyboardButton(text="✖️ Отмена", callback_data="mkc")])
     kb = InlineKeyboardMarkup(inline_keyboard=rows_kb)
 
+    added = len(draft.get("items", [])) if draft else 0
+    prefix = f"Добавлено позиций: {added}\n\n" if added else ""
     hint = (
-        "🛒 <b>Оформление заказа для клиента</b>\n\n"
+        f"🛒 <b>Оформление заказа для клиента</b>\n\n{prefix}"
         "Выберите товар из последних скрытых или пришлите ID товара сообщением."
     )
     if not hidden:
         hint = (
-            "🛒 <b>Оформление заказа для клиента</b>\n\n"
+            f"🛒 <b>Оформление заказа для клиента</b>\n\n{prefix}"
             "Скрытых товаров пока нет. Пришлите ID товара сообщением."
         )
-    await bot.send_message(cb.message.chat.id, hint, reply_markup=kb)
-    await cb.answer()
+    await bot.send_message(chat_id, hint, reply_markup=kb)
 
 
 @router.callback_query(F.data.startswith("mkp:"))
 async def cb_make_order_product(cb: CallbackQuery, bot: Bot) -> None:
-    """Товар выбран кнопкой."""
+    """Товар выбран кнопкой — переходим к выбору размера/количества."""
     if not await is_manager(cb.from_user):
         await cb.answer("Недоступно", show_alert=False)
         return
@@ -1506,57 +1568,189 @@ async def cb_make_order_product(cb: CallbackQuery, bot: Bot) -> None:
         await cb.answer("Сессия истекла, начните заново", show_alert=True)
         return
     product_id = cb.data.split(":", 1)[1]
-    await _proceed_to_status(cb.message.chat.id, product_id, bot)
+    await _begin_item(cb.message.chat.id, product_id, bot)
+    await cb.answer()
+
+
+async def _begin_item(chat_id: int, product_id: str, bot: Bot) -> None:
+    """Начинает добавление позиции: проверяет товар, спрашивает размер либо количество."""
+    draft = manager_order_draft.get(chat_id)
+    if not draft:
+        return
+    prod = await fetch_product(product_id)
+    if not prod:
+        await bot.send_message(chat_id, "⚠️ Товар с таким ID не найден. Пришлите корректный ID.")
+        return
+    draft["pending"] = {"product_id": product_id, "size": None, "qty": 1}
+    name = product_name(prod)
+    sizes = prod.get("sizes") or []
+
+    if sizes:
+        # Спрашиваем размер кнопками
+        rows, row = [], []
+        for sz in sizes:
+            row.append(InlineKeyboardButton(text=sz, callback_data=f"mksz:{sz}"))
+            if len(row) == 3:
+                rows.append(row); row = []
+        if row:
+            rows.append(row)
+        rows.append([InlineKeyboardButton(text="Без размера", callback_data="mksz:-")])
+        rows.append([InlineKeyboardButton(text="✖️ Отмена", callback_data="mkc")])
+        draft["step"] = "size"
+        await bot.send_message(
+            chat_id,
+            f"Товар: <b>{html.escape(name)}</b>\nВыберите размер:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+        )
+    else:
+        draft["step"] = "qty"
+        await bot.send_message(
+            chat_id,
+            f"Товар: <b>{html.escape(name)}</b>\nПришлите количество (число), например 1.",
+        )
+
+
+@router.callback_query(F.data.startswith("mksz:"))
+async def cb_make_order_size(cb: CallbackQuery, bot: Bot) -> None:
+    """Размер позиции выбран — спрашиваем количество."""
+    if not await is_manager(cb.from_user):
+        await cb.answer("Недоступно", show_alert=False)
+        return
+    draft = manager_order_draft.get(cb.message.chat.id)
+    if not draft or not draft.get("pending"):
+        await cb.answer("Сессия истекла", show_alert=True)
+        return
+    sz = cb.data.split(":", 1)[1]
+    draft["pending"]["size"] = None if sz == "-" else sz
+    draft["step"] = "qty"
+    await bot.send_message(cb.message.chat.id, "Пришлите количество (число), например 1.")
+    await cb.answer()
+
+
+async def handle_order_draft_input(message: Message, bot: Bot, draft: dict) -> None:
+    """Обработка текстового ввода менеджера в процессе создания заказа."""
+    text = (message.text or "").strip()
+    step = draft.get("step")
+
+    if step == "product":
+        # Менеджер ввёл ID товара вручную
+        await _begin_item(message.chat.id, text, bot)
+        return
+
+    if step == "qty":
+        if not text.isdigit() or int(text) < 1:
+            await message.answer("Введите количество числом, например 1.")
+            return
+        pending = draft.get("pending")
+        if not pending:
+            await message.answer("Сессия истекла, начните заново.")
+            return
+        pending["qty"] = int(text)
+        draft["items"].append(pending)
+        draft["pending"] = None
+        # Спрашиваем: добавить ещё или завершить
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="➕ Добавить ещё товар", callback_data="mkadd")],
+            [InlineKeyboardButton(text="✅ Готово, выбрать статус", callback_data="mkdone")],
+            [InlineKeyboardButton(text="✖️ Отмена", callback_data="mkc")],
+        ])
+        # Сводка
+        lines = ["В заказе:"]
+        for it in draft["items"]:
+            prod = await fetch_product(it["product_id"])
+            nm = product_name(prod) if prod else it["product_id"]
+            sz = f" ({it['size']})" if it.get("size") else ""
+            lines.append(f"• {html.escape(nm)}{sz} × {it['qty']}")
+        await message.answer("\n".join(lines), reply_markup=kb)
+        return
+
+
+@router.callback_query(F.data == "mkadd")
+async def cb_make_order_add_more(cb: CallbackQuery, bot: Bot) -> None:
+    """Добавить ещё товар — снова показываем выбор."""
+    if not await is_manager(cb.from_user):
+        await cb.answer("Недоступно", show_alert=False)
+        return
+    if not manager_order_draft.get(cb.message.chat.id):
+        await cb.answer("Сессия истекла", show_alert=True)
+        return
+    await _show_product_picker(cb.message.chat.id, bot)
+    await cb.answer()
+
+
+@router.callback_query(F.data == "mkdone")
+async def cb_make_order_done(cb: CallbackQuery, bot: Bot) -> None:
+    """Завершить выбор товаров — показать статусы."""
+    if not await is_manager(cb.from_user):
+        await cb.answer("Недоступно", show_alert=False)
+        return
+    draft = manager_order_draft.get(cb.message.chat.id)
+    if not draft or not draft.get("items"):
+        await cb.answer("Нет позиций", show_alert=True)
+        return
+    draft["step"] = "status"
+    rows, row = [], []
+    for st in STATUS_CHOICES:
+        row.append(InlineKeyboardButton(text=ORDER_STATUS[st]["label"], callback_data=f"mks:{st}"))
+        if len(row) == 2:
+            rows.append(row); row = []
+    if row:
+        rows.append(row)
+    rows.append([InlineKeyboardButton(text="✖️ Отмена", callback_data="mkc")])
+    await bot.send_message(
+        cb.message.chat.id,
+        "Выберите статус нового заказа:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+    )
     await cb.answer()
 
 
 @router.callback_query(F.data.startswith("mks:"))
 async def cb_make_order_status(cb: CallbackQuery, bot: Bot) -> None:
-    """Статус выбран — создаём заказ."""
+    """Статус выбран — создаём заказ со всеми позициями."""
     if not await is_manager(cb.from_user):
         await cb.answer("Недоступно", show_alert=False)
         return
     draft = manager_order_draft.get(cb.message.chat.id)
-    if not draft or not draft.get("product_id"):
+    if not draft or not draft.get("items"):
         await cb.answer("Сессия истекла, начните заново", show_alert=True)
         return
     status = cb.data.split(":", 1)[1]
 
     order = await create_order_for_customer(
         customer_tg_id=draft["customer_tg_id"],
-        product_id=draft["product_id"],
-        size=draft.get("size"),
-        qty=draft.get("qty", 1),
+        items=draft["items"],
         status=status,
     )
     manager_order_draft.pop(cb.message.chat.id, None)
 
     if not order:
-        await cb.message.edit_text("⚠️ Не удалось создать заказ. Проверьте ID товара.")
+        await cb.message.edit_text("⚠️ Не удалось создать заказ. Проверьте товары.")
         await cb.answer("Ошибка", show_alert=True)
         return
 
     order_id = str(order["id"])
-
-    # Карточка заказа менеджеру с кнопками статуса
     card = "🛒 <b>ЗАКАЗ СОЗДАН ВРУЧНУЮ</b>\n\n" + order_card_text(order, status)
     msg_id = await notify_manager(
-        bot, card, draft["customer_tg_id"],
+        bot, card, order["customer_tg_id"],
         reply_markup=order_keyboard(order_id, status),
     )
     if msg_id:
         await supabase_patch("orders", {"id": f"eq.{order_id}"}, {"manager_msg_id": msg_id})
 
-    # Уведомляем клиента
+    # Уведомляем клиента списком позиций
     try:
-        prod = order["items"][0].get("_product")
-        name = product_name(prod)
+        item_lines = []
+        for it in order["items"]:
+            nm = product_name(it.get("_product"))
+            sz = f" ({it['size']})" if it.get("size") else ""
+            item_lines.append(f"• {html.escape(nm)}{sz} × {it['qty']}")
         await bot.send_message(
-            draft["customer_tg_id"],
-            f"Менеджер оформил для вас заказ 🛒\n\n"
-            f"• {html.escape(name)}\n\n"
-            f"Детали и статус — в приложении, раздел «История». "
-            f"{ORDER_STATUS[status].get('client_msg') or ''}".strip()
+            order["customer_tg_id"],
+            "Менеджер оформил для вас заказ 🛒\n\n"
+            + "\n".join(item_lines)
+            + "\n\nДетали и статус — в приложении, раздел «История». "
+            + (ORDER_STATUS[status].get("client_msg") or "")
         )
     except Exception as e:
         log.warning("Failed to notify client about manual order: %s", e)
@@ -1574,40 +1768,6 @@ async def cb_make_order_cancel(cb: CallbackQuery, bot: Bot) -> None:
     except Exception:
         pass
     await cb.answer()
-
-
-async def _proceed_to_status(chat_id: int, product_id: str, bot: Bot) -> None:
-    """Сохраняет товар в черновик и показывает выбор статуса."""
-    draft = manager_order_draft.get(chat_id)
-    if not draft:
-        return
-    # Проверяем что товар существует
-    prod = await fetch_product(product_id)
-    if not prod:
-        await bot.send_message(chat_id, "⚠️ Товар с таким ID не найден. Пришлите корректный ID.")
-        return
-    draft["product_id"] = product_id
-    draft["step"] = "status"
-
-    name = product_name(prod)
-    price = prod.get("price_usd")
-    # Кнопки статусов (по 2 в ряд)
-    rows, row = [], []
-    for st in STATUS_CHOICES:
-        row.append(InlineKeyboardButton(text=ORDER_STATUS[st]["label"], callback_data=f"mks:{st}"))
-        if len(row) == 2:
-            rows.append(row); row = []
-    if row:
-        rows.append(row)
-    rows.append([InlineKeyboardButton(text="✖️ Отмена", callback_data="mkc")])
-    kb = InlineKeyboardMarkup(inline_keyboard=rows)
-
-    await bot.send_message(
-        chat_id,
-        f"Товар: <b>{html.escape(name)}</b>" + (f" — ${price}" if price else "") + "\n\n"
-        "Выберите статус нового заказа:",
-        reply_markup=kb,
-    )
 
 
 # ============================ MAIN =============================
