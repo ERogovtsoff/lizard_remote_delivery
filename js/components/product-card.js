@@ -127,9 +127,28 @@ export function createProductCard(prod, opts = {}) {
   // Инфо-блок
   const info = document.createElement('div');
   info.className = 'product-card-info';
+
+  // Доступные размеры (с ненулевым остатком) — короткой строкой под ценой.
+  // Если остаток нигде не задан — показываем все размеры (без ограничений).
+  let sizesLine = '';
+  const sizes = prod.sizes || [];
+  if (sizes.length > 0) {
+    const hasStock = prod.stock && Object.keys(prod.stock).length > 0;
+    const available = hasStock
+      ? sizes.filter(s => (Number(prod.stock[s]) || 0) > 0)
+      : sizes;
+    if (available.length > 0) {
+      sizesLine = `<div class="product-card-sizes">${available.map(s => escapeHtml(s)).join(' · ')}</div>`;
+    } else {
+      // все размеры распроданы
+      sizesLine = `<div class="product-card-sizes sold-out-line">${escapeHtml(t('outOfStockShort'))}</div>`;
+    }
+  }
+
   info.innerHTML = `
     <div class="product-card-name">${escapeHtml(p.name)}</div>
     <div class="product-card-price">${formatPrice(p.price, cur, lang)}</div>
+    ${sizesLine}
   `;
   card.appendChild(info);
 

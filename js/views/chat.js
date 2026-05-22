@@ -22,6 +22,14 @@ export function renderChat() {
   if (!page.innerHTML) {
     page.innerHTML = `
       <div class="chat-scroll" id="chatScroll"></div>
+      <div class="chat-hints">
+        <div class="chat-hints-title">${escapeHtml(t('chatHintsTitle'))}</div>
+        <div class="chat-hints-row">
+          <span class="chat-hint-chip">${escapeHtml(t('chatHintLink'))}</span>
+          <span class="chat-hint-chip">${escapeHtml(t('chatHintPhoto'))}</span>
+          <span class="chat-hint-chip">${escapeHtml(t('chatHintDesc'))}</span>
+        </div>
+      </div>
       <div class="chat-composer">
         <div class="chat-input-row chat-input-row-fake">
           <button type="button" class="chat-input-icon-btn" id="chatAttachBtn" aria-label="Attach" tabindex="-1">

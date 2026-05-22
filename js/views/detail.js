@@ -55,6 +55,7 @@ export async function renderDetail(opts = {}) {
     ${prod.badge_text && prod.badge_text.trim() ? `<div class="detail-badge" style="background:${badgeColor(prod.badge_color).bg};color:${badgeColor(prod.badge_color).fg}">${escapeHtml(prod.badge_text.trim())}</div><br>` : ''}
     <h2 class="product-detail-name">${escapeHtml(p.name)}</h2>
     <div class="product-detail-price">${escapeHtml(formatPrice(p.price, cur, lang))}</div>
+    <div class="price-note">${escapeHtml(t('priceFinalNote'))}</div>
     ${p.desc ? `<p class="product-detail-desc">${escapeHtml(p.desc)}</p>` : ''}
     ${prod.sizes && prod.sizes.length > 0 ? `
       <div class="product-section">
