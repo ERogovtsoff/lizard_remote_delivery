@@ -57,6 +57,9 @@ export function saveState() {
   try {
     localStorage.setItem(KEY, JSON.stringify(state));
   } catch (e) {}
+  // Сообщаем UI, что корзина/избранное изменились — для мгновенного обновления
+  // бейджей и анимаций (без ожидания периодического опроса).
+  try { window.dispatchEvent(new CustomEvent('state:changed')); } catch (e) {}
 }
 
 // Локальный быстрый кэш факта прохождения онбординга.

@@ -37,6 +37,7 @@ import { renderSettings } from './views/settings.js';
 import { renderAdmin } from './views/admin.js';
 
 let _prevCartCount = 0;
+let _prevFavCount = 0;
 function updateBadges() {
   const favBadge = document.getElementById('favBadge');
   const cartBadge = document.getElementById('cartBadge');
@@ -45,6 +46,18 @@ function updateBadges() {
   if (favBadge) {
     favBadge.textContent = String(favCount);
     favBadge.style.display = favCount > 0 ? 'flex' : 'none';
+    // Пульс при добавлении в избранное (количество выросло)
+    if (favCount > _prevFavCount) {
+      const favBtn = document.getElementById('favBtn');
+      if (favBtn) {
+        favBtn.classList.remove('cart-pulse');
+        void favBtn.offsetWidth;           // перезапуск анимации
+        favBtn.classList.add('cart-pulse');
+      }
+      favBadge.classList.remove('badge-pop');
+      void favBadge.offsetWidth;
+      favBadge.classList.add('badge-pop');
+    }
   }
   if (cartBadge) {
     cartBadge.textContent = String(cartCount);
@@ -63,6 +76,7 @@ function updateBadges() {
     }
   }
   _prevCartCount = cartCount;
+  _prevFavCount = favCount;
 }
 
 function applyCustomerData(customer) {
@@ -224,6 +238,7 @@ async function bootstrap() {
 
   // Бейджи
   window.addEventListener('cart:changed', updateBadges);
+  window.addEventListener('state:changed', updateBadges);
   setInterval(updateBadges, 500);
   updateBadges();
 

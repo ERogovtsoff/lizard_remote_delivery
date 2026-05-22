@@ -51,10 +51,6 @@ export async function renderDetail(opts = {}) {
   }
 
   page.innerHTML = `
-    <button class="detail-back-btn" id="detailBackBtn" aria-label="${escapeHtml(t('back'))}">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-      <span>${escapeHtml(t('back'))}</span>
-    </button>
     <div id="detailCarouselSlot"></div>
     ${prod.badge_text && prod.badge_text.trim() ? `<div class="detail-badge" style="background:${badgeColor(prod.badge_color).bg};color:${badgeColor(prod.badge_color).fg}">${escapeHtml(prod.badge_text.trim())}</div><br>` : ''}
     <h2 class="product-detail-name">${escapeHtml(p.name)}</h2>
@@ -84,10 +80,6 @@ export async function renderDetail(opts = {}) {
     onSlideClick: (idx) => openLightbox(images, idx),
   });
   document.getElementById('detailCarouselSlot').appendChild(carousel);
-
-  // Кнопка «назад» — возвращает туда, откуда пришли (каталог/избранное/главная)
-  const backBtn = document.getElementById('detailBackBtn');
-  if (backBtn) backBtn.onclick = () => router.navigate(router.detailSource() || 'catalog');
 
   // Размеры
   if (prod.sizes && prod.sizes.length > 0) {
