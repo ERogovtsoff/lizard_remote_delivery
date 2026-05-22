@@ -89,7 +89,7 @@ export async function renderProfile() {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
         </div>
       </div>
-      <div id="faqContainer" class="faq-container" style="display:none"></div>
+      <div id="faqContainer" class="faq-container"></div>
       ${isAdmin() ? `
       <div class="settings-row clickable" id="rowAdmin">
         <div class="settings-row-content">
@@ -119,18 +119,19 @@ export async function renderProfile() {
   const howChevron = document.getElementById('howChevron');
   let faqOpen = false;
   if (howRow && faqContainer) {
-    // Наполняем FAQ один раз
+    // Наполняем FAQ один раз (внутри inner-обёртки для grid-анимации)
     const faqItems = t('faqItems');   // массив { q, a }
     if (Array.isArray(faqItems)) {
-      faqContainer.innerHTML = faqItems.map((item, i) => `
+      const inner = faqItems.map((item, i) => `
         <div class="faq-item" data-faq="${i}">
           <div class="faq-question">
             <span>${escapeHtml(item.q)}</span>
             <span class="faq-toggle">+</span>
           </div>
-          <div class="faq-answer">${escapeHtml(item.a)}</div>
+          <div class="faq-answer"><div class="faq-answer-inner">${escapeHtml(item.a)}</div></div>
         </div>
       `).join('');
+      faqContainer.innerHTML = `<div class="faq-container-inner">${inner}</div>`;
       // Раскрытие отдельных вопросов
       faqContainer.querySelectorAll('.faq-item').forEach(el => {
         const q = el.querySelector('.faq-question');
@@ -142,7 +143,7 @@ export async function renderProfile() {
     }
     howRow.onclick = () => {
       faqOpen = !faqOpen;
-      faqContainer.style.display = faqOpen ? 'block' : 'none';
+      faqContainer.classList.toggle('open', faqOpen);
       if (howChevron) howChevron.classList.toggle('expanded', faqOpen);
     };
   }

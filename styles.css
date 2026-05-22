@@ -1360,8 +1360,21 @@ img { display: block; max-width: 100%; }
 
 /* ====================== FAQ «Как это работает» ====================== */
 .faq-container {
+  display: grid;
+  grid-template-rows: 0fr;
+  overflow: hidden;
+  transition: grid-template-rows 0.3s ease, margin 0.3s ease;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.faq-container.open {
+  grid-template-rows: 1fr;
   margin-top: 4px;
   margin-bottom: 8px;
+}
+.faq-container-inner {
+  min-height: 0;
+  overflow: hidden;
 }
 .faq-item {
   background: var(--bg-secondary);
@@ -1389,17 +1402,23 @@ img { display: block; max-width: 100%; }
   text-align: center;
 }
 .faq-answer {
-  max-height: 0;
+  display: grid;
+  grid-template-rows: 0fr;
   overflow: hidden;
-  padding: 0 14px;
   font-size: 13px;
   line-height: 1.5;
   color: var(--text-secondary);
-  transition: max-height 0.25s ease, padding 0.25s ease;
+  transition: grid-template-rows 0.3s ease, padding 0.3s ease;
+  padding: 0 14px;
+}
+/* Внутренний контейнер нужен, чтобы grid-анимация работала корректно */
+.faq-answer > .faq-answer-inner {
+  min-height: 0;
+  overflow: hidden;
 }
 .faq-item.open .faq-answer {
-  max-height: 400px;
-  padding: 0 14px 14px;
+  grid-template-rows: 1fr;
+  padding: 4px 14px 14px;
 }
 /* Поворот шеврона у строки «Как это работает» */
 .chevron.expanded svg { transform: rotate(90deg); transition: transform 0.2s; }
