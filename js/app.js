@@ -36,6 +36,7 @@ import { renderHistory } from './views/history.js';
 import { renderSettings } from './views/settings.js';
 import { renderAdmin } from './views/admin.js';
 
+let _prevCartCount = 0;
 function updateBadges() {
   const favBadge = document.getElementById('favBadge');
   const cartBadge = document.getElementById('cartBadge');
@@ -48,7 +49,20 @@ function updateBadges() {
   if (cartBadge) {
     cartBadge.textContent = String(cartCount);
     cartBadge.style.display = cartCount > 0 ? 'flex' : 'none';
+    // Пульс при добавлении (количество выросло)
+    if (cartCount > _prevCartCount) {
+      const cartBtn = document.getElementById('cartBtn');
+      if (cartBtn) {
+        cartBtn.classList.remove('cart-pulse');
+        void cartBtn.offsetWidth;          // перезапуск анимации
+        cartBtn.classList.add('cart-pulse');
+      }
+      cartBadge.classList.remove('badge-pop');
+      void cartBadge.offsetWidth;
+      cartBadge.classList.add('badge-pop');
+    }
   }
+  _prevCartCount = cartCount;
 }
 
 function applyCustomerData(customer) {

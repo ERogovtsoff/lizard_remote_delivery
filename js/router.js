@@ -8,6 +8,7 @@ const ROOT_PAGES = ['home', 'chat', 'catalog', 'profile'];
 let current = null;
 let lastContext = {};
 let detailSource = 'home';
+let catalogScroll = 0;   // сохранённая прокрутка каталога
 
 export function registerView(name, render) {
   VIEWS[name] = render;
@@ -15,6 +16,13 @@ export function registerView(name, render) {
 
 export const router = {
   navigate(name, opts = {}) {
+    // Сохраняем позицию прокрутки каталога перед уходом на товар,
+    // чтобы при возврате оказаться на том же месте. Храним прямо в роутере,
+    // чтобы избежать циклической зависимости с catalog.js.
+    if (current === 'catalog' && name === 'detail') {
+      catalogScroll = window.scrollY || 0;
+    }
+
     // переключить активную секцию
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     const target = document.getElementById(`page-${name}`);
@@ -49,7 +57,14 @@ export const router = {
 
     current = name;
     lastContext = opts;
-    window.scrollTo({ top: 0, behavior: 'instant' });
+    // На каталог возвращаемся с сохранённой позиции, иначе — наверх
+    if (name === 'catalog' && catalogScroll > 0) {
+      const y = catalogScroll;
+      catalogScroll = 0;
+      requestAnimationFrame(() => window.scrollTo({ top: y, behavior: 'instant' }));
+    } else {
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    }
 
     // Закрыть клавиатуру при переходе
     if (document.activeElement && document.activeElement.blur) {

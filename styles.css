@@ -1496,3 +1496,55 @@ img { display: block; max-width: 100%; }
 .timeline-step.done .timeline-label { color: var(--text-secondary); }
 .timeline-step.current .timeline-label { color: var(--accent); font-weight: 600; }
 .timeline-step.future .timeline-label { color: var(--text-secondary); opacity: 0.5; }
+
+/* ====================== Кнопка «назад» на детальной ====================== */
+.detail-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 500;
+  padding: 4px 0;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: transform 0.1s, opacity 0.1s;
+}
+.detail-back-btn svg { width: 20px; height: 20px; }
+.detail-back-btn:active { transform: scale(0.96); opacity: 0.7; }
+
+/* ====================== Активное состояние при нажатии ====================== */
+/* Лёгкое «придавливание» для тактильного отклика */
+.product-card,
+.primary-btn,
+.secondary-btn,
+.settings-row.clickable,
+.reorder-btn,
+.qty-btn,
+.size-cell {
+  transition: transform 0.1s ease, opacity 0.1s ease, background 0.15s ease;
+}
+.product-card:active { transform: scale(0.98); }
+.primary-btn:active:not(:disabled),
+.secondary-btn:active:not(:disabled),
+.reorder-btn:active { transform: scale(0.97); }
+.settings-row.clickable:active { transform: scale(0.99); opacity: 0.85; }
+.qty-btn:active:not(:disabled) { transform: scale(0.9); }
+
+/* ====================== Пульс иконки корзины при добавлении ====================== */
+@keyframes cartPulse {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.3); }
+  60%  { transform: scale(0.92); }
+  100% { transform: scale(1); }
+}
+.cart-pulse { animation: cartPulse 0.45s ease; }
+/* Бейдж тоже подмигивает */
+@keyframes badgePop {
+  0%   { transform: scale(0.6); }
+  60%  { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+.badge-pop { animation: badgePop 0.35s ease; }

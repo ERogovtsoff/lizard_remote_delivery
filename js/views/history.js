@@ -13,6 +13,7 @@ import { router } from '../router.js';
 import { addToCart } from '../state.js';
 import { haptic } from '../tg.js';
 import { showToast } from '../components/toast.js';
+import { createSkeletonList } from '../components/skeleton.js';
 
 // In-memory кэш истории на время сессии апки. При повторном открытии показываем
 // сразу закэшированное, а свежие данные подгружаем в фоне (stale-while-revalidate).
@@ -58,10 +59,11 @@ export async function renderHistory() {
     paintHistory(historyCache, map, lang);
   }
 
-  // 2. Грузим свежие данные. Если кэша не было — показываем «Загрузка…».
+  // 2. Грузим свежие данные. Если кэша не было — показываем скелетон-заглушку.
   if (!historyCache) {
     const list = document.getElementById('historyList');
-    list.innerHTML = `<div class="history-loading">${escapeHtml(t('loading'))}</div>`;
+    list.innerHTML = '';
+    list.appendChild(createSkeletonList(3));
   }
 
   try {
