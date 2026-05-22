@@ -120,3 +120,68 @@ export async function sendReply(customerTgId, text, managerUsername) {
   if (!res.ok) throw new Error(`sendReply failed: ${res.status}`);
   return true;
 }
+
+// ====================== КАТАЛОГ ТОВАРОВ ======================
+//
+// Точечные операции (в отличие от «save all» в приложении) — безопаснее при
+// параллельной работе с приложением: меняем только нужный товар.
+
+// Все товары (для управления — включая скрытые).
+export async function loadProducts() {
+  return get('products', { select: '*', order: 'created_at.desc' });
+}
+
+// Нормализует объект товара к строке БД.
+function productToRow(p) {
+  return {
+    id: p.id,
+    name_ru: p.name_ru || '',
+    name_en: p.name_en || '',
+    desc_ru: p.desc_ru || '',
+    desc_en: p.desc_en || '',
+    price_usd: Number(p.price_usd) || 0,
+    price_byn: Number(p.price_byn) || 0,
+    images: Array.isArray(p.images) ? p.images : [],
+    sizes: Array.isArray(p.sizes) ? p.sizes : [],
+    stock: (p.stock && typeof p.stock === 'object') ? p.stock : {},
+    is_active: p.is_active !== false,
+    badge_text: (p.badge_text || '').trim() || null,
+    badge_color: (p.badge_color || '').trim() || null,
+  };
+}
+
+// Создать или обновить один товар (upsert по id).
+export async function saveProduct(product) {
+  const row = productToRow(product);
+  const res = await fetch(`${BASE}/products`, {
+    method: 'POST',
+    headers: { ...HEADERS, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify(row),
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`saveProduct failed: ${res.status} ${txt.slice(0, 200)}`);
+  }
+  return true;
+}
+
+// Удалить один товар по id.
+export async function deleteProduct(id) {
+  const res = await fetch(`${BASE}/products?id=eq.${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+  });
+  if (!res.ok) throw new Error(`deleteProduct failed: ${res.status}`);
+  return true;
+}
+
+// Быстрое переключение видимости (скрыть/показать).
+export async function setProductActive(id, isActive) {
+  const res = await fetch(`${BASE}/products?id=eq.${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ is_active: isActive }),
+  });
+  if (!res.ok) throw new Error(`setProductActive failed: ${res.status}`);
+  return true;
+}

@@ -1,6 +1,7 @@
 // Главная логика панели управления.
 import { CONFIG } from './config.js';
 import * as api from './api.js';
+import * as catalog from './catalog.js';
 import { escapeHtml, customerName, initial, formatTime, formatFullDate, previewText } from './utils.js';
 
 let currentManager = null;     // { username, is_superadmin }
@@ -68,9 +69,35 @@ function showApp() {
   document.getElementById('app').style.display = 'flex';
   document.getElementById('managerName').textContent = '@' + currentManager.username
     + (currentManager.is_superadmin ? ' · админ' : '');
+  catalog.setupCatalog();
+  setupSectionTabs();
   refreshChats();
   if (refreshTimer) clearInterval(refreshTimer);
   refreshTimer = setInterval(refreshChats, CONFIG.REFRESH_INTERVAL);
+}
+
+let currentSection = 'chats';
+function setupSectionTabs() {
+  document.querySelectorAll('.nav-tab').forEach(tab => {
+    tab.onclick = () => switchSection(tab.getAttribute('data-section'));
+  });
+}
+
+function switchSection(section) {
+  if (section === currentSection) return;
+  currentSection = section;
+  document.querySelectorAll('.nav-tab').forEach(t =>
+    t.classList.toggle('active', t.getAttribute('data-section') === section));
+
+  const isChats = section === 'chats';
+  document.getElementById('chatList').style.display = isChats ? '' : 'none';
+  document.getElementById('catalogSide').style.display = isChats ? 'none' : '';
+  document.getElementById('sectionChats').style.display = isChats ? '' : 'none';
+  document.getElementById('sectionCatalog').style.display = isChats ? 'none' : '';
+
+  if (section === 'catalog') {
+    catalog.loadCatalog();
+  }
 }
 
 async function refreshChats() {

@@ -54,3 +54,19 @@ export function previewText(msg) {
   };
   return typeLabels[msg.attachment_type] || '📎 Вложение';
 }
+
+// Генерация ID для нового товара (как в приложении: префикс + случайная часть).
+export function makeId(prefix = 'p') {
+  return prefix + '_' + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
+}
+
+// Палитра цветов плашек (бейджей) — совпадает с приложением.
+export const BADGE_COLORS = {
+  red:    { bg: '#e74c3c', fg: '#ffffff', label: 'Красный' },
+  orange: { bg: '#f39c12', fg: '#ffffff', label: 'Оранжевый' },
+  green:  { bg: '#2ecc71', fg: '#ffffff', label: 'Зелёный' },
+  blue:   { bg: '#3498db', fg: '#ffffff', label: 'Синий' },
+  gold:   { bg: '#d4af37', fg: '#1a1a1a', label: 'Золотой' },
+  black:  { bg: '#1a1a1a', fg: '#ffffff', label: 'Чёрный' },
+  accent: { bg: '#01C2C3', fg: '#ffffff', label: 'Бирюзовый' },
+};

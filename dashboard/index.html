@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>LIZARD · Панель управления</title>
 <link rel="preconnect" href="https://nhnbprmyqqpwcofkaasi.supabase.co" crossorigin />
-<link rel="stylesheet" href="./styles.css?v=2" />
+<link rel="stylesheet" href="./styles.css?v=3" />
 </head>
 <body>
 
@@ -31,37 +31,57 @@
   <aside class="sidebar">
     <div class="sidebar-head">
       <div class="brand">LIZARD</div>
-      <div class="brand-sub">Чаты</div>
+      <div class="nav-tabs">
+        <button class="nav-tab active" data-section="chats">Чаты</button>
+        <button class="nav-tab" data-section="catalog">Каталог</button>
+      </div>
     </div>
     <div class="chat-list" id="chatList"></div>
+    <div class="catalog-side" id="catalogSide" style="display:none">
+      <button class="catalog-add-btn" id="catalogAddBtn">+ Добавить товар</button>
+      <input type="text" class="catalog-search" id="catalogSearch" placeholder="Поиск по названию или ID…" />
+      <div class="catalog-side-list" id="catalogSideList"></div>
+    </div>
     <div class="sidebar-foot">
       <span class="manager-name" id="managerName"></span>
       <button class="logout-btn" id="logoutBtn" title="Выйти">Выйти</button>
     </div>
   </aside>
 
-  <!-- Область переписки -->
+  <!-- Главная область -->
   <main class="main">
-    <div class="chat-empty" id="chatEmpty">
-      <div class="chat-empty-icon">💬</div>
-      <div class="chat-empty-text">Выберите чат слева, чтобы посмотреть переписку</div>
+    <!-- РАЗДЕЛ ЧАТЫ -->
+    <div class="section-chats" id="sectionChats">
+      <div class="chat-empty" id="chatEmpty">
+        <div class="chat-empty-icon">💬</div>
+        <div class="chat-empty-text">Выберите чат слева, чтобы посмотреть переписку</div>
+      </div>
+
+      <div class="chat-view" id="chatView" style="display:none">
+        <header class="chat-header">
+          <div class="chat-header-avatar" id="chatHeaderAvatar"></div>
+          <div class="chat-header-info">
+            <div class="chat-header-name" id="chatHeaderName"></div>
+            <div class="chat-header-id" id="chatHeaderId"></div>
+          </div>
+        </header>
+        <div class="messages" id="messages"></div>
+        <div class="composer">
+          <textarea id="composerInput" placeholder="Напишите ответ клиенту…" rows="1"></textarea>
+          <button class="composer-send" id="composerSend" title="Отправить">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+      </div>
     </div>
 
-    <div class="chat-view" id="chatView" style="display:none">
-      <header class="chat-header">
-        <div class="chat-header-avatar" id="chatHeaderAvatar"></div>
-        <div class="chat-header-info">
-          <div class="chat-header-name" id="chatHeaderName"></div>
-          <div class="chat-header-id" id="chatHeaderId"></div>
-        </div>
-      </header>
-      <div class="messages" id="messages"></div>
-      <div class="composer">
-        <textarea id="composerInput" placeholder="Напишите ответ клиенту…" rows="1"></textarea>
-        <button class="composer-send" id="composerSend" title="Отправить">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-        </button>
+    <!-- РАЗДЕЛ КАТАЛОГ -->
+    <div class="section-catalog" id="sectionCatalog" style="display:none">
+      <div class="catalog-empty" id="catalogEditorEmpty">
+        <div class="chat-empty-icon">📦</div>
+        <div class="chat-empty-text">Выберите товар слева или добавьте новый</div>
       </div>
+      <div class="catalog-editor" id="catalogEditor" style="display:none"></div>
     </div>
   </main>
 </div>
