@@ -5,12 +5,14 @@ import { api } from '../api/index.js';
 import { router } from '../router.js';
 import { showToast } from '../components/toast.js';
 import { showConfirm } from '../components/modal.js';
+import { createSearchBar } from '../components/search.js';
 import { isAdmin } from '../tg.js';
 import { state } from '../state.js';
 
 let activeTab = 'catalog';
 let editingId = null;
 let workingProducts = [];
+let adminSearch = '';
 
 export async function renderAdmin() {
   if (!isAdmin()) { router.navigate('home'); return; }
@@ -40,13 +42,45 @@ function renderCatalogTab() {
 
   body.innerHTML = `
     <button class="primary-btn" id="addProdBtn">${escapeHtml(t('adminAddProduct'))}</button>
-    <div class="admin-section" style="margin-top:16px"><div id="adminList"></div></div>
+    <div id="adminSearchSlot" style="margin-top:12px"></div>
+    <div class="admin-section" style="margin-top:12px"><div id="adminList"></div></div>
   `;
   document.getElementById('addProdBtn').onclick = () => { editingId = 'new'; renderAdmin(); };
+
+  // Поле поиска по названию (рус/англ) и ID
+  const searchBar = createSearchBar({
+    initialValue: adminSearch,
+    onChange: v => { adminSearch = v; renderAdminList(); },
+  });
+  document.getElementById('adminSearchSlot').appendChild(searchBar);
+
+  renderAdminList();
+}
+
+// Фильтрует товар по поисковому запросу (название рус/англ или ID)
+function adminMatches(prod, q) {
+  if (!q) return true;
+  const s = q.trim().toLowerCase();
+  if (!s) return true;
+  return (prod.id || '').toLowerCase().includes(s)
+    || (prod.name_ru || '').toLowerCase().includes(s)
+    || (prod.name_en || '').toLowerCase().includes(s);
+}
+
+function renderAdminList() {
   const list = document.getElementById('adminList');
+  if (!list) return;
+  list.innerHTML = '';
   const cur = state.settings.currency;
   const lang = getLang();
-  workingProducts.forEach(prod => {
+  const filtered = workingProducts.filter(p => adminMatches(p, adminSearch));
+
+  if (filtered.length === 0) {
+    list.innerHTML = `<div class="admin-empty">${escapeHtml(t('adminNothingFound'))}</div>`;
+    return;
+  }
+
+  filtered.forEach(prod => {
     const p = localizedProduct(prod, cur);
     const row = document.createElement('div');
     row.className = 'admin-product-row' + (prod.is_active === false ? ' inactive' : '');

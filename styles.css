@@ -1334,3 +1334,26 @@ img { display: block; max-width: 100%; }
   pointer-events: none;
   cursor: default;
 }
+
+/* Пустой результат поиска в админке */
+.admin-empty {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 24px 0;
+  font-size: 14px;
+}
+
+/* Кнопка «Заказать снова» в истории */
+.reorder-btn {
+  margin-top: 12px;
+  width: 100%;
+  padding: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 14px; font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.reorder-btn:active { opacity: 0.7; }

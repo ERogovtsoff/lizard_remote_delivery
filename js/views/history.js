@@ -10,6 +10,9 @@ import { t, getLang, localizedProduct } from '../i18n.js';
 import { escapeHtml, formatPrice, formatDate } from '../utils.js';
 import { api } from '../api/index.js';
 import { router } from '../router.js';
+import { addToCart } from '../state.js';
+import { haptic } from '../tg.js';
+import { showToast } from '../components/toast.js';
 
 // In-memory кэш истории на время сессии апки. При повторном открытии показываем
 // сразу закэшированное, а свежие данные подгружаем в фоне (stale-while-revalidate).
@@ -177,6 +180,10 @@ function buildItem(h, productsMap, lang) {
     }
     // Прогресс-полоска воронки заказа (кроме отменённых)
     body += orderProgressHtml(h.status);
+    // Кнопка повтора заказа (для любого, кроме отменённого)
+    if (h.status !== 'cancelled') {
+      body += `<button class="reorder-btn" data-reorder="1">${escapeHtml(t('reorder'))}</button>`;
+    }
   } else if (h.type === 'inquiry') {
     const isProductQ = h.payload?.inquiryType === 'product_question';
     const num = h.payload?.number ? ` №${h.payload.number}` : '';
@@ -206,5 +213,63 @@ function buildItem(h, productsMap, lang) {
     </div>
     <div class="history-body">${body}</div>
   `;
+
+  // Повтор заказа
+  if (h.type === 'order') {
+    const reorderBtn = el.querySelector('[data-reorder]');
+    if (reorderBtn) {
+      reorderBtn.onclick = () => reorderItems(h.payload?.items || [], productsMap);
+    }
+  }
   return el;
+}
+
+// Повтор заказа: добавляем доступные позиции в корзину, предупреждаем о недоступных.
+function reorderItems(items, productsMap) {
+  let added = 0;
+  const unavailable = [];
+
+  for (const it of items) {
+    const prod = productsMap.get(it.productId);
+    // Товар удалён или скрыт
+    if (!prod || prod.is_active === false) {
+      unavailable.push(prod ? localizedProduct(prod, 'USD').name : it.productId);
+      continue;
+    }
+    // Проверяем остаток по размеру
+    const stock = sizeStockFor(prod, it.size);
+    if (stock <= 0) {
+      unavailable.push(localizedProduct(prod, 'USD').name + (it.size ? ` (${it.size})` : ''));
+      continue;
+    }
+    // Добавляем с учётом остатка (не больше доступного)
+    const qty = Math.min(it.qty || 1, stock === Infinity ? (it.qty || 1) : stock);
+    for (let i = 0; i < qty; i++) {
+      addToCart(it.productId, it.size || null);
+    }
+    added++;
+  }
+
+  if (added > 0) {
+    haptic('success');
+    if (unavailable.length > 0) {
+      showToast(t('reorderPartial'), 3500);
+    } else {
+      showToast(t('reorderDone'));
+    }
+    window.dispatchEvent(new CustomEvent('cart:changed'));
+    router.navigate('cart');
+  } else {
+    showToast(t('reorderNone'), 3500);
+  }
+}
+
+// Доступное количество размера (Infinity если stock не задан)
+function sizeStockFor(prod, size) {
+  if (!prod.stock || Object.keys(prod.stock).length === 0) return Infinity;
+  if (size == null) {
+    const vals = Object.values(prod.stock);
+    return vals.length ? vals.reduce((a, b) => a + (Number(b) || 0), 0) : Infinity;
+  }
+  return Number(prod.stock[size]) || 0;
 }
