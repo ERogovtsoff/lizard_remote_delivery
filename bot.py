@@ -60,16 +60,16 @@ from aiogram.types import (
 
 # ============================ КОНФИГ ============================
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8799556901:AAHqUPacTvqJPrITaZVgE9e1Cr81dF_nDCk")
-WEBAPP_URL = os.getenv("WEBAPP_URL", "https://erogovtsoff.github.io/lizard_remote_delivery/index.html")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+WEBAPP_URL = os.getenv("WEBAPP_URL", "https://example.com/index.html")
 # Суперадмин — единственный, кто может добавлять/удалять менеджеров.
 # MANAGER_USERNAME оставлен для обратной совместимости: трактуется как суперадмин.
 SUPERADMIN_USERNAME = os.getenv(
     "SUPERADMIN_USERNAME",
     os.getenv("MANAGER_USERNAME", "rogovtsoff"),
 ).lstrip("@").lower()
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://nhnbprmyqqpwcofkaasi.supabase.co")
-SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5obmJwcm15cXFwd2NvZmthYXNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwOTc4NzEsImV4cCI6MjA5NDY3Mzg3MX0.85NtVma5cplLuhm_fRHga3Z1ZlyNuFQBOqlxGeQggJ0")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY", "")
 
 MANAGER_FILE = Path("manager_chat.txt")
 # message_id (в чате менеджера) → tg_id клиента. Нужно для reply-routing.
@@ -1772,6 +1772,88 @@ async def cb_make_order_cancel(cb: CallbackQuery, bot: Bot) -> None:
 
 # ============================ MAIN =============================
 
+async def check_abandoned_carts(bot: Bot) -> None:
+    """
+    Один проход проверки брошенных корзин. Находит клиентов с непустой корзиной,
+    которую не трогали >24ч, и кому ещё не слали напоминание для этого состояния.
+    Шлёт одно мягкое напоминание.
+    """
+    if not supabase_ready():
+        return
+    try:
+        # Берём все позиции корзины (в прототипе объём небольшой)
+        items = await supabase_get("cart_items", {"select": "customer_tg_id,updated_at,qty"})
+        if not items:
+            return
+
+        # Группируем по клиенту: суммарное кол-во и самое свежее изменение
+        by_customer = {}
+        for it in items:
+            cid = it.get("customer_tg_id")
+            if cid is None:
+                continue
+            upd = _parse_ts(it.get("updated_at"))
+            cur = by_customer.get(cid)
+            if not cur:
+                by_customer[cid] = {"qty": it.get("qty") or 0, "last": upd}
+            else:
+                cur["qty"] += (it.get("qty") or 0)
+                if upd and (cur["last"] is None or upd > cur["last"]):
+                    cur["last"] = upd
+
+        now = datetime.now(timezone.utc)
+        threshold = timedelta(hours=24)
+
+        for cid, info in by_customer.items():
+            last = info["last"]
+            if not last:
+                continue
+            # Корзина «заброшена», если последнее изменение было больше 24ч назад
+            if (now - last) < threshold:
+                continue
+
+            # Проверяем клиента: есть ли chat_id (писал ли боту) и не слали ли уже
+            rows = await supabase_get(
+                "customers",
+                {"tg_id": f"eq.{cid}", "select": "tg_id,cart_reminder_sent_at", "limit": "1"},
+            )
+            if not rows:
+                continue
+            sent_at = _parse_ts(rows[0].get("cart_reminder_sent_at"))
+            # Уже напоминали для этого состояния корзины? (напоминание позже последнего изменения)
+            if sent_at and sent_at >= last:
+                continue
+
+            # Шлём напоминание. chat_id для лички = tg_id клиента.
+            try:
+                await bot.send_message(
+                    cid,
+                    "🛒 Вы оставили товары в корзине!\n\n"
+                    "Они вас ждут — оформите заказ, пока всё в наличии. "
+                    "Откройте магазин кнопкой «Открыть» ниже 💛",
+                )
+                await supabase_patch(
+                    "customers", {"tg_id": f"eq.{cid}"},
+                    {"cart_reminder_sent_at": now_iso()},
+                )
+                log.info("Напоминание о корзине отправлено клиенту %s", cid)
+            except Exception as e:
+                # Клиент не начинал диалог с ботом → написать первым нельзя. Это норма.
+                log.debug("Не удалось напомнить клиенту %s: %s", cid, e)
+    except Exception as e:
+        log.warning("check_abandoned_carts error: %s", e)
+
+
+async def abandoned_cart_worker(bot: Bot) -> None:
+    """Периодически проверяет брошенные корзины (раз в час)."""
+    while True:
+        try:
+            await check_abandoned_carts(bot)
+        except Exception as e:
+            log.warning("abandoned_cart_worker iteration failed: %s", e)
+        await asyncio.sleep(3600)   # раз в час
+
+
 async def main() -> None:
     if not BOT_TOKEN:
         raise RuntimeError("BOT_TOKEN не задан")
@@ -1795,6 +1877,9 @@ async def main() -> None:
         log.warning("Не удалось загрузить менеджеров: %s", e)
     if get_superadmin_chat_id() is None:
         log.warning("Суперадмин не сделал /start — fallback-уведомления некуда слать.")
+
+    # Фоновый процесс напоминаний о брошенной корзине
+    asyncio.create_task(abandoned_cart_worker(bot))
 
     await dp.start_polling(bot)
 

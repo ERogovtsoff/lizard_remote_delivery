@@ -47,6 +47,9 @@ const STRINGS = {
     chatStep3: 'Оплата после подтверждения наличия',
     chatStep4: 'Выкупаем и везём — 3–4 недели',
     priceFinalNote: 'Финальная цена, доставка включена',
+    share: 'Поделиться',
+    shareLinkCopied: 'Ссылка скопирована',
+    shareNotConfigured: 'Шеринг станет доступен после настройки бота',
     outOfStockShort: 'Нет в наличии',
 
     favTitle: 'Избранное', favSub: 'Товары, которые вы сохранили.',
@@ -240,6 +243,9 @@ const STRINGS = {
     chatStep3: 'Payment after availability is confirmed',
     chatStep4: 'We purchase and ship — 3–4 weeks',
     priceFinalNote: 'Final price, delivery included',
+    share: 'Share',
+    shareLinkCopied: 'Link copied',
+    shareNotConfigured: 'Sharing will be available after the bot is configured',
     outOfStockShort: 'Out of stock',
 
     favTitle: 'Favorites', favSub: 'Items you saved.',

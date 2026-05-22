@@ -281,6 +281,7 @@ async function bootstrap() {
   if (isOnboarded()) {
     router.navigate('home');
     hideSplash();
+    handleStartParam();
     loadCustomerData().then(customer => {
       if (customer && customer.onboarded === false) {
         clearOnboardedLocal();
@@ -296,12 +297,27 @@ async function bootstrap() {
     if (customer?.onboarded === true) {
       setOnboardedLocal();
       router.navigate('home');
+      handleStartParam();
     } else {
       router.navigate('onboarding');
     }
     hideSplash();
     loadCustomerData();
   }
+}
+
+// Обработка deep-link: если апку открыли по ссылке вида ?startapp=product_<id>,
+// сразу открываем нужный товар.
+function handleStartParam() {
+  try {
+    const param = tg?.initDataUnsafe?.start_param;
+    if (param && param.startsWith('product_')) {
+      const productId = param.slice('product_'.length);
+      if (productId) {
+        router.navigate('detail', { productId, source: 'home' });
+      }
+    }
+  } catch (e) {}
 }
 
 function hideSplash() {

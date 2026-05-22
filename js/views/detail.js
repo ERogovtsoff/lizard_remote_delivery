@@ -1,6 +1,6 @@
 // Деталь товара.
 import { t, getLang, localizedProduct } from '../i18n.js';
-import { escapeHtml, formatPrice, badgeColor } from '../utils.js';
+import { escapeHtml, formatPrice, badgeColor, copyToClipboard } from '../utils.js';
 import { state, isFavExact, toggleFav, removeFav, addToCart } from '../state.js';
 import { api } from '../api/index.js';
 import { router } from '../router.js';
@@ -8,7 +8,8 @@ import { createCarousel } from '../components/carousel.js';
 import { openLightbox } from '../components/lightbox.js';
 import { showConfirm } from '../components/modal.js';
 import { showToast } from '../components/toast.js';
-import { haptic, openBotChat } from '../tg.js';
+import { haptic, openBotChat, tg } from '../tg.js';
+import { CONFIG } from '../config.js';
 
 let selectedSize = null;
 
@@ -53,7 +54,12 @@ export async function renderDetail(opts = {}) {
   page.innerHTML = `
     <div id="detailCarouselSlot"></div>
     ${prod.badge_text && prod.badge_text.trim() ? `<div class="detail-badge" style="background:${badgeColor(prod.badge_color).bg};color:${badgeColor(prod.badge_color).fg}">${escapeHtml(prod.badge_text.trim())}</div><br>` : ''}
-    <h2 class="product-detail-name">${escapeHtml(p.name)}</h2>
+    <div class="detail-name-row">
+      <h2 class="product-detail-name">${escapeHtml(p.name)}</h2>
+      <button class="detail-share-btn" id="detailShareBtn" aria-label="${escapeHtml(t('share'))}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+      </button>
+    </div>
     <div class="product-detail-price">${escapeHtml(formatPrice(p.price, cur, lang))}</div>
     <div class="price-note">${escapeHtml(t('priceFinalNote'))}</div>
     ${p.desc ? `<p class="product-detail-desc">${escapeHtml(p.desc)}</p>` : ''}
@@ -81,6 +87,10 @@ export async function renderDetail(opts = {}) {
     onSlideClick: (idx) => openLightbox(images, idx),
   });
   document.getElementById('detailCarouselSlot').appendChild(carousel);
+
+  // Кнопка «Поделиться» — формирует deep-link на этот товар и открывает шеринг Telegram
+  const shareBtn = document.getElementById('detailShareBtn');
+  if (shareBtn) shareBtn.onclick = () => shareProduct(prod, p);
 
   // Размеры
   if (prod.sizes && prod.sizes.length > 0) {
@@ -185,4 +195,29 @@ function updateFavBtn(prod) {
   btn.classList.toggle('active', fav);
   const svg = btn.querySelector('svg');
   svg.setAttribute('fill', fav ? 'currentColor' : 'none');
+}
+// Поделиться товаром: формируем deep-link на Mini App с параметром startapp,
+// открывающим этот товар, и вызываем нативный шеринг Telegram.
+function shareProduct(prod, p) {
+  haptic('light');
+  const botUser = (CONFIG.BOT_USERNAME || '').replace(/^@/, '');
+  if (!botUser || botUser === 'your_shop_bot') {
+    // Бот не настроен — копируем хотя бы название (на крайний случай)
+    showToast(t('shareNotConfigured'), 4000);
+    return;
+  }
+  const link = `https://t.me/${botUser}?startapp=product_${encodeURIComponent(prod.id)}`;
+  const text = `${p.name} — ${formatPrice(p.price, state.settings.currency, getLang())}`;
+  // Нативный шеринг через Telegram: окно «Переслать» с готовым сообщением
+  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
+  try {
+    if (tg && typeof tg.openTelegramLink === 'function') {
+      tg.openTelegramLink(shareUrl);
+    } else {
+      window.open(shareUrl, '_blank');
+    }
+  } catch (e) {
+    // Fallback — копируем ссылку в буфер
+    copyToClipboard(link).then(ok => showToast(ok ? t('shareLinkCopied') : link));
+  }
 }
