@@ -404,6 +404,9 @@ async function setupConvo(context, customerTgId, active) {
   convoCustomerId = customerTgId;
   convoActive = active;
   convoAttachment = null;
+  // Сбрасываем состояние переписки предыдущей карточки
+  serverMsgs = [];
+  pendingOut = [];
 
   await refreshConvo();
 
@@ -452,6 +455,9 @@ async function setupConvo(context, customerTgId, active) {
   }
 }
 
+let serverMsgs = [];   // последние сообщения из БД
+let pendingOut = [];   // оптимистичные (неподтверждённые) исходящие [{tempId,text,hasAttachment,ts,state}]
+
 async function refreshConvo() {
   const box = document.getElementById('convoMessages');
   if (!box || !convoContext) return;
@@ -460,16 +466,54 @@ async function refreshConvo() {
     if (convoContext.order_id) msgs = await api.loadOrderMessages(convoContext.order_id, convoCustomerId);
     else if (convoContext.inquiry_id) msgs = await api.loadInquiryMessages(convoContext.inquiry_id, convoCustomerId);
   } catch (e) {
-    box.innerHTML = '<div class="convo-empty">Не удалось загрузить переписку</div>';
+    if (serverMsgs.length === 0 && pendingOut.length === 0) {
+      box.innerHTML = '<div class="convo-empty">Не удалось загрузить переписку</div>';
+    }
     return;
   }
-  if (!msgs.length) {
+  serverMsgs = msgs || [];
+
+  // Подтверждаем pending: если в БД появилось исходящее сообщение с таким же
+  // текстом — убираем соответствующую оптимистичную копию.
+  if (pendingOut.length > 0) {
+    pendingOut = pendingOut.filter(p => {
+      const confirmed = serverMsgs.some(m =>
+        m.direction === 'out' &&
+        (m.text || '') === (p.text || '') &&
+        (!!m.attachment_url === p.hasAttachment)
+      );
+      return !confirmed;   // подтверждённые убираем из очереди
+    });
+  }
+  renderConvoFromCache();
+}
+
+// Рисует переписку: серверные сообщения + ещё не подтверждённые pending снизу.
+function renderConvoFromCache() {
+  const box = document.getElementById('convoMessages');
+  if (!box) return;
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+
+  let html = '';
+  if (serverMsgs.length === 0 && pendingOut.length === 0) {
     box.innerHTML = '<div class="convo-empty">Сообщений пока нет. Можете написать первым.</div>';
     return;
   }
-  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 50;
-  box.innerHTML = msgs.map(renderConvoMsg).join('');
+  html += serverMsgs.map(renderConvoMsg).join('');
+  // Оптимистичные (неподтверждённые) — снизу, с пометкой состояния
+  html += pendingOut.map(renderPendingMsg).join('');
+  box.innerHTML = html;
   if (atBottom) box.scrollTop = box.scrollHeight;
+}
+
+function renderPendingMsg(p) {
+  let status, cls;
+  if (p.state === 'error') { status = '⚠️ не отправлено'; cls = 'cmsg-pending-error'; }
+  else if (p.state === 'queued') { status = 'отправляется…'; cls = 'cmsg-pending'; }
+  else { status = 'отправка…'; cls = 'cmsg-pending'; }
+  const att = p.hasAttachment ? '<div class="cmsg-text">📎 Вложение</div>' : '';
+  const txt = p.text ? `<div class="cmsg-text">${escapeHtml(p.text)}</div>` : '';
+  return `<div class="cmsg cmsg-out ${cls}"><div class="cmsg-bubble">${att}${txt}<div class="cmsg-meta">@${escapeHtml(managerUsername)} · ${status}</div></div></div>`;
 }
 
 function renderConvoMsg(m) {
@@ -488,7 +532,7 @@ function renderConvoMsg(m) {
   if (m.text) inner += `<div class="cmsg-text">${escapeHtml(m.text)}</div>`;
   let who = '';
   if (out) who = isBot ? '🤖 авто' : (m.manager_username ? '@' + escapeHtml(m.manager_username) : 'менеджер');
-  const meta = `<div class="cmsg-meta">${who ? who + ' · ' : ''}${escapeHtml(formatTime(m.created_at))}</div>`;
+  const meta = `<div class="cmsg-meta">${who ? who + ' · ' : ''}${escapeHtml(formatTime(m.created_at))} ✓</div>`;
   return `<div class="${cls}"><div class="cmsg-bubble">${inner}${meta}</div></div>`;
 }
 
@@ -499,39 +543,51 @@ async function sendConvoMessage() {
   const text = input.value.trim();
   if (!text && !convoAttachment) return;
 
-  sendBtn.disabled = true;
-  input.disabled = true;
+  const attachmentUrl = convoAttachment ? convoAttachment.url : null;
+  const tempId = 'tmp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+
+  // Сразу очищаем поле и показываем сообщение как «отправляется» —
+  // мгновенная реакция, менеджер видит, что сообщение принято к отправке.
+  input.value = '';
+  input.style.height = 'auto';
+  convoAttachment = null;
+  const preview = document.getElementById('convoAttachPreview');
+  if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
+  const fileInput = document.getElementById('convoFile');
+  if (fileInput) fileInput.value = '';
+
+  pendingOut.push({ tempId, text, hasAttachment: !!attachmentUrl, ts: Date.now(), state: 'sending' });
+  renderConvoFromCache();   // дорисовать pending
+
   try {
-    await api.sendReply(
-      convoCustomerId, text, managerUsername,
-      convoContext, convoAttachment ? convoAttachment.url : null
-    );
-    input.value = '';
-    input.style.height = 'auto';
-    convoAttachment = null;
-    const preview = document.getElementById('convoAttachPreview');
-    if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
-    const fileInput = document.getElementById('convoFile');
-    if (fileInput) fileInput.value = '';
-    // Оптимистично показываем
-    const box = document.getElementById('convoMessages');
-    if (box) {
-      const empty = box.querySelector('.convo-empty');
-      if (empty) box.innerHTML = '';
-      const div = document.createElement('div');
-      div.className = 'cmsg cmsg-out';
-      div.innerHTML = `<div class="cmsg-bubble"><div class="cmsg-text">${escapeHtml(text)}</div><div class="cmsg-meta">@${escapeHtml(managerUsername)} · отправляется…</div></div>`;
-      box.appendChild(div);
-      box.scrollTop = box.scrollHeight;
-    }
+    await api.sendReply(convoCustomerId, text, managerUsername, convoContext, attachmentUrl);
+    // Помечаем «в очереди у бота» — ждём подтверждения из БД
+    const p = pendingOut.find(x => x.tempId === tempId);
+    if (p) p.state = 'queued';
+    renderConvoFromCache();
+    // Ускоренный поллинг: несколько частых проверок, чтобы реальное
+    // сообщение появилось быстро, а не через обычные 5с.
+    fastConfirmPoll();
   } catch (e) {
     console.error('sendConvoMessage failed:', e);
-    alert('Не удалось отправить сообщение.');
+    const p = pendingOut.find(x => x.tempId === tempId);
+    if (p) p.state = 'error';
+    renderConvoFromCache();
   } finally {
-    sendBtn.disabled = false;
-    input.disabled = false;
     input.focus();
   }
+}
+
+// Несколько быстрых проверок переписки подряд после отправки.
+let fastPollActive = false;
+async function fastConfirmPoll() {
+  if (fastPollActive) return;
+  fastPollActive = true;
+  for (let i = 0; i < 5 && pendingOut.length > 0; i++) {
+    await new Promise(r => setTimeout(r, 1200));
+    await refreshConvo();
+  }
+  fastPollActive = false;
 }
 
 // Останавливаем автообновление переписки при уходе из раздела

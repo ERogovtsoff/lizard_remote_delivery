@@ -871,3 +871,13 @@ html, body {
   font-size: 13px;
   text-align: center;
 }
+
+/* Оптимистичные (неподтверждённые) сообщения менеджера */
+.cmsg-pending .cmsg-bubble { opacity: 0.65; }
+.cmsg-pending .cmsg-meta { font-style: italic; }
+.cmsg-pending-error .cmsg-bubble {
+  opacity: 1;
+  border: 1px solid var(--danger);
+  background: #fde8e6;
+}
+.cmsg-pending-error .cmsg-meta { color: var(--danger); font-weight: 600; }
