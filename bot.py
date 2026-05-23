@@ -414,9 +414,10 @@ async def notify_client(bot: Bot, customer_tg_id: int, text: str,
     return delivered
 
 
-async def extract_and_save_incoming(message: Message, bot: Bot) -> None:
+async def extract_and_save_incoming(message: Message, bot: Bot, ctx: dict = None) -> None:
     """
     Сохраняет входящее сообщение клиента в БД (текст + вложение в Storage).
+    ctx — готовый контекст {inquiry_id|order_id}; если None, определяется здесь.
     Вызывается из forward_client_to_manager, не влияет на пересылку менеджеру.
     """
     text = message.text or message.caption or None
@@ -449,8 +450,9 @@ async def extract_and_save_incoming(message: Message, bot: Bot) -> None:
     except Exception as e:
         log.warning("extract incoming attachment failed: %s", e)
 
-    # Определяем активный контекст (последний активный заказ/обращение)
-    ctx = await get_active_context(message.from_user.id)
+    # Контекст передаётся снаружи (forward_client_to_manager уже определил/создал его)
+    if ctx is None:
+        ctx = await get_active_context(message.from_user.id)
 
     await save_message(
         message.from_user.id, "in",
@@ -1594,8 +1596,51 @@ async def handle_client_message(message: Message, bot: Bot) -> None:
 
 async def forward_client_to_manager(message: Message, bot: Bot) -> None:
     """Пересылка сообщения клиента всем дежурным менеджерам (fallback — суперадмин)."""
-    # Сохраняем входящее в БД (историчность + dashboard). Не мешает пересылке.
-    await extract_and_save_incoming(message, bot)
+    # Определяем контекст. Если активного заказа/обращения нет — создаём обращение,
+    # чтобы сообщение не «висело в пустоте», а попало в dashboard как обращение,
+    # и мягко подсказываем клиенту оформлять запросы через приложение.
+    ctx = await get_active_context(message.from_user.id)
+    if not ctx:
+        # Создаём обращение типа request (общий запрос)
+        inquiry = await supabase_post("inquiries", {
+            "customer_tg_id": message.from_user.id,
+            "type": "request",
+            "status": "new",
+        })
+        if inquiry and inquiry.get("id"):
+            ctx = {"inquiry_id": inquiry["id"]}
+            number = inquiry.get("number")
+            # Уведомляем дежурных о новом обращении-«самотёке»
+            num_str = f"№{number}" if number else ""
+            card = (
+                f"🆕 <b>НОВОЕ ОБРАЩЕНИЕ {num_str}</b>\n"
+                f"От: {client_mention(message)}\n"
+                f"Статус: {INQUIRY_STATUS['new']['label']}\n\n"
+                "<i>Клиент написал боту напрямую — сообщение придёт следующим.</i>"
+            )
+            kb = inquiry_keyboard(inquiry["id"], "new")
+            msg_id = await notify_manager(bot, card, message.from_user.id, reply_markup=kb)
+            if msg_id:
+                await supabase_patch("inquiries", {"id": f"eq.{inquiry['id']}"},
+                                     {"manager_msg_id": msg_id})
+            # Мягкая подсказка клиенту (один раз — при создании обращения)
+            try:
+                hint = (
+                    "Приняли ваше сообщение 🙌 Менеджер скоро ответит.\n\n"
+                    "Подсказка: чтобы оформить заказ или подбор быстрее и удобнее — "
+                    "откройте наше приложение и нажмите «Заказать товар». "
+                    "Так мы сразу видим, что именно вам нужно 💛"
+                )
+                await bot.send_message(message.from_user.id, hint)
+                await save_message(
+                    message.from_user.id, "out", text=hint,
+                    sender="bot", source="bot", inquiry_id=inquiry["id"],
+                )
+            except Exception as e:
+                log.warning("Не удалось отправить подсказку клиенту: %s", e)
+
+    # Сохраняем входящее в БД с уже определённым контекстом
+    await extract_and_save_incoming(message, bot, ctx=ctx)
 
     chats = await get_duty_chat_ids()
     if not chats:
