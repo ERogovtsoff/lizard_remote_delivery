@@ -143,8 +143,40 @@ def supabase_ready() -> bool:
     return bool(SUPABASE_URL and SUPABASE_KEY)
 
 
-async def supabase_get(path: str, params: dict = None) -> Optional[list]:
-    """GET-запрос к Supabase REST API. Возвращает список объектов или None."""
+# ========================== SUPABASE ===========================
+
+def supabase_ready() -> bool:
+    return bool(SUPABASE_URL and SUPABASE_KEY)
+
+
+# Один переиспользуемый HTTP-клиент с пулом соединений (вместо создания нового
+# на каждый запрос). Keep-alive снижает число TCP-рукопожатий и устраняет
+# исчерпание сокетов Windows при частом опросе.
+_http_client: Optional[httpx.AsyncClient] = None
+
+
+def get_http_client() -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(15.0, connect=10.0),
+            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+        )
+    return _http_client
+
+
+# Сетевые ошибки, которые имеет смысл повторить (соединение не установилось,
+# таймаут, обрыв). 4xx/5xx-ответы сюда не входят — их не повторяем.
+_RETRYABLE = (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout,
+              httpx.ReadError, httpx.RemoteProtocolError, httpx.PoolTimeout)
+
+
+async def _supabase_request(method: str, path: str, *, params=None, json=None,
+                            headers_extra=None, retries: int = 3):
+    """
+    Выполняет запрос к Supabase REST с автоповтором при сетевых ошибках.
+    Возвращает httpx.Response или None (если все попытки провалились).
+    """
     if not supabase_ready():
         log.warning("Supabase не настроен — пропускаю запрос %s", path)
         return None
@@ -152,87 +184,89 @@ async def supabase_get(path: str, params: dict = None) -> Optional[list]:
     headers = {
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Accept": "application/json",
     }
+    if headers_extra:
+        headers.update(headers_extra)
+
+    client = get_http_client()
+    last_err = None
+    for attempt in range(1, retries + 1):
+        try:
+            r = await client.request(method, url, headers=headers, params=params, json=json)
+            return r
+        except _RETRYABLE as e:
+            last_err = e
+            if attempt < retries:
+                # Короткая нарастающая пауза: 0.5с, 1с, ... — даём сети «отдышаться»
+                delay = 0.5 * attempt
+                log.warning("Supabase %s %s: сетевая ошибка (попытка %d/%d), повтор через %.1fс",
+                            method, path, attempt, retries, delay)
+                await asyncio.sleep(delay)
+            else:
+                log.warning("Supabase %s %s: не долетело после %d попыток (%s)",
+                            method, path, retries, type(e).__name__)
+        except Exception as e:
+            # Неожиданная ошибка — не повторяем
+            log.exception("Supabase %s %s unexpected error: %s", method, path, e)
+            return None
+    return None
+
+
+async def supabase_get(path: str, params: dict = None) -> Optional[list]:
+    """GET-запрос к Supabase REST API. Возвращает список объектов или None."""
+    r = await _supabase_request("GET", path, params=params or {},
+                                headers_extra={"Accept": "application/json"})
+    if r is None:
+        return None
+    if r.status_code >= 400:
+        log.error("Supabase %s failed: %s %s", path, r.status_code, r.text[:200])
+        return None
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            r = await client.get(url, headers=headers, params=params or {})
-            if r.status_code >= 400:
-                log.error("Supabase %s failed: %s %s", path, r.status_code, r.text[:200])
-                return None
-            return r.json()
-    except Exception as e:
-        log.exception("Supabase request error: %s", e)
+        return r.json()
+    except Exception:
         return None
 
 
 async def supabase_patch(path: str, params: dict, body: dict) -> bool:
     """PATCH-запрос (UPDATE) к Supabase REST API. Возвращает True при успехе."""
-    if not supabase_ready():
+    r = await _supabase_request("PATCH", path, params=params, json=body,
+                                headers_extra={"Content-Type": "application/json",
+                                               "Prefer": "return=minimal"})
+    if r is None:
         return False
-    url = f"{SUPABASE_URL}/rest/v1/{path}"
-    headers = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type": "application/json",
-        "Prefer": "return=minimal",
-    }
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            r = await client.patch(url, headers=headers, params=params, json=body)
-            if r.status_code >= 400:
-                log.error("Supabase PATCH %s failed: %s %s", path, r.status_code, r.text[:200])
-                return False
-            return True
-    except Exception as e:
-        log.exception("Supabase PATCH error: %s", e)
+    if r.status_code >= 400:
+        log.error("Supabase PATCH %s failed: %s %s", path, r.status_code, r.text[:200])
         return False
+    return True
 
 
 async def supabase_post(path: str, body: dict) -> Optional[dict]:
     """POST (INSERT) к Supabase REST API. Возвращает созданную запись или None."""
-    if not supabase_ready():
+    r = await _supabase_request("POST", path, json=body,
+                                headers_extra={"Content-Type": "application/json",
+                                               "Prefer": "return=representation"})
+    if r is None:
         return None
-    url = f"{SUPABASE_URL}/rest/v1/{path}"
-    headers = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type": "application/json",
-        "Prefer": "return=representation",
-    }
+    if r.status_code >= 400:
+        log.error("Supabase POST %s failed: %s %s", path, r.status_code, r.text[:200])
+        return None
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            r = await client.post(url, headers=headers, json=body)
-            if r.status_code >= 400:
-                log.error("Supabase POST %s failed: %s %s", path, r.status_code, r.text[:200])
-                return None
-            data = r.json()
-            return data[0] if isinstance(data, list) and data else data
-    except Exception as e:
-        log.exception("Supabase POST error: %s", e)
+        data = r.json()
+        return data[0] if isinstance(data, list) and data else data
+    except Exception:
         return None
 
 
 async def supabase_delete(path: str, params: dict) -> bool:
     """DELETE к Supabase REST API. Возвращает True при успехе."""
-    if not supabase_ready():
+    r = await _supabase_request("DELETE", path, params=params,
+                                headers_extra={"Prefer": "return=minimal"})
+    if r is None:
         return False
-    url = f"{SUPABASE_URL}/rest/v1/{path}"
-    headers = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Prefer": "return=minimal",
-    }
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            r = await client.delete(url, headers=headers, params=params)
-            if r.status_code >= 400:
-                log.error("Supabase DELETE %s failed: %s %s", path, r.status_code, r.text[:200])
-                return False
-            return True
-    except Exception as e:
-        log.exception("Supabase DELETE error: %s", e)
+    if r.status_code >= 400:
+        log.error("Supabase DELETE %s failed: %s %s", path, r.status_code, r.text[:200])
         return False
+    return True
 
 
 # ===================== СООБЩЕНИЯ (для dashboard) =====================
@@ -2293,7 +2327,13 @@ async def main() -> None:
     # Фоновый процесс отправки ответов из dashboard
     asyncio.create_task(outbox_worker(bot))
 
-    await dp.start_polling(bot)
+    try:
+        await dp.start_polling(bot)
+    finally:
+        # Закрываем переиспользуемый HTTP-клиент
+        global _http_client
+        if _http_client is not None and not _http_client.is_closed:
+            await _http_client.aclose()
 
 
 if __name__ == "__main__":
