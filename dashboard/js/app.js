@@ -73,6 +73,13 @@ function showApp() {
   orders.initOrders(currentManager.username);
   setupSectionTabs();
   currentSection = 'orders';
+  // Явно выставляем видимость стартового раздела (на случай повторного входа)
+  document.getElementById('ordersSide').style.display = '';
+  document.getElementById('catalogSide').style.display = 'none';
+  document.getElementById('sectionOrders').style.display = '';
+  document.getElementById('sectionCatalog').style.display = 'none';
+  document.querySelectorAll('.nav-tab').forEach(t =>
+    t.classList.toggle('active', t.getAttribute('data-section') === 'orders'));
   orders.loadOrdersSection();
   if (refreshTimer) clearInterval(refreshTimer);
   refreshTimer = setInterval(() => {

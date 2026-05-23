@@ -149,7 +149,7 @@ function openDetail(id) {
   renderOrdersList();
   document.getElementById('orderDetailEmpty').style.display = 'none';
   const box = document.getElementById('orderDetail');
-  box.style.display = 'block';
+  box.style.display = 'flex';
 
   if (activeTab === 'orders') renderOrderDetail(id);
   else renderInquiryDetail(id);
