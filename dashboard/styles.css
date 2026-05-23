@@ -881,3 +881,38 @@ html, body {
   background: #fde8e6;
 }
 .cmsg-pending-error .cmsg-meta { color: var(--danger); font-weight: 600; }
+
+/* ====================== Форма создания заказа из обращения ====================== */
+.order-form {
+  margin-top: 12px;
+  padding: 14px;
+  background: var(--bg);
+  border-radius: 10px;
+}
+.order-item-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+  align-items: center;
+}
+.order-item-row select, .order-item-row input {
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  background: var(--surface);
+  outline: none;
+}
+.oi-product { flex: 1; min-width: 0; }
+.oi-size, .oi-size-text { width: 90px; flex-shrink: 0; }
+.oi-qty { width: 64px; flex-shrink: 0; }
+.oi-del {
+  flex-shrink: 0; width: 32px; height: 34px;
+  border: none; background: var(--surface); border-radius: 8px;
+  color: var(--danger); cursor: pointer;
+}
+.oi-del:hover { background: #fde8e6; }
+.order-form-total { font-weight: 600; margin: 10px 0; font-size: 14px; }
+.order-form-actions { display: flex; gap: 8px; }
+.cmsg-muted { color: var(--text-muted); font-style: italic; }

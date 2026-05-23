@@ -326,6 +326,59 @@ export async function setOrderNote(orderId, note) {
   return true;
 }
 
+// Создать заказ из обращения. items = [{product_id, size, qty, price_usd, price_byn}].
+// Возвращает созданный заказ { id, ... }.
+export async function createOrder(customerTgId, items, currency, inquiryId) {
+  const totalUsd = items.reduce((s, it) => s + (Number(it.price_usd) || 0) * (it.qty || 1), 0);
+  const totalByn = items.reduce((s, it) => s + (Number(it.price_byn) || 0) * (it.qty || 1), 0);
+
+  // 1. Создаём заказ
+  const orderRes = await fetch(`${BASE}/orders`, {
+    method: 'POST',
+    headers: { ...HEADERS, 'Prefer': 'return=representation' },
+    body: JSON.stringify({
+      customer_tg_id: customerTgId,
+      total_usd: totalUsd,
+      total_byn: totalByn,
+      currency: currency || 'USD',
+      status: 'new',
+      is_paid: false,
+    }),
+  });
+  if (!orderRes.ok) throw new Error(`createOrder failed: ${orderRes.status}`);
+  const orderArr = await orderRes.json();
+  const order = Array.isArray(orderArr) ? orderArr[0] : orderArr;
+  if (!order || !order.id) throw new Error('createOrder: no order id');
+
+  // 2. Позиции
+  const rows = items.map(it => ({
+    order_id: order.id,
+    product_id: it.product_id,
+    size: it.size || '',
+    qty: it.qty || 1,
+    price_usd_snapshot: Number(it.price_usd) || 0,
+    price_byn_snapshot: Number(it.price_byn) || 0,
+  }));
+  const itemsRes = await fetch(`${BASE}/order_items`, {
+    method: 'POST',
+    headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+    body: JSON.stringify(rows),
+  });
+  if (!itemsRes.ok) throw new Error(`createOrder items failed: ${itemsRes.status}`);
+
+  // 3. Привязываем сообщения обращения к заказу (чтобы переписка продолжилась в заказе)
+  if (inquiryId) {
+    try {
+      await fetch(`${BASE}/messages?inquiry_id=eq.${inquiryId}`, {
+        method: 'PATCH',
+        headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ order_id: order.id }),
+      });
+    } catch (_) {}
+  }
+  return order;
+}
+
 // Положить клиентское уведомление в очередь (бот доставит и сохранит в messages).
 async function queueClientNotice(customerTgId, text, managerUsername, context = {}) {
   await fetch(`${BASE}/outbox`, {

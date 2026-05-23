@@ -321,6 +321,21 @@ function renderInquiryDetail(id) {
         <input type="checkbox" id="inqNotify" checked> Уведомить клиента в Telegram
       </label>
     </div>
+
+    <div class="detail-section">
+      <div class="detail-section-title">Оформление заказа</div>
+      <button class="btn-primary" id="inqCreateOrder">➕ Создать заказ из обращения</button>
+      <div class="order-form" id="orderForm" style="display:none">
+        <div id="orderItems"></div>
+        <button class="btn-light" id="addOrderItem">+ Добавить позицию</button>
+        <div class="order-form-total" id="orderFormTotal"></div>
+        <div class="order-form-actions">
+          <button class="btn-primary" id="saveOrder">Создать заказ</button>
+          <button class="btn-light" id="cancelOrderForm">Отмена</button>
+        </div>
+      </div>
+    </div>
+
     <div class="detail-status-msg" id="detailStatusMsg"></div>
 
     <div class="convo-section">
@@ -333,6 +348,9 @@ function renderInquiryDetail(id) {
   box.querySelectorAll('[data-status]').forEach(btn => {
     btn.onclick = () => changeInquiryStatus(q, btn.getAttribute('data-status'));
   });
+
+  // Создание заказа из обращения
+  document.getElementById('inqCreateOrder').onclick = () => startOrderForm(q);
 
   setupConvo({ inquiry_id: q.id }, q.customer_tg_id, isInquiryActive(q.status));
 }
@@ -457,10 +475,13 @@ async function setupConvo(context, customerTgId, active) {
 
 let serverMsgs = [];   // последние сообщения из БД
 let pendingOut = [];   // оптимистичные (неподтверждённые) исходящие [{tempId,text,hasAttachment,ts,state}]
+let convoLoading = false;  // защита от параллельных refreshConvo
 
 async function refreshConvo() {
   const box = document.getElementById('convoMessages');
   if (!box || !convoContext) return;
+  if (convoLoading) return;        // не запускаем второй параллельный заход
+  convoLoading = true;
   let msgs = [];
   try {
     if (convoContext.order_id) msgs = await api.loadOrderMessages(convoContext.order_id, convoCustomerId);
@@ -469,23 +490,30 @@ async function refreshConvo() {
     if (serverMsgs.length === 0 && pendingOut.length === 0) {
       box.innerHTML = '<div class="convo-empty">Не удалось загрузить переписку</div>';
     }
+    convoLoading = false;
     return;
   }
   serverMsgs = msgs || [];
 
-  // Подтверждаем pending: если в БД появилось исходящее сообщение с таким же
-  // текстом — убираем соответствующую оптимистичную копию.
+  // Подтверждаем pending: исходящее серверное сообщение считается «той же»
+  // оптимистичной копией, если совпадает текст/наличие вложения И создано
+  // не раньше момента отправки (защита от ложного совпадения со старым).
   if (pendingOut.length > 0) {
     pendingOut = pendingOut.filter(p => {
-      const confirmed = serverMsgs.some(m =>
-        m.direction === 'out' &&
-        (m.text || '') === (p.text || '') &&
-        (!!m.attachment_url === p.hasAttachment)
-      );
-      return !confirmed;   // подтверждённые убираем из очереди
+      const confirmed = serverMsgs.some(m => {
+        if (m.direction !== 'out') return false;
+        const sameText = (m.text || '') === (p.text || '');
+        const sameAtt = (!!m.attachment_url === p.hasAttachment);
+        const created = new Date(m.created_at).getTime();
+        // допускаем небольшой зазор времён (5с) на случай рассинхрона часов
+        const fresh = created >= (p.ts - 5000);
+        return sameText && sameAtt && fresh;
+      });
+      return !confirmed;
     });
   }
   renderConvoFromCache();
+  convoLoading = false;
 }
 
 // Рисует переписку: серверные сообщения + ещё не подтверждённые pending снизу.
@@ -530,6 +558,7 @@ function renderConvoMsg(m) {
     }
   }
   if (m.text) inner += `<div class="cmsg-text">${escapeHtml(m.text)}</div>`;
+  if (!inner) inner = `<div class="cmsg-text cmsg-muted">📎 вложение (не удалось загрузить)</div>`;
   let who = '';
   if (out) who = isBot ? '🤖 авто' : (m.manager_username ? '@' + escapeHtml(m.manager_username) : 'менеджер');
   const meta = `<div class="cmsg-meta">${who ? who + ' · ' : ''}${escapeHtml(formatTime(m.created_at))} ✓</div>`;
@@ -593,4 +622,115 @@ async function fastConfirmPoll() {
 // Останавливаем автообновление переписки при уходе из раздела
 export function stopConvo() {
   if (convoTimer) { clearInterval(convoTimer); convoTimer = null; }
+}
+
+// ============ СОЗДАНИЕ ЗАКАЗА ИЗ ОБРАЩЕНИЯ ============
+
+let orderDraft = null;   // { inquiry, items: [{product_id, size, qty}] }
+
+function startOrderForm(inquiry) {
+  orderDraft = { inquiry, items: [{ product_id: '', size: '', qty: 1 }] };
+  document.getElementById('inqCreateOrder').style.display = 'none';
+  document.getElementById('orderForm').style.display = 'block';
+  renderOrderForm();
+  document.getElementById('addOrderItem').onclick = () => {
+    orderDraft.items.push({ product_id: '', size: '', qty: 1 });
+    renderOrderForm();
+  };
+  document.getElementById('cancelOrderForm').onclick = () => {
+    orderDraft = null;
+    document.getElementById('orderForm').style.display = 'none';
+    document.getElementById('inqCreateOrder').style.display = '';
+  };
+  document.getElementById('saveOrder').onclick = saveOrderDraft;
+}
+
+function renderOrderForm() {
+  const box = document.getElementById('orderItems');
+  const prods = Object.values(productsById);
+  box.innerHTML = orderDraft.items.map((it, i) => {
+    const opts = prods.map(p =>
+      `<option value="${escapeHtml(p.id)}" ${it.product_id === p.id ? 'selected' : ''}>${escapeHtml(p.name_ru || p.name_en || p.id)}</option>`
+    ).join('');
+    const prod = productsById[it.product_id];
+    const sizes = (prod && prod.sizes) || [];
+    const sizeOpts = sizes.length
+      ? `<select class="oi-size" data-i="${i}"><option value="">размер</option>` +
+        sizes.map(s => `<option value="${escapeHtml(s)}" ${it.size === s ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('') + `</select>`
+      : `<input class="oi-size-text" data-i="${i}" placeholder="размер" value="${escapeHtml(it.size || '')}">`;
+    return `<div class="order-item-row">
+      <select class="oi-product" data-i="${i}"><option value="">— товар —</option>${opts}</select>
+      ${sizeOpts}
+      <input type="number" class="oi-qty" data-i="${i}" value="${it.qty || 1}" min="1" title="кол-во">
+      <button class="oi-del" data-i="${i}">✕</button>
+    </div>`;
+  }).join('');
+
+  box.querySelectorAll('.oi-product').forEach(sel => {
+    sel.onchange = () => { orderDraft.items[+sel.dataset.i].product_id = sel.value; orderDraft.items[+sel.dataset.i].size = ''; renderOrderForm(); };
+  });
+  box.querySelectorAll('.oi-size').forEach(sel => {
+    sel.onchange = () => { orderDraft.items[+sel.dataset.i].size = sel.value; };
+  });
+  box.querySelectorAll('.oi-size-text').forEach(inp => {
+    inp.oninput = () => { orderDraft.items[+inp.dataset.i].size = inp.value; };
+  });
+  box.querySelectorAll('.oi-qty').forEach(inp => {
+    inp.oninput = () => { orderDraft.items[+inp.dataset.i].qty = Math.max(1, parseInt(inp.value) || 1); updateOrderTotal(); };
+  });
+  box.querySelectorAll('.oi-del').forEach(btn => {
+    btn.onclick = () => { orderDraft.items.splice(+btn.dataset.i, 1); if (!orderDraft.items.length) orderDraft.items.push({ product_id:'', size:'', qty:1 }); renderOrderForm(); };
+  });
+  updateOrderTotal();
+}
+
+function updateOrderTotal() {
+  let usd = 0, byn = 0;
+  orderDraft.items.forEach(it => {
+    const p = productsById[it.product_id];
+    if (p) { usd += (Number(p.price_usd) || 0) * (it.qty || 1); byn += (Number(p.price_byn) || 0) * (it.qty || 1); }
+  });
+  const el = document.getElementById('orderFormTotal');
+  if (el) el.textContent = `Итого: $${usd.toFixed(2)} / ${byn.toFixed(2)} BYN`;
+}
+
+async function saveOrderDraft() {
+  if (!orderDraft) return;
+  const items = orderDraft.items
+    .filter(it => it.product_id)
+    .map(it => {
+      const p = productsById[it.product_id];
+      return {
+        product_id: it.product_id,
+        size: it.size || '',
+        qty: it.qty || 1,
+        price_usd: p ? p.price_usd : 0,
+        price_byn: p ? p.price_byn : 0,
+      };
+    });
+  if (!items.length) { setDetailMsg('Добавьте хотя бы одну позицию с товаром', true); return; }
+
+  const btn = document.getElementById('saveOrder');
+  btn.disabled = true;
+  setDetailMsg('Создаём заказ…');
+  try {
+    const inq = orderDraft.inquiry;
+    const order = await api.createOrder(inq.customer_tg_id, items, 'USD', inq.id);
+    // Закрываем обращение БЕЗ отбивки (диалог продолжается в заказе)
+    await api.setInquiryStatus(inq.id, 'closed', null, inq.customer_tg_id, managerUsername);
+    inq.status = 'closed';
+    // Уведомляем клиента о созданном заказе (через outbox с привязкой к заказу)
+    const notice = `Мы оформили для вас заказ №${order.id} 🎉 Дальше будем держать вас в курсе по его статусу.`;
+    await api.sendReply(inq.customer_tg_id, notice, managerUsername, { order_id: order.id });
+    setDetailMsg('Заказ №' + order.id + ' создан ✓');
+    orderDraft = null;
+    // Обновляем списки и открываем созданный заказ
+    await loadOrdersSection();
+    activeTab = 'orders';
+    openDetail(String(order.id));
+  } catch (e) {
+    console.error(e);
+    setDetailMsg('Ошибка создания заказа', true);
+    btn.disabled = false;
+  }
 }

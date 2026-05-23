@@ -172,11 +172,11 @@ _RETRYABLE = (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout,
 
 
 async def _supabase_request(method: str, path: str, *, params=None, json=None,
-                            headers_extra=None, retries: int = 5):
+                            headers_extra=None, retries: int = 10):
     """
     Выполняет запрос к Supabase REST с автоповтором при сетевых ошибках.
-    Пауза растёт экспоненциально с потолком 5с: 0.5 → 1 → 2 → 4 → (далее 5).
-    Перекрывает сетевой провал примерно до 12-15 секунд.
+    Пауза растёт экспоненциально с потолком 5с: 0.5 → 1 → 2 → 4 → 5 → 5...
+    До 10 попыток — перекрывает сетевой провал примерно до 35-40 секунд.
     Возвращает httpx.Response или None (если все попытки провалились).
     """
     if not supabase_ready():
@@ -291,13 +291,14 @@ async def upload_to_storage(bot: Bot, file_id: str, suffix: str = "") -> Optiona
         file_bytes_io = await bot.download_file(tg_file.file_path)
         data = file_bytes_io.read()
 
-        # 2. Имя в Storage: уникальное по file_id
+        # 2. Имя в Storage: уникальное, только безопасные символы
         ext = ""
         if tg_file.file_path and "." in tg_file.file_path:
             ext = "." + tg_file.file_path.rsplit(".", 1)[-1]
         elif suffix:
             ext = suffix
-        object_name = f"{file_id[:40]}{ext}"
+        safe = re.sub(r"[^A-Za-z0-9_-]", "", file_id)[:40]
+        object_name = f"{safe}{ext}"
 
         # 3. Заливаем через Storage REST API
         url = f"{SUPABASE_URL}/storage/v1/object/{STORAGE_BUCKET}/{object_name}"
