@@ -1,14 +1,12 @@
 // Главная логика панели управления.
+// Разделы: «Заказы» (с перепиской внутри карточек) и «Каталог».
 import { CONFIG } from './config.js';
 import * as api from './api.js';
 import * as catalog from './catalog.js';
 import * as orders from './orders.js';
-import { escapeHtml, customerName, initial, formatTime, formatFullDate, previewText } from './utils.js';
 
-let currentManager = null;     // { username, is_superadmin }
-let chats = [];                // список чатов
-let customersById = {};        // tg_id -> customer
-let activeChatId = null;       // выбранный customer_tg_id
+let currentManager = null;
+let currentSection = 'orders';
 let refreshTimer = null;
 
 // ============ АВТОРИЗАЦИЯ ============
@@ -55,6 +53,7 @@ function logout() {
   clearAuth();
   currentManager = null;
   if (refreshTimer) clearInterval(refreshTimer);
+  orders.stopConvo();
   document.getElementById('app').style.display = 'none';
   document.getElementById('login').style.display = 'flex';
   document.getElementById('loginUsername').value = '';
@@ -73,12 +72,14 @@ function showApp() {
   catalog.setupCatalog();
   orders.initOrders(currentManager.username);
   setupSectionTabs();
-  refreshChats();
+  currentSection = 'orders';
+  orders.loadOrdersSection();
   if (refreshTimer) clearInterval(refreshTimer);
-  refreshTimer = setInterval(refreshChats, CONFIG.REFRESH_INTERVAL);
+  refreshTimer = setInterval(() => {
+    if (currentSection === 'orders') orders.refreshList();
+  }, CONFIG.REFRESH_INTERVAL);
 }
 
-let currentSection = 'chats';
 function setupSectionTabs() {
   document.querySelectorAll('.nav-tab').forEach(tab => {
     tab.onclick = () => switchSection(tab.getAttribute('data-section'));
@@ -91,161 +92,18 @@ function switchSection(section) {
   document.querySelectorAll('.nav-tab').forEach(t =>
     t.classList.toggle('active', t.getAttribute('data-section') === section));
 
-  // Боковые списки
-  document.getElementById('chatList').style.display = section === 'chats' ? '' : 'none';
-  document.getElementById('catalogSide').style.display = section === 'catalog' ? '' : 'none';
   document.getElementById('ordersSide').style.display = section === 'orders' ? '' : 'none';
-  // Главные области
-  document.getElementById('sectionChats').style.display = section === 'chats' ? '' : 'none';
-  document.getElementById('sectionCatalog').style.display = section === 'catalog' ? '' : 'none';
+  document.getElementById('catalogSide').style.display = section === 'catalog' ? '' : 'none';
   document.getElementById('sectionOrders').style.display = section === 'orders' ? '' : 'none';
+  document.getElementById('sectionCatalog').style.display = section === 'catalog' ? '' : 'none';
 
-  if (section === 'catalog') catalog.loadCatalog();
   if (section === 'orders') orders.loadOrdersSection();
-}
-
-async function refreshChats() {
-  try {
-    chats = await api.loadChats();
-    const ids = chats.map(c => c.customer_tg_id);
-    customersById = await api.loadCustomers(ids);
-    renderChatList();
-    // Если открыт чат — обновим переписку (вдруг пришло новое)
-    if (activeChatId != null) {
-      // не сбрасываем прокрутку, если пользователь читает — обновляем мягко
-      refreshConversation(activeChatId, /*keepScroll*/ true);
-    }
-  } catch (e) {
-    console.error('refreshChats failed:', e);
-  }
-}
-
-function renderChatList() {
-  const list = document.getElementById('chatList');
-  if (!chats.length) {
-    list.innerHTML = `<div class="empty-hint">Пока нет ни одного чата.<br>Сообщения появятся, когда клиенты напишут боту.</div>`;
-    return;
-  }
-  list.innerHTML = chats.map(chat => {
-    const cust = customersById[chat.customer_tg_id];
-    const name = customerName(cust, chat.customer_tg_id);
-    const preview = previewText(chat.last_message);
-    const time = formatTime(chat.last_message.created_at);
-    const active = chat.customer_tg_id === activeChatId ? ' active' : '';
-    const unread = chat.unread > 0
-      ? `<span class="chat-unread">${chat.unread}</span>` : '';
-    return `
-      <div class="chat-item${active}" data-id="${chat.customer_tg_id}">
-        <div class="chat-avatar">${escapeHtml(initial(name))}</div>
-        <div class="chat-item-body">
-          <div class="chat-item-top">
-            <span class="chat-item-name">${escapeHtml(name)}</span>
-            <span class="chat-item-time">${escapeHtml(time)}</span>
-          </div>
-          <div class="chat-item-bottom">
-            <span class="chat-item-preview">${escapeHtml(preview)}</span>
-            ${unread}
-          </div>
-        </div>
-      </div>`;
-  }).join('');
-
-  list.querySelectorAll('.chat-item').forEach(el => {
-    el.onclick = () => openChat(Number(el.getAttribute('data-id')));
-  });
-}
-
-async function openChat(customerTgId) {
-  activeChatId = customerTgId;
-  renderChatList();   // подсветить активный
-  document.getElementById('chatEmpty').style.display = 'none';
-  document.getElementById('chatView').style.display = 'flex';
-
-  const cust = customersById[customerTgId];
-  const name = customerName(cust, customerTgId);
-  document.getElementById('chatHeaderName').textContent = name;
-  document.getElementById('chatHeaderId').textContent = 'ID ' + customerTgId;
-  document.getElementById('chatHeaderAvatar').textContent = initial(name);
-
-  await refreshConversation(customerTgId, /*keepScroll*/ false);
-
-  // Пометить прочитанным + обновить список (убрать счётчик)
-  await api.markRead(customerTgId);
-  const chat = chats.find(c => c.customer_tg_id === customerTgId);
-  if (chat) chat.unread = 0;
-  renderChatList();
-}
-
-async function refreshConversation(customerTgId, keepScroll) {
-  const box = document.getElementById('messages');
-  const prevScrollBottom = box.scrollHeight - box.scrollTop;
-  let msgs;
-  try {
-    msgs = await api.loadConversation(customerTgId);
-  } catch (e) {
-    box.innerHTML = `<div class="empty-hint">Не удалось загрузить переписку.</div>`;
-    return;
-  }
-
-  let html = '';
-  let lastDate = '';
-  for (const m of msgs) {
-    const dateLabel = formatFullDate(m.created_at);
-    if (dateLabel !== lastDate) {
-      html += `<div class="msg-date-sep">${escapeHtml(dateLabel)}</div>`;
-      lastDate = dateLabel;
-    }
-    html += renderMessage(m);
-  }
-  box.innerHTML = html || `<div class="empty-hint">Сообщений пока нет.</div>`;
-
-  // Прокрутка: при открытии — вниз; при фоновом обновлении — сохраняем позицию
-  if (keepScroll) {
-    box.scrollTop = box.scrollHeight - prevScrollBottom;
-  } else {
-    box.scrollTop = box.scrollHeight;
-  }
-}
-
-function renderMessage(m) {
-  const out = m.direction === 'out';
-  const isBot = m.sender === 'bot';
-  let cls = out ? 'msg msg-out' : 'msg msg-in';
-  if (isBot) cls += ' msg-bot';
-  let inner = '';
-
-  // Вложение
-  if (m.attachment_url) {
-    if (m.attachment_type === 'photo') {
-      inner += `<a href="${escapeHtml(m.attachment_url)}" target="_blank" rel="noopener">
-        <img class="msg-photo" src="${escapeHtml(m.attachment_url)}" alt="фото" loading="lazy"></a>`;
-    } else {
-      const label = {
-        document: '📎 Документ', video: '🎬 Видео', voice: '🎤 Голосовое',
-        video_note: '⭕ Кружок', audio: '🎵 Аудио',
-      }[m.attachment_type] || '📎 Вложение';
-      inner += `<a class="msg-file" href="${escapeHtml(m.attachment_url)}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`;
-    }
-  }
-  // Текст
-  if (m.text) {
-    inner += `<div class="msg-text">${escapeHtml(m.text)}</div>`;
-  }
-  // Подпись: кто отправил + время
-  let who = '';
-  if (out) {
-    if (isBot) who = '🤖 авто';
-    else who = m.manager_username ? '@' + escapeHtml(m.manager_username) : 'менеджер';
-  }
-  const meta = `<div class="msg-meta">${who ? who + ' · ' : ''}${escapeHtml(formatTime(m.created_at))}</div>`;
-
-  return `<div class="${cls}"><div class="msg-bubble">${inner}${meta}</div></div>`;
+  if (section === 'catalog') { orders.stopConvo(); catalog.loadCatalog(); }
 }
 
 // ============ ИНИЦИАЛИЗАЦИЯ ============
 
 function init() {
-  // Обработчики входа
   document.getElementById('loginBtn').onclick = () => {
     attemptLogin(document.getElementById('loginUsername').value);
   };
@@ -254,26 +112,6 @@ function init() {
   });
   document.getElementById('logoutBtn').onclick = logout;
 
-  // Композер: отправка ответа
-  const input = document.getElementById('composerInput');
-  const sendBtn = document.getElementById('composerSend');
-  if (input && sendBtn) {
-    sendBtn.onclick = sendCurrentReply;
-    // Enter — отправить, Shift+Enter — перенос строки
-    input.addEventListener('keydown', e => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        sendCurrentReply();
-      }
-    });
-    // Авто-рост высоты поля
-    input.addEventListener('input', () => {
-      input.style.height = 'auto';
-      input.style.height = Math.min(input.scrollHeight, 120) + 'px';
-    });
-  }
-
-  // Автовход, если уже заходили
   const saved = loadAuth();
   if (saved && saved.username) {
     currentManager = saved;
@@ -281,45 +119,6 @@ function init() {
   } else {
     document.getElementById('login').style.display = 'flex';
   }
-}
-
-async function sendCurrentReply() {
-  const input = document.getElementById('composerInput');
-  const sendBtn = document.getElementById('composerSend');
-  if (!input || activeChatId == null) return;
-  const text = input.value.trim();
-  if (!text) return;
-
-  sendBtn.disabled = true;
-  input.disabled = true;
-  try {
-    await api.sendReply(activeChatId, text, currentManager.username);
-    input.value = '';
-    input.style.height = 'auto';
-    // Оптимистично дорисуем сообщение в переписку (бот подтвердит при следующем refresh)
-    appendOptimisticOut(text);
-  } catch (e) {
-    console.error('sendReply failed:', e);
-    alert('Не удалось отправить. Проверьте соединение и попробуйте снова.');
-  } finally {
-    sendBtn.disabled = false;
-    input.disabled = false;
-    input.focus();
-  }
-}
-
-// Мгновенно показываем отправленное сообщение (до подтверждения ботом).
-function appendOptimisticOut(text) {
-  const box = document.getElementById('messages');
-  if (!box) return;
-  const div = document.createElement('div');
-  div.className = 'msg msg-out';
-  div.innerHTML = `<div class="msg-bubble">
-    <div class="msg-text">${escapeHtml(text)}</div>
-    <div class="msg-meta">@${escapeHtml(currentManager.username)} · отправляется…</div>
-  </div>`;
-  box.appendChild(div);
-  box.scrollTop = box.scrollHeight;
 }
 
 init();

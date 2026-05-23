@@ -31,6 +31,12 @@ let activeTab = 'orders';      // orders | inquiries
 let activeId = null;
 let managerUsername = '';
 let productsById = {};
+let statusBusy = false;        // защита от спама кнопок статуса
+let convoTimer = null;         // автообновление переписки в открытой карточке
+
+// Активен ли заказ/обращение (можно ли писать клиенту)
+function isOrderActive(status) { return status !== 'completed' && status !== 'cancelled'; }
+function isInquiryActive(status) { return status !== 'closed'; }
 
 export function initOrders(mgrUsername) {
   managerUsername = mgrUsername;
@@ -57,6 +63,19 @@ export async function loadOrdersSection() {
     console.error('loadOrdersSection failed:', e);
   }
   renderOrdersList();
+}
+
+// Лёгкое обновление списка заказов/обращений без сброса открытой карточки.
+export async function refreshList() {
+  try {
+    [orders, inquiries] = await Promise.all([
+      api.loadOrders().catch(() => orders),
+      api.loadInquiries().catch(() => inquiries),
+    ]);
+    renderOrdersList();
+  } catch (e) {
+    console.error('refreshList failed:', e);
+  }
 }
 
 function renderOrdersList() {
@@ -206,6 +225,12 @@ function renderOrderDetail(id) {
       <button class="btn-light" id="orderNoteSave">Сохранить заметку</button>
     </div>
     <div class="detail-status-msg" id="detailStatusMsg"></div>
+
+    <div class="convo-section">
+      <div class="detail-section-title">Переписка с клиентом</div>
+      <div class="convo-messages" id="convoMessages"></div>
+      ${renderComposer(isOrderActive(o.status))}
+    </div>
   `;
 
   // Кнопки быстрого статуса
@@ -223,10 +248,17 @@ function renderOrderDetail(id) {
       setDetailMsg('Заметка сохранена ✓');
     } catch (e) { setDetailMsg('Ошибка сохранения заметки', true); }
   };
+
+  // Переписка + композер
+  setupConvo({ order_id: o.id }, o.customer_tg_id, isOrderActive(o.status));
 }
 
 async function changeOrderStatus(order, status) {
+  if (statusBusy) return;                          // защита от спама
   if (status === order.status) { setDetailMsg('Этот статус уже установлен'); return; }
+  statusBusy = true;
+  // Блокируем все кнопки статуса визуально
+  document.querySelectorAll('.status-actions button, #orderStatusApply').forEach(b => b.disabled = true);
   const notify = document.getElementById('orderNotify')?.checked;
   const clientMsg = (notify && ORDER_STATUS[status]) ? ORDER_STATUS[status].client : null;
   const fullMsg = clientMsg ? `${clientMsg}\n\nЗаказ №${order.id}` : null;
@@ -236,10 +268,13 @@ async function changeOrderStatus(order, status) {
     order.status = status;
     setDetailMsg('Статус обновлён ✓' + (fullMsg ? ' Клиент уведомлён.' : ''));
     renderOrdersList();
-    renderOrderDetail(order.id);
+    renderOrderDetail(order.id);     // перерисовка покажет новый статус и доступность переписки
   } catch (e) {
     console.error(e);
     setDetailMsg('Ошибка смены статуса', true);
+    document.querySelectorAll('.status-actions button, #orderStatusApply').forEach(b => b.disabled = false);
+  } finally {
+    statusBusy = false;
   }
 }
 
@@ -284,16 +319,26 @@ function renderInquiryDetail(id) {
         <input type="checkbox" id="inqNotify" checked> Уведомить клиента в Telegram
       </label>
     </div>
-    <div class="detail-hint">Чтобы ответить клиенту текстом — перейдите в раздел «Чаты».</div>
     <div class="detail-status-msg" id="detailStatusMsg"></div>
+
+    <div class="convo-section">
+      <div class="detail-section-title">Переписка с клиентом</div>
+      <div class="convo-messages" id="convoMessages"></div>
+      ${renderComposer(isInquiryActive(q.status))}
+    </div>
   `;
 
   box.querySelectorAll('[data-status]').forEach(btn => {
     btn.onclick = () => changeInquiryStatus(q, btn.getAttribute('data-status'));
   });
+
+  setupConvo({ inquiry_id: q.id }, q.customer_tg_id, isInquiryActive(q.status));
 }
 
 async function changeInquiryStatus(q, status) {
+  if (statusBusy) return;
+  statusBusy = true;
+  document.querySelectorAll('.status-actions button').forEach(b => b.disabled = true);
   const notify = document.getElementById('inqNotify')?.checked;
   const clientMsg = (notify && INQUIRY_STATUS[status]) ? INQUIRY_STATUS[status].client : null;
   setDetailMsg('Меняем статус…');
@@ -306,6 +351,9 @@ async function changeInquiryStatus(q, status) {
   } catch (e) {
     console.error(e);
     setDetailMsg('Ошибка смены статуса', true);
+    document.querySelectorAll('.status-actions button').forEach(b => b.disabled = false);
+  } finally {
+    statusBusy = false;
   }
 }
 
@@ -314,4 +362,174 @@ function setDetailMsg(text, isError) {
   if (!el) return;
   el.textContent = text;
   el.className = 'detail-status-msg' + (isError ? ' error' : '');
+}
+
+// ============ ПЕРЕПИСКА ВНУТРИ КАРТОЧКИ ============
+
+let convoContext = null;     // { order_id } | { inquiry_id }
+let convoCustomerId = null;
+let convoActive = false;
+let convoAttachment = null;  // { url, name } прикреплённый файл
+
+// Разметка композера (поле ввода внизу). disabled — если статус неактивный.
+function renderComposer(active) {
+  if (!active) {
+    return `<div class="convo-locked">
+      🔒 Переписка доступна только в активном статусе. Чтобы написать клиенту — верните заявку в работу.
+    </div>`;
+  }
+  return `
+    <div class="convo-composer" id="convoComposer">
+      <div class="convo-attach-preview" id="convoAttachPreview" style="display:none"></div>
+      <div class="convo-composer-row">
+        <label class="convo-attach-btn" title="Прикрепить файл">
+          <input type="file" id="convoFile" style="display:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+        </label>
+        <textarea id="convoInput" placeholder="Напишите ответ клиенту…" rows="1"></textarea>
+        <button class="convo-send" id="convoSend" title="Отправить">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+    </div>`;
+}
+
+async function setupConvo(context, customerTgId, active) {
+  convoContext = context;
+  convoCustomerId = customerTgId;
+  convoActive = active;
+  convoAttachment = null;
+
+  await refreshConvo();
+
+  // Автообновление переписки каждые 5с, пока карточка открыта
+  if (convoTimer) clearInterval(convoTimer);
+  convoTimer = setInterval(refreshConvo, 5000);
+
+  if (!active) return;
+
+  const input = document.getElementById('convoInput');
+  const sendBtn = document.getElementById('convoSend');
+  const fileInput = document.getElementById('convoFile');
+
+  if (sendBtn) sendBtn.onclick = sendConvoMessage;
+  if (input) {
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendConvoMessage(); }
+    });
+    input.addEventListener('input', () => {
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+    });
+  }
+  if (fileInput) {
+    fileInput.addEventListener('change', async () => {
+      const f = fileInput.files[0];
+      if (!f) return;
+      const preview = document.getElementById('convoAttachPreview');
+      preview.style.display = 'block';
+      preview.textContent = '⏳ Загружаем файл…';
+      try {
+        const url = await api.uploadFile(f);
+        convoAttachment = { url, name: f.name };
+        preview.innerHTML = `📎 ${escapeHtml(f.name)} <button class="convo-attach-del" id="convoAttachDel">✕</button>`;
+        document.getElementById('convoAttachDel').onclick = () => {
+          convoAttachment = null;
+          preview.style.display = 'none';
+          fileInput.value = '';
+        };
+      } catch (e) {
+        console.error(e);
+        preview.textContent = '⚠️ Не удалось загрузить файл';
+        convoAttachment = null;
+      }
+    });
+  }
+}
+
+async function refreshConvo() {
+  const box = document.getElementById('convoMessages');
+  if (!box || !convoContext) return;
+  let msgs = [];
+  try {
+    if (convoContext.order_id) msgs = await api.loadOrderMessages(convoContext.order_id);
+    else if (convoContext.inquiry_id) msgs = await api.loadInquiryMessages(convoContext.inquiry_id);
+  } catch (e) {
+    box.innerHTML = '<div class="convo-empty">Не удалось загрузить переписку</div>';
+    return;
+  }
+  if (!msgs.length) {
+    box.innerHTML = '<div class="convo-empty">Сообщений пока нет. Можете написать первым.</div>';
+    return;
+  }
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 50;
+  box.innerHTML = msgs.map(renderConvoMsg).join('');
+  if (atBottom) box.scrollTop = box.scrollHeight;
+}
+
+function renderConvoMsg(m) {
+  const out = m.direction === 'out';
+  const isBot = m.sender === 'bot';
+  let cls = out ? 'cmsg cmsg-out' : 'cmsg cmsg-in';
+  if (isBot) cls += ' cmsg-bot';
+  let inner = '';
+  if (m.attachment_url) {
+    if (m.attachment_type === 'photo') {
+      inner += `<a href="${escapeHtml(m.attachment_url)}" target="_blank" rel="noopener"><img class="cmsg-photo" src="${escapeHtml(m.attachment_url)}" loading="lazy"></a>`;
+    } else {
+      inner += `<a class="cmsg-file" href="${escapeHtml(m.attachment_url)}" target="_blank" rel="noopener">📎 Вложение</a>`;
+    }
+  }
+  if (m.text) inner += `<div class="cmsg-text">${escapeHtml(m.text)}</div>`;
+  let who = '';
+  if (out) who = isBot ? '🤖 авто' : (m.manager_username ? '@' + escapeHtml(m.manager_username) : 'менеджер');
+  const meta = `<div class="cmsg-meta">${who ? who + ' · ' : ''}${escapeHtml(formatTime(m.created_at))}</div>`;
+  return `<div class="${cls}"><div class="cmsg-bubble">${inner}${meta}</div></div>`;
+}
+
+async function sendConvoMessage() {
+  const input = document.getElementById('convoInput');
+  const sendBtn = document.getElementById('convoSend');
+  if (!input || !convoActive) return;
+  const text = input.value.trim();
+  if (!text && !convoAttachment) return;
+
+  sendBtn.disabled = true;
+  input.disabled = true;
+  try {
+    await api.sendReply(
+      convoCustomerId, text, managerUsername,
+      convoContext, convoAttachment ? convoAttachment.url : null
+    );
+    input.value = '';
+    input.style.height = 'auto';
+    convoAttachment = null;
+    const preview = document.getElementById('convoAttachPreview');
+    if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
+    const fileInput = document.getElementById('convoFile');
+    if (fileInput) fileInput.value = '';
+    // Оптимистично показываем
+    const box = document.getElementById('convoMessages');
+    if (box) {
+      const empty = box.querySelector('.convo-empty');
+      if (empty) box.innerHTML = '';
+      const div = document.createElement('div');
+      div.className = 'cmsg cmsg-out';
+      div.innerHTML = `<div class="cmsg-bubble"><div class="cmsg-text">${escapeHtml(text)}</div><div class="cmsg-meta">@${escapeHtml(managerUsername)} · отправляется…</div></div>`;
+      box.appendChild(div);
+      box.scrollTop = box.scrollHeight;
+    }
+  } catch (e) {
+    console.error('sendConvoMessage failed:', e);
+    alert('Не удалось отправить сообщение.');
+  } finally {
+    sendBtn.disabled = false;
+    input.disabled = false;
+    input.focus();
+  }
+}
+
+// Останавливаем автообновление переписки при уходе из раздела
+export function stopConvo() {
+  if (convoTimer) { clearInterval(convoTimer); convoTimer = null; }
 }

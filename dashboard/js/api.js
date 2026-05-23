@@ -92,6 +92,26 @@ export async function loadConversation(customerTgId) {
   });
 }
 
+// Переписка в рамках конкретного обращения.
+export async function loadInquiryMessages(inquiryId) {
+  return get('messages', {
+    select: '*',
+    inquiry_id: `eq.${inquiryId}`,
+    order: 'created_at.asc',
+    limit: '500',
+  });
+}
+
+// Переписка в рамках конкретного заказа.
+export async function loadOrderMessages(orderId) {
+  return get('messages', {
+    select: '*',
+    order_id: `eq.${orderId}`,
+    order: 'created_at.asc',
+    limit: '500',
+  });
+}
+
 // Пометить входящие сообщения клиента прочитанными.
 export async function markRead(customerTgId) {
   try {
@@ -106,19 +126,45 @@ export async function markRead(customerTgId) {
 }
 
 // Отправить ответ клиенту: пишем в очередь outbox, бот её разберёт и отправит
-// в Telegram. Возвращает true при успешной постановке в очередь.
-export async function sendReply(customerTgId, text, managerUsername) {
+// в Telegram. context = { inquiry_id } или { order_id }.
+export async function sendReply(customerTgId, text, managerUsername, context = {}, attachmentUrl = null) {
   const res = await fetch(`${BASE}/outbox`, {
     method: 'POST',
     headers: { ...HEADERS, 'Prefer': 'return=minimal' },
     body: JSON.stringify({
       customer_tg_id: customerTgId,
-      text: text,
+      text: text || null,
       manager_username: managerUsername,
+      attachment_url: attachmentUrl,
+      inquiry_id: context.inquiry_id || null,
+      order_id: context.order_id || null,
     }),
   });
   if (!res.ok) throw new Error(`sendReply failed: ${res.status}`);
   return true;
+}
+
+// Загрузить файл в Supabase Storage (bucket chat-files) из браузера.
+// Возвращает публичный URL.
+export async function uploadFile(file) {
+  const ext = file.name && file.name.includes('.') ? '.' + file.name.split('.').pop() : '';
+  const objectName = `dash_${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`;
+  const url = `${CONFIG.SUPABASE_URL}/storage/v1/object/chat-files/${objectName}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'apikey': CONFIG.SUPABASE_ANON_KEY,
+      'Authorization': 'Bearer ' + CONFIG.SUPABASE_ANON_KEY,
+      'Content-Type': file.type || 'application/octet-stream',
+      'x-upsert': 'true',
+    },
+    body: file,
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`uploadFile failed: ${res.status} ${txt.slice(0, 150)}`);
+  }
+  return `${CONFIG.SUPABASE_URL}/storage/v1/object/public/chat-files/${objectName}`;
 }
 
 // ====================== КАТАЛОГ ТОВАРОВ ======================

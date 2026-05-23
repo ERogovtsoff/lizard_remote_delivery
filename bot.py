@@ -40,6 +40,7 @@ import html
 import json
 import logging
 import os
+import re
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
@@ -287,7 +288,8 @@ async def upload_to_storage(bot: Bot, file_id: str, suffix: str = "") -> Optiona
 async def save_message(customer_tg_id: int, direction: str, *, text: str = None,
                        sender: str = "client", manager_username: str = None,
                        attachment_url: str = None, attachment_type: str = None,
-                       tg_file_id: str = None, source: str = "bot") -> None:
+                       tg_file_id: str = None, source: str = "bot",
+                       inquiry_id: str = None, order_id: int = None) -> None:
     """Сохраняет сообщение в БД (для отображения в dashboard). Не критично к сбоям."""
     if not supabase_ready():
         return
@@ -302,12 +304,60 @@ async def save_message(customer_tg_id: int, direction: str, *, text: str = None,
             "attachment_type": attachment_type,
             "tg_file_id": tg_file_id,
             "source": source,
+            "inquiry_id": inquiry_id,
+            "order_id": order_id,
         })
     except Exception as e:
         log.warning("save_message error: %s", e)
 
 
-async def notify_client(bot: Bot, customer_tg_id: int, text: str) -> bool:
+async def get_active_context(customer_tg_id: int) -> dict:
+    """
+    Определяет «активный контекст» клиента — к какому заказу/обращению относить
+    его входящее сообщение. Логика: берём самый свежий активный заказ ИЛИ
+    обращение по дате обновления. Заказы и обращения сравниваются по updated_at.
+    Возвращает {"inquiry_id": ...} или {"order_id": ...} или {} (нет активного).
+    """
+    if not supabase_ready():
+        return {}
+    candidates = []
+    try:
+        # Активные заказы (не завершён и не отменён)
+        orders = await supabase_get("orders", {
+            "select": "id,updated_at,status",
+            "customer_tg_id": f"eq.{customer_tg_id}",
+            "status": "not.in.(completed,cancelled)",
+            "order": "updated_at.desc",
+            "limit": "1",
+        })
+        if orders:
+            candidates.append(("order", orders[0]["id"], _parse_ts(orders[0].get("updated_at"))))
+    except Exception as e:
+        log.warning("get_active_context orders error: %s", e)
+    try:
+        # Активные обращения (не закрыты)
+        inquiries = await supabase_get("inquiries", {
+            "select": "id,updated_at,status",
+            "customer_tg_id": f"eq.{customer_tg_id}",
+            "status": "neq.closed",
+            "order": "updated_at.desc",
+            "limit": "1",
+        })
+        if inquiries:
+            candidates.append(("inquiry", inquiries[0]["id"], _parse_ts(inquiries[0].get("updated_at"))))
+    except Exception as e:
+        log.warning("get_active_context inquiries error: %s", e)
+
+    if not candidates:
+        return {}
+    # Берём самый свежий по updated_at
+    candidates.sort(key=lambda c: c[2] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+    kind, cid, _ = candidates[0]
+    return {"order_id": cid} if kind == "order" else {"inquiry_id": cid}
+
+
+async def notify_client(bot: Bot, customer_tg_id: int, text: str,
+                        inquiry_id: str = None, order_id: int = None) -> bool:
     """
     Отправляет клиенту собственное уведомление бота (смена статуса, напоминание
     и т.п.) И сохраняет его в messages как sender='bot', чтобы оно было видно
@@ -321,11 +371,11 @@ async def notify_client(bot: Bot, customer_tg_id: int, text: str) -> bool:
         log.info("notify_client: клиент %s заблокировал бота", customer_tg_id)
     except Exception as e:
         log.warning("notify_client send failed for %s: %s", customer_tg_id, e)
-    # Пишем в историю в любом случае (даже недоставленное — для полноты картины),
-    # но помечаем источник. Текст храним без HTML-курсива.
+    # Пишем в историю в любом случае (даже недоставленное — для полноты картины).
     await save_message(
         customer_tg_id, "out",
         text=text, sender="bot", source="bot",
+        inquiry_id=inquiry_id, order_id=order_id,
     )
     return delivered
 
@@ -365,11 +415,15 @@ async def extract_and_save_incoming(message: Message, bot: Bot) -> None:
     except Exception as e:
         log.warning("extract incoming attachment failed: %s", e)
 
+    # Определяем активный контекст (последний активный заказ/обращение)
+    ctx = await get_active_context(message.from_user.id)
+
     await save_message(
         message.from_user.id, "in",
         text=text, sender="client",
         attachment_url=att_url, attachment_type=att_type, tg_file_id=file_id,
         source="bot",
+        inquiry_id=ctx.get("inquiry_id"), order_id=ctx.get("order_id"),
     )
 
 
@@ -1210,17 +1264,18 @@ async def handle_start_request(message: Message, bot: Bot, preset: str = None) -
         return
 
     if preset_label:
-        await message.answer(
+        greeting = (
             f"Привет! 👋\n\n"
-            f"Вы хотите заказать <b>{preset_label}</b> — отлично! "
+            f"Вы хотите заказать {preset_label} — отлично! "
             f"Пришлите ссылку, фото или опишите, что именно ищете, и мы подберём 💛"
         )
     else:
-        await message.answer(
+        greeting = (
             "Привет! 👋\n\n"
             "Расскажите, что хотите заказать — название, ссылку или просто фото. "
             "Подберём и привезём 💛"
         )
+    await message.answer(greeting)
     # Создаём обращение в БД
     inquiry = await supabase_post("inquiries", {
         "customer_tg_id": message.from_user.id,
@@ -1229,6 +1284,12 @@ async def handle_start_request(message: Message, bot: Bot, preset: str = None) -
     })
     inquiry_id = inquiry.get("id") if inquiry else None
     number = inquiry.get("number") if inquiry else None
+
+    # Сохраняем приветствие бота в историю с привязкой к новому обращению
+    await save_message(
+        message.from_user.id, "out", text=greeting,
+        sender="bot", source="bot", inquiry_id=inquiry_id,
+    )
 
     preset_line = f"🔎 Интересует: {preset_label}\n" if preset_label else ""
     card = (
@@ -1339,7 +1400,14 @@ async def handle_start_order(message: Message, bot: Bot, order_id: str) -> None:
     client_lines.append(f"<b>Итого:</b> {fmt_price(total, currency)}")
     client_lines.append("")
     client_lines.append("Уже проверяем детали и скоро напишем по оплате 💛")
-    await message.answer("\n".join(client_lines))
+    client_summary = "\n".join(client_lines)
+    await message.answer(client_summary)
+    # Сохраняем подтверждение заказа в историю с привязкой к заказу
+    await save_message(
+        message.from_user.id, "out",
+        text=re.sub(r"<[^>]+>", "", client_summary),  # убираем HTML-теги для хранения
+        sender="bot", source="bot", order_id=int(order_id) if str(order_id).isdigit() else None,
+    )
 
     # Карточка заказа менеджеру — с заголовком, клиентом и кнопками статуса
     card = (
@@ -1442,12 +1510,14 @@ async def _save_manager_reply(message: Message, bot: Bot, client_tg_id: int,
             att_url = await upload_to_storage(bot, file_id)
     except Exception as e:
         log.warning("save manager reply attachment failed: %s", e)
+    ctx = await get_active_context(client_tg_id)
     await save_message(
         client_tg_id, "out",
         text=text, sender="manager",
         manager_username=(message.from_user.username or str(message.from_user.id)),
         attachment_url=att_url, attachment_type=att_type, tg_file_id=file_id,
         source="bot",
+        inquiry_id=ctx.get("inquiry_id"), order_id=ctx.get("order_id"),
     )
 
 
@@ -1599,6 +1669,7 @@ async def cb_order_status(cb: CallbackQuery, bot: Bot) -> None:
         await notify_client(
             bot, order["customer_tg_id"],
             f"{client_msg}\n\nЗаказ №{order_id}",
+            order_id=order_id,
         )
 
     await cb.answer(f"Статус: {ORDER_STATUS[new_status]['label']}")
@@ -2115,6 +2186,8 @@ async def process_outbox(bot: Bot) -> int:
             text = row.get("text")
             attachment_url = row.get("attachment_url")
             manager_username = row.get("manager_username")
+            ctx_inquiry = row.get("inquiry_id")
+            ctx_order = row.get("order_id")
 
             try:
                 # Отправляем клиенту. Если есть вложение — шлём по URL, иначе текст.
@@ -2137,6 +2210,7 @@ async def process_outbox(bot: Bot) -> int:
                     attachment_url=attachment_url,
                     attachment_type=("photo" if attachment_url else None),
                     source="dashboard",
+                    inquiry_id=ctx_inquiry, order_id=ctx_order,
                 )
                 # Помечаем отправленным
                 await supabase_patch("outbox", {"id": f"eq.{outbox_id}"},
