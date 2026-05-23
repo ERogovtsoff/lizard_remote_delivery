@@ -21,8 +21,17 @@ export function renderChat() {
   const page = document.getElementById('page-chat');
   if (!page.innerHTML) {
     page.innerHTML = `
+      <div class="chat-topbar">
+        <div class="chat-topbar-avatar">
+          <img src="./assets/logo.png" alt="" onerror="this.style.display='none';this.parentNode.textContent='💬'">
+          <span class="chat-online-dot"></span>
+        </div>
+        <div class="chat-topbar-info">
+          <div class="chat-topbar-name">${escapeHtml(t('chatManagerName'))}</div>
+          <div class="chat-topbar-status">${escapeHtml(t('chatManagerStatus'))}</div>
+        </div>
+      </div>
       <div class="chat-scroll" id="chatScroll"></div>
-      <div class="chat-reply-time">${escapeHtml(t('chatReplyTime'))}</div>
       <div class="chat-presets">
         <div class="chat-presets-title">${escapeHtml(t('chatPresetsTitle'))}</div>
         <div class="chat-presets-row">
@@ -57,9 +66,8 @@ export function renderChat() {
     dayDiv.textContent = today;
     scroll.appendChild(dayDiv);
     appendBubble('in', t('chatGreeting1'));
-    appendBubble('in', t('chatGreeting2'));
-    appendBubble('in', t('chatGreeting3'));
     appendBubble('in', t('chatWhatToSend'));
+    appendBubble('in', t('chatGreeting3'));
     rendered = true;
   }
 }
