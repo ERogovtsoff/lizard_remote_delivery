@@ -80,7 +80,9 @@ function showApp() {
   document.getElementById('sectionCatalog').style.display = 'none';
   document.querySelectorAll('.nav-tab').forEach(t =>
     t.classList.toggle('active', t.getAttribute('data-section') === 'orders'));
-  orders.loadOrdersSection();
+  orders.loadOrdersSection().then(() => {
+    orders.announcePendingOnLogin();
+  });
   if (refreshTimer) clearInterval(refreshTimer);
   refreshTimer = setInterval(() => {
     if (currentSection === 'orders') orders.refreshList();

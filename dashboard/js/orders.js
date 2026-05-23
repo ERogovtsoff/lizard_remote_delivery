@@ -59,10 +59,13 @@ export async function loadOrdersSection() {
       productsById = {};
       prods.forEach(p => { productsById[p.id] = p; });
     } catch (_) {}
+    // Первичная инициализация набора известных ID (без звука при первой загрузке)
+    initKnownIds();
   } catch (e) {
     console.error('loadOrdersSection failed:', e);
   }
   renderOrdersList();
+  updateNavBadges();
 }
 
 // Лёгкое обновление списка заказов/обращений без сброса открытой карточки.
@@ -72,11 +75,95 @@ export async function refreshList() {
       api.loadOrders().catch(() => orders),
       api.loadInquiries().catch(() => inquiries),
     ]);
+    detectNew();        // проверяем, появилось ли что-то новое → звук + индикатор
     renderOrdersList();
+    updateNavBadges();
   } catch (e) {
     console.error('refreshList failed:', e);
   }
 }
+
+// ============ УВЕДОМЛЕНИЯ О НОВОМ ============
+
+let knownOrderIds = new Set();
+let knownInquiryIds = new Set();
+let knownReady = false;
+
+function initKnownIds() {
+  knownOrderIds = new Set(orders.map(o => String(o.id)));
+  knownInquiryIds = new Set(inquiries.map(q => String(q.id)));
+  knownReady = true;
+}
+
+function detectNew() {
+  if (!knownReady) { initKnownIds(); return; }
+  let newCount = 0;
+  for (const o of orders) {
+    if (!knownOrderIds.has(String(o.id))) { knownOrderIds.add(String(o.id)); newCount++; }
+  }
+  for (const q of inquiries) {
+    if (!knownInquiryIds.has(String(q.id))) { knownInquiryIds.add(String(q.id)); newCount++; }
+  }
+  if (newCount > 0) {
+    playBeep();
+    showToast(newCount === 1 ? 'Новое обращение или заказ!' : `${newCount} новых обращений/заказов!`);
+  }
+}
+
+// Короткий звуковой сигнал через Web Audio API (без внешних файлов).
+let audioCtx = null;
+function playBeep() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination);
+    o.type = 'sine';
+    o.frequency.value = 880;
+    g.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.25, audioCtx.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.4);
+    o.start();
+    o.stop(audioCtx.currentTime + 0.4);
+  } catch (e) { /* звук недоступен — не критично */ }
+}
+
+// Всплывающее уведомление
+function showToast(text) {
+  let toast = document.getElementById('dashToast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'dashToast';
+    toast.className = 'dash-toast';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = '🔔 ' + text;
+  toast.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => toast.classList.remove('show'), 4000);
+}
+
+// Бейджи на вкладках навигации с числом активных
+function updateNavBadges() {
+  const activeOrders = orders.filter(o => o.status !== 'completed' && o.status !== 'cancelled').length;
+  const activeInq = inquiries.filter(q => q.status !== 'closed').length;
+  const tabOrders = document.querySelector('.nav-tab[data-section="orders"]');
+  if (tabOrders) {
+    let badge = tabOrders.querySelector('.nav-badge');
+    const total = activeOrders + activeInq;
+    if (total > 0) {
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'nav-badge';
+        tabOrders.appendChild(badge);
+      }
+      badge.textContent = total;
+    } else if (badge) {
+      badge.remove();
+    }
+  }
+}
+
 
 function renderOrdersList() {
   const list = document.getElementById('ordersList');
@@ -142,6 +229,7 @@ function renderOrdersList() {
 function clearDetail() {
   document.getElementById('orderDetailEmpty').style.display = 'flex';
   document.getElementById('orderDetail').style.display = 'none';
+  document.body.classList.remove('mobile-detail');   // вернуться к списку на мобиле
 }
 
 function openDetail(id) {
@@ -150,9 +238,17 @@ function openDetail(id) {
   document.getElementById('orderDetailEmpty').style.display = 'none';
   const box = document.getElementById('orderDetail');
   box.style.display = 'flex';
+  document.body.classList.add('mobile-detail');       // показать карточку на мобиле
 
   if (activeTab === 'orders') renderOrderDetail(id);
   else renderInquiryDetail(id);
+}
+
+// Возврат к списку (кнопка «назад» на мобиле)
+function backToList() {
+  activeId = null;
+  document.body.classList.remove('mobile-detail');
+  renderOrdersList();
 }
 
 function renderOrderDetail(id) {
@@ -191,6 +287,7 @@ function renderOrderDetail(id) {
     `<option value="${key}" ${o.status === key ? 'selected' : ''}>${s.label}</option>`).join('');
 
   box.innerHTML = `
+    <button class="mobile-back" id="mobileBack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>К списку</button>
     <div class="detail-head">
       <h2>Заказ №${o.id}</h2>
       <span class="detail-status-badge">${escapeHtml(st.label)}</span>
@@ -232,6 +329,10 @@ function renderOrderDetail(id) {
       ${renderComposer(isOrderActive(o.status))}
     </div>
   `;
+
+  // Кнопка «назад» (мобильная)
+  const mb = document.getElementById('mobileBack');
+  if (mb) mb.onclick = backToList;
 
   // Кнопки быстрого статуса
   box.querySelectorAll('[data-status]').forEach(btn => {
@@ -303,6 +404,7 @@ function renderInquiryDetail(id) {
     }).join('');
 
   box.innerHTML = `
+    <button class="mobile-back" id="mobileBack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>К списку</button>
     <div class="detail-head">
       <h2>Обращение №${q.number || ''}</h2>
       <span class="detail-status-badge">${escapeHtml(st.label)}</span>
@@ -351,6 +453,8 @@ function renderInquiryDetail(id) {
 
   // Создание заказа из обращения
   document.getElementById('inqCreateOrder').onclick = () => startOrderForm(q);
+  const mbq = document.getElementById('mobileBack');
+  if (mbq) mbq.onclick = backToList;
 
   setupConvo({ inquiry_id: q.id }, q.customer_tg_id, isInquiryActive(q.status));
 }
@@ -404,17 +508,52 @@ function renderComposer(active) {
   return `
     <div class="convo-composer" id="convoComposer">
       <div class="convo-attach-preview" id="convoAttachPreview" style="display:none"></div>
+      <div class="emoji-panel" id="emojiPanel" style="display:none"></div>
       <div class="convo-composer-row">
         <label class="convo-attach-btn" title="Прикрепить файл">
           <input type="file" id="convoFile" style="display:none">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
         </label>
+        <button class="convo-emoji-btn" id="convoEmojiBtn" type="button" title="Эмодзи">😊</button>
         <textarea id="convoInput" placeholder="Напишите ответ клиенту…" rows="1"></textarea>
         <button class="convo-send" id="convoSend" title="Отправить">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         </button>
       </div>
     </div>`;
+}
+
+// Популярные эмодзи для быстрой вставки
+const EMOJI_LIST = ['😊','👍','🙌','💛','🎉','✅','🔥','😍','🙏','👌','🤝','💪','✨','🛍','📦','🚚','⏱','💳','❤️','😅','🤔','👋','🙂','😉','💯','⭐','📸','🎁','💬','✏️'];
+
+function setupEmojiPanel() {
+  const btn = document.getElementById('convoEmojiBtn');
+  const panel = document.getElementById('emojiPanel');
+  const input = document.getElementById('convoInput');
+  if (!btn || !panel || !input) return;
+  panel.innerHTML = EMOJI_LIST.map(e => `<button type="button" class="emoji-item">${e}</button>`).join('');
+  btn.onclick = (ev) => {
+    ev.stopPropagation();
+    panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+  };
+  panel.querySelectorAll('.emoji-item').forEach(el => {
+    el.onclick = () => {
+      // Вставляем эмодзи в позицию курсора
+      const start = input.selectionStart || input.value.length;
+      const end = input.selectionEnd || input.value.length;
+      input.value = input.value.slice(0, start) + el.textContent + input.value.slice(end);
+      input.focus();
+      const pos = start + el.textContent.length;
+      input.setSelectionRange(pos, pos);
+      panel.style.display = 'none';
+    };
+  });
+  // Клик вне панели закрывает её
+  document.addEventListener('click', (ev) => {
+    if (panel.style.display !== 'none' && !panel.contains(ev.target) && ev.target !== btn) {
+      panel.style.display = 'none';
+    }
+  });
 }
 
 async function setupConvo(context, customerTgId, active) {
@@ -433,6 +572,8 @@ async function setupConvo(context, customerTgId, active) {
   convoTimer = setInterval(refreshConvo, 5000);
 
   if (!active) return;
+
+  setupEmojiPanel();
 
   const input = document.getElementById('convoInput');
   const sendBtn = document.getElementById('convoSend');
@@ -732,5 +873,16 @@ async function saveOrderDraft() {
     console.error(e);
     setDetailMsg('Ошибка создания заказа', true);
     btn.disabled = false;
+  }
+}
+
+// Сводка при входе: сколько незакрытых обращений/заказов ждут.
+export function announcePendingOnLogin() {
+  const activeOrders = orders.filter(o => o.status !== 'completed' && o.status !== 'cancelled').length;
+  const activeInq = inquiries.filter(q => q.status !== 'closed').length;
+  const total = activeOrders + activeInq;
+  if (total > 0) {
+    showToast(`Ждут внимания: ${activeOrders} заказов, ${activeInq} обращений`);
+    playBeep();
   }
 }

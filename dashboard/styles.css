@@ -408,11 +408,70 @@ html, body {
 /* ====================== Адаптив (узкие экраны) ====================== */
 @media (max-width: 760px) {
   :root { --sidebar-w: 100%; }
-  .app { flex-direction: column; }
-  .sidebar { width: 100%; height: 40vh; }
-  .main { height: 60vh; }
-  .msg { max-width: 85%; }
+  .app { flex-direction: column; height: 100vh; height: 100dvh; }
+
+  /* Сайдбар занимает весь экран — это «экран списка» */
+  .sidebar {
+    width: 100%;
+    height: 100%;
+    border-right: none;
+  }
+  .main {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* По умолчанию на мобиле виден список (sidebar), деталь скрыта */
+  body:not(.mobile-detail) .main { display: none; }
+  /* Когда открыта карточка — виден main (деталь), список скрыт */
+  body.mobile-detail .sidebar { display: none; }
+  body.mobile-detail .main { display: flex; }
+
+  .msg { max-width: 88%; }
+  .cmsg { max-width: 88%; }
+
+  /* Кнопка «назад» к списку — видна только на мобиле в карточке */
+  .mobile-back {
+    display: flex !important;
+  }
+
+  /* Карточки на всю ширину, меньше отступов */
+  .order-detail > .detail-head,
+  .order-detail > .detail-meta,
+  .order-detail > .detail-section,
+  .order-detail > .detail-status-msg {
+    margin-left: 16px;
+    margin-right: 16px;
+  }
+  .convo-section .detail-section-title { padding: 10px 16px 6px; }
+  .convo-messages { padding: 8px 16px; }
+  .convo-composer { padding: 10px 16px; }
+  .catalog-editor { padding: 16px; }
+
+  /* Поля формы заказа компактнее */
+  .order-item-row { flex-wrap: wrap; }
+  .oi-product { flex-basis: 100%; }
+
+  /* Тач-цели крупнее */
+  .nav-tab { padding: 10px; font-size: 14px; }
+  .order-row { padding: 14px 16px; }
 }
+
+/* Кнопка «назад» скрыта на десктопе */
+.mobile-back {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  color: var(--accent-dark);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 12px 16px;
+  flex-shrink: 0;
+}
+.mobile-back svg { width: 18px; height: 18px; }
 
 /* ====================== Навигация разделов ====================== */
 .nav-tabs {
@@ -916,3 +975,79 @@ html, body {
 .order-form-total { font-weight: 600; margin: 10px 0; font-size: 14px; }
 .order-form-actions { display: flex; gap: 8px; }
 .cmsg-muted { color: var(--text-muted); font-style: italic; }
+
+/* ====================== Уведомления (тост + бейдж) ====================== */
+.dash-toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-80px);
+  background: var(--accent-dark);
+  color: #fff;
+  padding: 12px 22px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.2);
+  opacity: 0;
+  transition: transform 0.3s, opacity 0.3s;
+  z-index: 1000;
+  pointer-events: none;
+}
+.dash-toast.show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}
+.nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 6px;
+  background: var(--danger);
+  color: #fff;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.nav-tab.active .nav-badge { background: rgba(255,255,255,0.3); }
+
+/* ====================== Эмодзи-панель ====================== */
+.convo-emoji-btn {
+  flex-shrink: 0;
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  transition: background 0.15s;
+  line-height: 1;
+}
+.convo-emoji-btn:hover { background: var(--accent-soft); }
+.emoji-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 8px;
+  max-height: 160px;
+  overflow-y: auto;
+  box-shadow: var(--shadow);
+}
+.emoji-item {
+  width: 36px; height: 36px;
+  border: none;
+  background: none;
+  font-size: 20px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.12s;
+  line-height: 1;
+}
+.emoji-item:hover { background: var(--bg); }
