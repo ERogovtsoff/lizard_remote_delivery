@@ -2,6 +2,7 @@
 import { CONFIG } from './config.js';
 import * as api from './api.js';
 import * as catalog from './catalog.js';
+import * as orders from './orders.js';
 import { escapeHtml, customerName, initial, formatTime, formatFullDate, previewText } from './utils.js';
 
 let currentManager = null;     // { username, is_superadmin }
@@ -70,6 +71,7 @@ function showApp() {
   document.getElementById('managerName').textContent = '@' + currentManager.username
     + (currentManager.is_superadmin ? ' · админ' : '');
   catalog.setupCatalog();
+  orders.initOrders(currentManager.username);
   setupSectionTabs();
   refreshChats();
   if (refreshTimer) clearInterval(refreshTimer);
@@ -89,15 +91,17 @@ function switchSection(section) {
   document.querySelectorAll('.nav-tab').forEach(t =>
     t.classList.toggle('active', t.getAttribute('data-section') === section));
 
-  const isChats = section === 'chats';
-  document.getElementById('chatList').style.display = isChats ? '' : 'none';
-  document.getElementById('catalogSide').style.display = isChats ? 'none' : '';
-  document.getElementById('sectionChats').style.display = isChats ? '' : 'none';
-  document.getElementById('sectionCatalog').style.display = isChats ? 'none' : '';
+  // Боковые списки
+  document.getElementById('chatList').style.display = section === 'chats' ? '' : 'none';
+  document.getElementById('catalogSide').style.display = section === 'catalog' ? '' : 'none';
+  document.getElementById('ordersSide').style.display = section === 'orders' ? '' : 'none';
+  // Главные области
+  document.getElementById('sectionChats').style.display = section === 'chats' ? '' : 'none';
+  document.getElementById('sectionCatalog').style.display = section === 'catalog' ? '' : 'none';
+  document.getElementById('sectionOrders').style.display = section === 'orders' ? '' : 'none';
 
-  if (section === 'catalog') {
-    catalog.loadCatalog();
-  }
+  if (section === 'catalog') catalog.loadCatalog();
+  if (section === 'orders') orders.loadOrdersSection();
 }
 
 async function refreshChats() {
@@ -205,7 +209,9 @@ async function refreshConversation(customerTgId, keepScroll) {
 
 function renderMessage(m) {
   const out = m.direction === 'out';
-  const cls = out ? 'msg msg-out' : 'msg msg-in';
+  const isBot = m.sender === 'bot';
+  let cls = out ? 'msg msg-out' : 'msg msg-in';
+  if (isBot) cls += ' msg-bot';
   let inner = '';
 
   // Вложение
@@ -225,10 +231,12 @@ function renderMessage(m) {
   if (m.text) {
     inner += `<div class="msg-text">${escapeHtml(m.text)}</div>`;
   }
-  // Подпись: кто отправил (для исходящих — имя менеджера) + время
-  const who = out
-    ? (m.manager_username ? '@' + escapeHtml(m.manager_username) : 'менеджер')
-    : '';
+  // Подпись: кто отправил + время
+  let who = '';
+  if (out) {
+    if (isBot) who = '🤖 авто';
+    else who = m.manager_username ? '@' + escapeHtml(m.manager_username) : 'менеджер';
+  }
   const meta = `<div class="msg-meta">${who ? who + ' · ' : ''}${escapeHtml(formatTime(m.created_at))}</div>`;
 
   return `<div class="${cls}"><div class="msg-bubble">${inner}${meta}</div></div>`;

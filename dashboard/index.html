@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>LIZARD · Панель управления</title>
 <link rel="preconnect" href="https://nhnbprmyqqpwcofkaasi.supabase.co" crossorigin />
-<link rel="stylesheet" href="./styles.css?v=3" />
+<link rel="stylesheet" href="./styles.css?v=5" />
 </head>
 <body>
 
@@ -33,6 +33,7 @@
       <div class="brand">LIZARD</div>
       <div class="nav-tabs">
         <button class="nav-tab active" data-section="chats">Чаты</button>
+        <button class="nav-tab" data-section="orders">Заказы</button>
         <button class="nav-tab" data-section="catalog">Каталог</button>
       </div>
     </div>
@@ -41,6 +42,9 @@
       <button class="catalog-add-btn" id="catalogAddBtn">+ Добавить товар</button>
       <input type="text" class="catalog-search" id="catalogSearch" placeholder="Поиск по названию или ID…" />
       <div class="catalog-side-list" id="catalogSideList"></div>
+    </div>
+    <div class="orders-side" id="ordersSide" style="display:none">
+      <div class="orders-list" id="ordersList"></div>
     </div>
     <div class="sidebar-foot">
       <span class="manager-name" id="managerName"></span>
@@ -82,6 +86,15 @@
         <div class="chat-empty-text">Выберите товар слева или добавьте новый</div>
       </div>
       <div class="catalog-editor" id="catalogEditor" style="display:none"></div>
+    </div>
+
+    <!-- РАЗДЕЛ ЗАКАЗЫ -->
+    <div class="section-orders" id="sectionOrders" style="display:none">
+      <div class="catalog-empty" id="orderDetailEmpty">
+        <div class="chat-empty-icon">🧾</div>
+        <div class="chat-empty-text">Выберите заказ или обращение слева</div>
+      </div>
+      <div class="order-detail" id="orderDetail" style="display:none"></div>
     </div>
   </main>
 </div>

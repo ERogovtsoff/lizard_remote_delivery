@@ -185,3 +185,76 @@ export async function setProductActive(id, isActive) {
   if (!res.ok) throw new Error(`setProductActive failed: ${res.status}`);
   return true;
 }
+
+// ====================== ЗАКАЗЫ И ОБРАЩЕНИЯ ======================
+
+// Список заказов (новейшие первыми) с позициями.
+export async function loadOrders() {
+  return get('orders', {
+    select: '*,order_items(*)',
+    order: 'created_at.desc',
+    limit: '200',
+  });
+}
+
+// Список обращений (новейшие первыми).
+export async function loadInquiries() {
+  return get('inquiries', {
+    select: '*',
+    order: 'created_at.desc',
+    limit: '200',
+  });
+}
+
+// Сменить статус заказа + (опционально) поставить клиенту уведомление в outbox.
+export async function setOrderStatus(orderId, status, clientMessage, customerTgId, managerUsername) {
+  const res = await fetch(`${BASE}/orders?id=eq.${encodeURIComponent(orderId)}`, {
+    method: 'PATCH',
+    headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ status, updated_at: new Date().toISOString() }),
+  });
+  if (!res.ok) throw new Error(`setOrderStatus failed: ${res.status}`);
+  // Уведомление клиенту — через ту же очередь outbox, что разбирает бот
+  if (clientMessage && customerTgId) {
+    await queueClientNotice(customerTgId, clientMessage, managerUsername);
+  }
+  return true;
+}
+
+// Сменить статус обращения.
+export async function setInquiryStatus(inquiryId, status, clientMessage, customerTgId, managerUsername) {
+  const res = await fetch(`${BASE}/inquiries?id=eq.${encodeURIComponent(inquiryId)}`, {
+    method: 'PATCH',
+    headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ status, updated_at: new Date().toISOString() }),
+  });
+  if (!res.ok) throw new Error(`setInquiryStatus failed: ${res.status}`);
+  if (clientMessage && customerTgId) {
+    await queueClientNotice(customerTgId, clientMessage, managerUsername);
+  }
+  return true;
+}
+
+// Сохранить внутреннюю заметку менеджера к заказу.
+export async function setOrderNote(orderId, note) {
+  const res = await fetch(`${BASE}/orders?id=eq.${encodeURIComponent(orderId)}`, {
+    method: 'PATCH',
+    headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ manager_note: note }),
+  });
+  if (!res.ok) throw new Error(`setOrderNote failed: ${res.status}`);
+  return true;
+}
+
+// Положить клиентское уведомление в очередь (бот доставит и сохранит в messages).
+async function queueClientNotice(customerTgId, text, managerUsername) {
+  await fetch(`${BASE}/outbox`, {
+    method: 'POST',
+    headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+    body: JSON.stringify({
+      customer_tg_id: customerTgId,
+      text: text,
+      manager_username: managerUsername || null,
+    }),
+  });
+}

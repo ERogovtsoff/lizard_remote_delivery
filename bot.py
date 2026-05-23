@@ -307,6 +307,29 @@ async def save_message(customer_tg_id: int, direction: str, *, text: str = None,
         log.warning("save_message error: %s", e)
 
 
+async def notify_client(bot: Bot, customer_tg_id: int, text: str) -> bool:
+    """
+    Отправляет клиенту собственное уведомление бота (смена статуса, напоминание
+    и т.п.) И сохраняет его в messages как sender='bot', чтобы оно было видно
+    в чате на dashboard. Возвращает True при успешной доставке.
+    """
+    delivered = False
+    try:
+        await bot.send_message(customer_tg_id, text)
+        delivered = True
+    except TelegramForbiddenError:
+        log.info("notify_client: клиент %s заблокировал бота", customer_tg_id)
+    except Exception as e:
+        log.warning("notify_client send failed for %s: %s", customer_tg_id, e)
+    # Пишем в историю в любом случае (даже недоставленное — для полноты картины),
+    # но помечаем источник. Текст храним без HTML-курсива.
+    await save_message(
+        customer_tg_id, "out",
+        text=text, sender="bot", source="bot",
+    )
+    return delivered
+
+
 async def extract_and_save_incoming(message: Message, bot: Bot) -> None:
     """
     Сохраняет входящее сообщение клиента в БД (текст + вложение в Storage).
@@ -1573,13 +1596,10 @@ async def cb_order_status(cb: CallbackQuery, bot: Bot) -> None:
     # Уведомляем клиента (если для статуса задан текст)
     client_msg = ORDER_STATUS[new_status].get("client_msg")
     if client_msg:
-        try:
-            await bot.send_message(
-                order["customer_tg_id"],
-                f"{client_msg}\n\n<i>Заказ №{order_id}</i>",
-            )
-        except Exception as e:
-            log.warning("Failed to notify client about status: %s", e)
+        await notify_client(
+            bot, order["customer_tg_id"],
+            f"{client_msg}\n\nЗаказ №{order_id}",
+        )
 
     await cb.answer(f"Статус: {ORDER_STATUS[new_status]['label']}")
 
@@ -2041,17 +2061,18 @@ async def check_abandoned_carts(bot: Bot) -> None:
 
             # Шлём напоминание. chat_id для лички = tg_id клиента.
             try:
-                await bot.send_message(
-                    cid,
+                delivered = await notify_client(
+                    bot, cid,
                     "🛒 Вы оставили товары в корзине!\n\n"
                     "Они вас ждут — оформите заказ, пока всё в наличии. "
                     "Откройте магазин кнопкой «Открыть» ниже 💛",
                 )
-                await supabase_patch(
-                    "customers", {"tg_id": f"eq.{cid}"},
-                    {"cart_reminder_sent_at": now_iso()},
-                )
-                log.info("Напоминание о корзине отправлено клиенту %s", cid)
+                if delivered:
+                    await supabase_patch(
+                        "customers", {"tg_id": f"eq.{cid}"},
+                        {"cart_reminder_sent_at": now_iso()},
+                    )
+                    log.info("Напоминание о корзине отправлено клиенту %s", cid)
             except Exception as e:
                 # Клиент не начинал диалог с ботом → написать первым нельзя. Это норма.
                 log.debug("Не удалось напомнить клиенту %s: %s", cid, e)
@@ -2069,13 +2090,14 @@ async def abandoned_cart_worker(bot: Bot) -> None:
         await asyncio.sleep(3600)   # раз в час
 
 
-async def process_outbox(bot: Bot) -> None:
+async def process_outbox(bot: Bot) -> int:
     """
     Один проход по очереди исходящих с dashboard: берём неотправленные записи,
     шлём клиенту в Telegram, сохраняем в messages, помечаем sent_at.
+    Возвращает количество обработанных записей (0 — очередь была пуста).
     """
     if not supabase_ready():
-        return
+        return 0
     try:
         # Неотправленные записи (sent_at IS NULL), старейшие первыми
         rows = await supabase_get("outbox", {
@@ -2085,7 +2107,7 @@ async def process_outbox(bot: Bot) -> None:
             "limit": "20",
         })
         if not rows:
-            return
+            return 0
 
         for row in rows:
             outbox_id = row["id"]
@@ -2140,18 +2162,32 @@ async def process_outbox(bot: Bot) -> None:
                 await supabase_patch("outbox", {"id": f"eq.{outbox_id}"},
                                      {"sent_at": now_iso(), "error": str(e)[:200]})
                 log.warning("Outbox %s send failed: %s", outbox_id, e)
+        return len(rows)
     except Exception as e:
         log.warning("process_outbox error: %s", e)
+        return 0
 
 
 async def outbox_worker(bot: Bot) -> None:
-    """Периодически разбирает очередь исходящих с dashboard (каждые ~2 секунды)."""
+    """
+    Разбирает очередь исходящих с dashboard.
+    Адаптивный интервал: пока есть работа — опрашиваем часто (2с), при пустой
+    очереди постепенно увеличиваем паузу (2→5→10→30с), чтобы не нагружать БД
+    и не засорять логи холостыми запросами. Появилась работа — снова 2с.
+    """
+    INTERVALS = [2, 3, 5, 10]   # лесенка задержек при простое (макс 10с — баланс отклика и нагрузки)
+    idx = 0
     while True:
         try:
-            await process_outbox(bot)
+            processed = await process_outbox(bot)
+            if processed > 0:
+                idx = 0                     # была работа — опрашиваем часто
+            else:
+                idx = min(idx + 1, len(INTERVALS) - 1)   # простой — замедляемся
         except Exception as e:
             log.warning("outbox_worker iteration failed: %s", e)
-        await asyncio.sleep(2)   # быстрый отклик для чата
+            idx = 0                         # при ошибке вернёмся к частому опросу
+        await asyncio.sleep(INTERVALS[idx])
 
 
 async def main() -> None:
