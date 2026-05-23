@@ -266,6 +266,8 @@ async function changeOrderStatus(order, status) {
   try {
     await api.setOrderStatus(order.id, status, fullMsg, order.customer_tg_id, managerUsername);
     order.status = status;
+    const inArr = orders.find(x => String(x.id) === String(order.id));
+    if (inArr) inArr.status = status;
     setDetailMsg('Статус обновлён ✓' + (fullMsg ? ' Клиент уведомлён.' : ''));
     renderOrdersList();
     renderOrderDetail(order.id);     // перерисовка покажет новый статус и доступность переписки
@@ -344,7 +346,10 @@ async function changeInquiryStatus(q, status) {
   setDetailMsg('Меняем статус…');
   try {
     await api.setInquiryStatus(q.id, status, clientMsg, q.customer_tg_id, managerUsername);
+    // Обновляем статус и в самом объекте, и в массиве (на случай если это разные ссылки)
     q.status = status;
+    const inArr = inquiries.find(x => String(x.id) === String(q.id));
+    if (inArr) inArr.status = status;
     setDetailMsg('Статус обновлён ✓' + (clientMsg ? ' Клиент уведомлён.' : ''));
     renderOrdersList();
     renderInquiryDetail(q.id);
@@ -452,8 +457,8 @@ async function refreshConvo() {
   if (!box || !convoContext) return;
   let msgs = [];
   try {
-    if (convoContext.order_id) msgs = await api.loadOrderMessages(convoContext.order_id);
-    else if (convoContext.inquiry_id) msgs = await api.loadInquiryMessages(convoContext.inquiry_id);
+    if (convoContext.order_id) msgs = await api.loadOrderMessages(convoContext.order_id, convoCustomerId);
+    else if (convoContext.inquiry_id) msgs = await api.loadInquiryMessages(convoContext.inquiry_id, convoCustomerId);
   } catch (e) {
     box.innerHTML = '<div class="convo-empty">Не удалось загрузить переписку</div>';
     return;

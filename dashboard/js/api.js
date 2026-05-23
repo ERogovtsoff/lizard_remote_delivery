@@ -93,23 +93,57 @@ export async function loadConversation(customerTgId) {
 }
 
 // Переписка в рамках конкретного обращения.
-export async function loadInquiryMessages(inquiryId) {
-  return get('messages', {
+// Показываем привязанные к обращению + непривязанные сообщения этого клиента
+// (последние — для устойчивости к старым/непривязанным сообщениям).
+export async function loadInquiryMessages(inquiryId, customerTgId) {
+  const bound = await get('messages', {
     select: '*',
     inquiry_id: `eq.${inquiryId}`,
     order: 'created_at.asc',
     limit: '500',
   });
+  if (customerTgId == null) return bound;
+  // Непривязанные сообщения клиента (inquiry_id и order_id оба пусты)
+  let orphan = [];
+  try {
+    orphan = await get('messages', {
+      select: '*',
+      customer_tg_id: `eq.${customerTgId}`,
+      inquiry_id: 'is.null',
+      order_id: 'is.null',
+      order: 'created_at.asc',
+      limit: '500',
+    });
+  } catch (_) {}
+  // Объединяем и сортируем по времени
+  const all = [...bound, ...orphan];
+  all.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  return all;
 }
 
-// Переписка в рамках конкретного заказа.
-export async function loadOrderMessages(orderId) {
-  return get('messages', {
+// Переписка в рамках конкретного заказа (с тем же fallback).
+export async function loadOrderMessages(orderId, customerTgId) {
+  const bound = await get('messages', {
     select: '*',
     order_id: `eq.${orderId}`,
     order: 'created_at.asc',
     limit: '500',
   });
+  if (customerTgId == null) return bound;
+  let orphan = [];
+  try {
+    orphan = await get('messages', {
+      select: '*',
+      customer_tg_id: `eq.${customerTgId}`,
+      inquiry_id: 'is.null',
+      order_id: 'is.null',
+      order: 'created_at.asc',
+      limit: '500',
+    });
+  } catch (_) {}
+  const all = [...bound, ...orphan];
+  all.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  return all;
 }
 
 // Пометить входящие сообщения клиента прочитанными.
@@ -260,9 +294,9 @@ export async function setOrderStatus(orderId, status, clientMessage, customerTgI
     body: JSON.stringify({ status, updated_at: new Date().toISOString() }),
   });
   if (!res.ok) throw new Error(`setOrderStatus failed: ${res.status}`);
-  // Уведомление клиенту — через ту же очередь outbox, что разбирает бот
+  // Уведомление клиенту — через ту же очередь outbox, с привязкой к заказу
   if (clientMessage && customerTgId) {
-    await queueClientNotice(customerTgId, clientMessage, managerUsername);
+    await queueClientNotice(customerTgId, clientMessage, managerUsername, { order_id: orderId });
   }
   return true;
 }
@@ -276,7 +310,7 @@ export async function setInquiryStatus(inquiryId, status, clientMessage, custome
   });
   if (!res.ok) throw new Error(`setInquiryStatus failed: ${res.status}`);
   if (clientMessage && customerTgId) {
-    await queueClientNotice(customerTgId, clientMessage, managerUsername);
+    await queueClientNotice(customerTgId, clientMessage, managerUsername, { inquiry_id: inquiryId });
   }
   return true;
 }
@@ -293,7 +327,7 @@ export async function setOrderNote(orderId, note) {
 }
 
 // Положить клиентское уведомление в очередь (бот доставит и сохранит в messages).
-async function queueClientNotice(customerTgId, text, managerUsername) {
+async function queueClientNotice(customerTgId, text, managerUsername, context = {}) {
   await fetch(`${BASE}/outbox`, {
     method: 'POST',
     headers: { ...HEADERS, 'Prefer': 'return=minimal' },
@@ -301,6 +335,8 @@ async function queueClientNotice(customerTgId, text, managerUsername) {
       customer_tg_id: customerTgId,
       text: text,
       manager_username: managerUsername || null,
+      inquiry_id: context.inquiry_id || null,
+      order_id: context.order_id || null,
     }),
   });
 }
