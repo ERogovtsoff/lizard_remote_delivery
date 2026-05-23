@@ -172,9 +172,11 @@ _RETRYABLE = (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout,
 
 
 async def _supabase_request(method: str, path: str, *, params=None, json=None,
-                            headers_extra=None, retries: int = 3):
+                            headers_extra=None, retries: int = 5):
     """
     Выполняет запрос к Supabase REST с автоповтором при сетевых ошибках.
+    Пауза растёт экспоненциально с потолком 5с: 0.5 → 1 → 2 → 4 → (далее 5).
+    Перекрывает сетевой провал примерно до 12-15 секунд.
     Возвращает httpx.Response или None (если все попытки провалились).
     """
     if not supabase_ready():
@@ -189,16 +191,14 @@ async def _supabase_request(method: str, path: str, *, params=None, json=None,
         headers.update(headers_extra)
 
     client = get_http_client()
-    last_err = None
     for attempt in range(1, retries + 1):
         try:
             r = await client.request(method, url, headers=headers, params=params, json=json)
             return r
         except _RETRYABLE as e:
-            last_err = e
             if attempt < retries:
-                # Короткая нарастающая пауза: 0.5с, 1с, ... — даём сети «отдышаться»
-                delay = 0.5 * attempt
+                # Экспоненциальная пауза с потолком 5с: 0.5, 1, 2, 4, 5, 5, ...
+                delay = min(0.5 * (2 ** (attempt - 1)), 5.0)
                 log.warning("Supabase %s %s: сетевая ошибка (попытка %d/%d), повтор через %.1fс",
                             method, path, attempt, retries, delay)
                 await asyncio.sleep(delay)
