@@ -472,7 +472,6 @@ function renderOrderDetail(id) {
   };
 
   // Редактирование/удаление позиций заказа
-  const box = document.getElementById('orderDetail');
   box.querySelectorAll('.di-qty-btn').forEach(btn => {
     btn.onclick = async () => {
       const itemId = btn.getAttribute('data-item-id');
