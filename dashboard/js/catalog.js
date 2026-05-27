@@ -67,23 +67,33 @@ function blankProduct() {
 }
 
 export function startNewProduct() {
-  draft = blankProduct();
-  activeId = draft.id;
-  renderEditor();
-  renderList();
+  try {
+    draft = blankProduct();
+    activeId = draft.id;
+    renderEditor();
+    renderList();
+  } catch (e) {
+    console.error('[catalog] startNewProduct error:', e);
+    alert('Ошибка открытия редактора: ' + e.message);
+  }
 }
 
 function openEditor(id) {
-  const prod = products.find(p => p.id === id);
-  if (!prod) return;
-  // Глубокая копия в черновик
-  draft = JSON.parse(JSON.stringify(prod));
-  if (!Array.isArray(draft.images)) draft.images = [];
-  if (!Array.isArray(draft.sizes)) draft.sizes = [];
-  if (!draft.stock || typeof draft.stock !== 'object') draft.stock = {};
-  activeId = id;
-  renderEditor();
-  renderList();
+  try {
+    const prod = products.find(p => p.id === id);
+    if (!prod) { console.warn('[catalog] товар не найден:', id); return; }
+    // Глубокая копия в черновик
+    draft = JSON.parse(JSON.stringify(prod));
+    if (!Array.isArray(draft.images)) draft.images = [];
+    if (!Array.isArray(draft.sizes)) draft.sizes = [];
+    if (!draft.stock || typeof draft.stock !== 'object') draft.stock = {};
+    activeId = id;
+    renderEditor();
+    renderList();
+  } catch (e) {
+    console.error('[catalog] openEditor error:', e);
+    alert('Ошибка открытия товара: ' + e.message);
+  }
 }
 
 function renderEditor() {
@@ -328,7 +338,9 @@ function setStatus(text, isError) {
 // ============ ВНЕШНИЙ API МОДУЛЯ ============
 
 export function setupCatalog() {
-  document.getElementById('catalogAddBtn').onclick = startNewProduct;
+  const addBtn = document.getElementById('catalogAddBtn');
+  if (!addBtn) { console.error('[catalog] catalogAddBtn не найден в DOM'); return; }
+  addBtn.onclick = () => { console.log('[catalog] клик Добавить товар'); startNewProduct(); };
   const searchInput = document.getElementById('catalogSearch');
-  searchInput.oninput = () => { search = searchInput.value; renderList(); };
+  if (searchInput) searchInput.oninput = () => { search = searchInput.value; renderList(); };
 }

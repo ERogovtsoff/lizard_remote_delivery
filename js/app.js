@@ -14,6 +14,7 @@
 //     после первой загрузки данных).
 
 import { initTelegram, onThemeChanged, onViewportChanged, tg, getUser, setManagers } from './tg.js';
+import { CONFIG } from './config.js';
 import { applyTheme } from './theme.js';
 import { setLang, applyI18N, t } from './i18n.js';
 import {
@@ -274,9 +275,12 @@ async function bootstrap() {
   // приложение открыто вне бота / по кривой ссылке — часть функций не работает.
   const guestBar = document.getElementById('guestBar');
   if (guestBar && !getUser()) {
-    guestBar.textContent = t('guestWarning');
+    const botUrl = `https://t.me/${CONFIG.BOT_USERNAME}`;
+    guestBar.innerHTML = `<span class="guest-text">${t('guestWarning')}</span>`
+      + `<a class="guest-link" href="${botUrl}" target="_blank" rel="noopener">${t('guestOpenBot')}</a>`;
     guestBar.style.display = 'block';
-    guestBar.onclick = () => { guestBar.style.display = 'none'; };  // тап — скрыть
+    // Клик по тексту (не по ссылке) скрывает баннер
+    guestBar.querySelector('.guest-text').onclick = () => { guestBar.style.display = 'none'; };
   }
 
   // Предзагружаем аватарку пользователя в кэш браузера — чтобы при открытии
@@ -325,6 +329,42 @@ async function bootstrap() {
     try { tg?.disableVerticalSwipes?.(); } catch (_) {}
   });
   onThemeChanged(() => applyTheme(state.settings.theme));
+
+  // Когда приложение снова становится активным (вернулись с другого устройства,
+  // развернули Mini App, переключили вкладку) — перечитываем корзину/избранное
+  // из БД. Это устраняет остаточный рассинхрон #12: открытое в фоне приложение
+  // не знало об изменениях, сделанных на другом устройстве.
+  let lastResync = 0;
+  async function resyncFromDb() {
+    if (!getUser()) return;                 // гость — синхронизировать нечего
+    const now = Date.now();
+    if (now - lastResync < 2000) return;    // не чаще раза в 2с
+    lastResync = now;
+    try {
+      const [favs, cart] = await Promise.all([
+        api.loadFavorites().catch(() => null),
+        api.loadCart().catch(() => null),
+      ]);
+      const favsChanged = mergeFavorites(favs);
+      const cartChanged = mergeCart(cart);
+      if (favsChanged || cartChanged) {
+        updateBadges();
+        // Если открыта корзина/избранное — перерисуем, чтобы изменения были видны
+        const cur = router.current();
+        if (cur === 'cart' || cur === 'favorites') {
+          router.navigate(cur, router.lastContext());
+        }
+      }
+    } catch (e) {
+      console.warn('[resync] failed:', e);
+    }
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') resyncFromDb();
+  });
+  // Telegram-специфичные события активации, если доступны
+  try { tg?.onEvent?.('activated', resyncFromDb); } catch (_) {}
+  window.addEventListener('focus', resyncFromDb);
 
   // Подписка на обновление каталога — обновляем grid НА ТЕКУЩЕЙ странице
   // без полной перерисовки. Это убирает моргание картинок.
