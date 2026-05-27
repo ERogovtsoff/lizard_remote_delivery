@@ -1316,3 +1316,85 @@ html, body {
   font-size: 13px; margin-left: 2px;
 }
 .di-del:hover { background: #fde8e6; border-radius: 5px; }
+
+/* ====================== Процессные элементы менеджера ====================== */
+/* Сводка сверху */
+.list-summary {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  padding: 0 16px 8px;
+}
+.sum-chip {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.sum-chip b { color: var(--text); font-size: 13px; }
+
+/* Чекбокс «только мои» */
+.mine-check {
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 16px 10px;
+  font-size: 13px; color: var(--text-secondary);
+  cursor: pointer;
+}
+
+/* Возраст и назначение в строке списка */
+.row-age, .row-assign {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: 6px;
+}
+.row-assign { color: var(--accent-dark); }
+
+/* Строка назначения в карточке */
+.detail-assign-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.btn-take {
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px; font-weight: 600;
+  cursor: pointer;
+}
+.btn-take:hover { background: #d0f5f5; }
+.assign-badge {
+  background: var(--accent-soft); color: var(--accent-dark);
+  border-radius: 8px; padding: 5px 10px; font-size: 12px; font-weight: 600;
+}
+.status-age { font-size: 12px; color: var(--text-muted); }
+.paid-badge {
+  background: #e6f7e6; color: #2a7a2a;
+  border-radius: 8px; padding: 4px 9px; font-size: 12px; font-weight: 600;
+}
+
+/* Оплата и трек */
+.paid-check { display: flex; align-items: center; gap: 6px; font-size: 13px; margin-bottom: 8px; cursor: pointer; }
+.paid-date { color: var(--text-muted); font-size: 12px; }
+.track-row { display: flex; gap: 8px; }
+.track-row input {
+  flex: 1; border: 1.5px solid var(--border); border-radius: 8px;
+  padding: 8px 12px; font-size: 13px; font-family: inherit; outline: none;
+}
+.track-row input:focus { border-color: var(--accent); }
+.cancel-reason {
+  background: #fde8e6; color: var(--danger);
+  border-radius: 8px; padding: 8px 12px; font-size: 13px;
+}
+
+/* История статусов */
+.status-history { display: flex; flex-direction: column; gap: 4px; }
+.sh-row {
+  display: flex; justify-content: space-between; gap: 10px;
+  padding: 6px 10px; background: var(--bg); border-radius: 6px;
+  font-size: 12px;
+}
+.sh-status { font-weight: 600; }
+.sh-meta { color: var(--text-muted); white-space: nowrap; }
+.sh-empty { color: var(--text-muted); font-size: 12px; padding: 6px; }

@@ -37,10 +37,85 @@ let searchQuery = '';          // строка поиска по списку
 let statusFilter = 'active';   // active | all | <конкретный статус>
 let unreadOrders = new Set();  // id заказов с непрочитанными входящими
 let unreadInquiries = new Set(); // id обращений с непрочитанными
+let onlyMine = false;          // фильтр «только мои» (назначенные мне)
 
 // Активен ли заказ/обращение (можно ли писать клиенту)
 function isOrderActive(status) { return status !== 'completed' && status !== 'cancelled'; }
 function isInquiryActive(status) { return status !== 'closed'; }
+
+// Заготовки сообщений-действий для статусов (#2). Менеджер дополняет и отправляет.
+const STATUS_TEMPLATES = {
+  awaiting_payment: 'Для оформления заказа нужно внести оплату.\nРеквизиты: \nСумма к оплате: \nПосле оплаты пришлите, пожалуйста, чек 🙏',
+  shipping: 'Ваш заказ передан в доставку 📦\nТрек-номер: \nОриентировочный срок: ',
+  ready: 'Ваш заказ готов к выдаче 🎉\nКак вам удобнее забрать?',
+};
+
+// Если для статуса есть заготовка — подставляет её в поле ответа менеджера.
+function applyStatusTemplate(status, orderId) {
+  const tpl = STATUS_TEMPLATES[status];
+  if (!tpl) return;
+  const input = document.getElementById('convoInput');
+  if (input && !input.value.trim()) {
+    input.value = tpl;
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+    input.focus();
+    setDetailMsg('Подставлена заготовка — дополните и отправьте клиенту');
+  }
+}
+
+// Загружает и рисует историю статусов в блок #statusHistory.
+async function loadAndRenderHistory(context) {
+  const box = document.getElementById('statusHistory');
+  if (!box) return;
+  try {
+    const rows = await api.loadStatusHistory(context);
+    if (!rows || !rows.length) { box.innerHTML = '<div class="sh-empty">Изменений пока нет</div>'; return; }
+    const label = (s) => (ORDER_STATUS[s] && ORDER_STATUS[s].label) || (INQUIRY_STATUS[s] && INQUIRY_STATUS[s].label) || s || '—';
+    box.innerHTML = rows.map(r => {
+      const who = r.changed_by ? `@${escapeHtml(r.changed_by)}` : 'система';
+      const when = `${escapeHtml(formatFullDate(r.created_at))} ${escapeHtml(formatTime(r.created_at))}`;
+      const from = r.old_status ? `${escapeHtml(label(r.old_status))} → ` : '';
+      return `<div class="sh-row"><span class="sh-status">${from}${escapeHtml(label(r.new_status))}</span><span class="sh-meta">${who} · ${when}</span></div>`;
+    }).join('');
+  } catch (e) {
+    box.innerHTML = '<div class="sh-empty">Не удалось загрузить историю</div>';
+  }
+}
+
+// Сводка сверху (#9): сколько заказов в ключевых статусах + сумма «в работе».
+function renderSummary() {
+  if (activeTab !== 'orders') {
+    const newInq = inquiries.filter(q => q.status === 'new').length;
+    const inWork = inquiries.filter(q => q.status === 'in_progress').length;
+    return `<div class="list-summary">
+      <span class="sum-chip">Новых: <b>${newInq}</b></span>
+      <span class="sum-chip">В работе: <b>${inWork}</b></span>
+    </div>`;
+  }
+  const active = orders.filter(o => isOrderActive(o.status));
+  const awaitingPay = orders.filter(o => o.status === 'awaiting_payment').length;
+  const unpaidSum = active.filter(o => !o.is_paid).reduce((s, o) => s + (Number(o.total_usd) || 0), 0);
+  return `<div class="list-summary">
+    <span class="sum-chip">Активных: <b>${active.length}</b></span>
+    <span class="sum-chip">Ждут оплаты: <b>${awaitingPay}</b></span>
+    <span class="sum-chip">В работе: <b>$${unpaidSum.toFixed(0)}</b></span>
+  </div>`;
+}
+
+// Человекочитаемый возраст: «2 дня», «5 ч», «10 мин».
+function timeAgo(iso) {
+  if (!iso) return '';
+  const diff = Date.now() - new Date(iso).getTime();
+  if (diff < 0) return '';
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return 'только что';
+  if (min < 60) return `${min} мин`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h} ч`;
+  const d = Math.floor(h / 24);
+  return `${d} дн`;
+}
 
 // Навешивает копирование Telegram ID клиента по кнопке в карточке.
 function setupCopyId() {
@@ -82,6 +157,21 @@ function applyListFilters(items) {
       const tgId = String(it.customer_tg_id);
       return name.includes(q) || num.includes(q) || tgId.includes(q);
     });
+  }
+  // Фильтр «только мои» (#8)
+  if (onlyMine) {
+    items = items.filter(it => it.assigned_to === managerUsername);
+  }
+  // Сортировка: залежавшиеся сверху (давний status_changed_at = выше) для активных.
+  // Для «все/конкретный статус» — по дате создания (свежие сверху).
+  if (statusFilter === 'active') {
+    items.sort((a, b) => {
+      const ta = new Date(a.status_changed_at || a.updated_at || a.created_at).getTime();
+      const tb = new Date(b.status_changed_at || b.updated_at || b.created_at).getTime();
+      return ta - tb;   // меньшее время (давнее) — выше
+    });
+  } else {
+    items.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   }
   return items;
 }
@@ -252,6 +342,7 @@ function renderOrdersList() {
       </button>
     </div>
     <button class="new-order-btn" id="newOrderBtn">➕ Новый заказ</button>
+    ${renderSummary()}
     <div class="list-controls">
       <input type="text" class="list-search" id="listSearch" placeholder="Поиск: номер, имя, ID…" value="${escapeHtml(searchQuery)}">
       <select class="list-filter" id="listFilter">
@@ -259,6 +350,7 @@ function renderOrdersList() {
           `<option value="${k}" ${statusFilter === k ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}
       </select>
     </div>
+    <label class="mine-check"><input type="checkbox" id="onlyMineChk" ${onlyMine ? 'checked' : ''}> Только мои</label>
     <div class="orders-items">`;
 
   if (!items.length) {
@@ -275,13 +367,15 @@ function renderOrdersList() {
         const st = ORDER_STATUS[it.status] || { label: it.status };
         const sumLabel = it.currency === 'BYN' ? `${it.total_byn} BYN` : `$${it.total_usd}`;
         const unread = unreadOrders.has(String(it.id)) ? '<span class="unread-dot" title="Есть непрочитанное сообщение"></span>' : '';
+        const age = isOrderActive(it.status) ? `<span class="row-age">⏱ ${timeAgo(it.status_changed_at || it.updated_at)}</span>` : '';
+        const assign = it.assigned_to ? `<span class="row-assign">👤 ${escapeHtml(it.assigned_to)}</span>` : '';
         return `<div class="order-row${active}${unread ? ' has-unread' : ''}" data-id="${it.id}">
           <div class="order-row-top">
             <span class="order-row-id">${unread}Заказ №${it.id}</span>
             <span class="order-row-sum">${escapeHtml(sumLabel)}</span>
           </div>
           <div class="order-row-name">${escapeHtml(name)}</div>
-          <div class="order-row-status">${escapeHtml(st.label)}</div>
+          <div class="order-row-status">${escapeHtml(st.label)} ${age} ${assign}</div>
         </div>`;
       } else {
         const st = INQUIRY_STATUS[it.status] || { label: it.status };
@@ -317,6 +411,8 @@ function renderOrdersList() {
   }
   const filterSel = document.getElementById('listFilter');
   if (filterSel) filterSel.onchange = () => { statusFilter = filterSel.value; renderOrdersList(); };
+  const mineChk = document.getElementById('onlyMineChk');
+  if (mineChk) mineChk.onchange = () => { onlyMine = mineChk.checked; renderOrdersList(); };
 
   list.querySelectorAll('.orders-tab').forEach(t => {
     t.onclick = () => { activeTab = t.getAttribute('data-tab'); activeId = null; statusFilter = 'active'; searchQuery = ''; renderOrdersList(); clearDetail(); };
@@ -403,6 +499,13 @@ function renderOrderDetail(id) {
       <div class="detail-quickstatus">
         <div class="status-actions">${statusButtons}</div>
       </div>
+      <div class="detail-assign-row">
+        ${o.assigned_to
+          ? `<span class="assign-badge">👤 ${escapeHtml(o.assigned_to)}</span>`
+          : `<button class="btn-take" id="takeOrderBtn">✋ Взять в работу</button>`}
+        <span class="status-age" title="Время в текущем статусе">⏱ в статусе ${timeAgo(o.status_changed_at || o.updated_at)}</span>
+        ${o.is_paid ? '<span class="paid-badge">💳 оплачен</span>' : ''}
+      </div>
       <details class="detail-collapse">
         <summary>Детали заказа, статус, заметка</summary>
         <div class="detail-meta">
@@ -440,6 +543,25 @@ function renderOrderDetail(id) {
           <textarea id="orderNote" rows="2" placeholder="Внутренняя заметка (клиент не видит)">${escapeHtml(o.manager_note || '')}</textarea>
           <button class="btn-light" id="orderNoteSave">Сохранить заметку</button>
         </div>
+        <div class="detail-section">
+          <div class="detail-section-title">Оплата и доставка</div>
+          <label class="paid-check">
+            <input type="checkbox" id="orderPaid" ${o.is_paid ? 'checked' : ''}> Заказ оплачен
+            ${o.paid_at ? `<span class="paid-date">(${escapeHtml(formatFullDate(o.paid_at))})</span>` : ''}
+          </label>
+          <div class="track-row">
+            <input type="text" id="orderTrack" placeholder="Трек-номер посылки" value="${escapeHtml(o.tracking_number || '')}">
+            <button class="btn-light" id="orderTrackSave">Сохранить</button>
+          </div>
+          <label class="notify-check" style="margin-top:6px">
+            <input type="checkbox" id="trackNotify" checked> Отправить трек клиенту
+          </label>
+        </div>
+        ${o.cancel_reason ? `<div class="detail-section"><div class="cancel-reason">❌ Причина отмены: ${escapeHtml(o.cancel_reason)}</div></div>` : ''}
+        <div class="detail-section">
+          <div class="detail-section-title">История статусов</div>
+          <div class="status-history" id="statusHistory">загрузка…</div>
+        </div>
       </details>
       <div class="detail-status-msg" id="detailStatusMsg"></div>
     </div>
@@ -454,6 +576,56 @@ function renderOrderDetail(id) {
   const mb = document.getElementById('mobileBack');
   if (mb) mb.onclick = backToList;
   setupCopyId();
+
+  // Взять в работу (#8)
+  const takeBtn = document.getElementById('takeOrderBtn');
+  if (takeBtn) takeBtn.onclick = async () => {
+    takeBtn.disabled = true;
+    try {
+      await api.assignManager({ order_id: o.id }, managerUsername);
+      o.assigned_to = managerUsername;
+      const inArr = orders.find(x => String(x.id) === String(o.id));
+      if (inArr) inArr.assigned_to = managerUsername;
+      renderOrderDetail(o.id);
+      renderOrdersList();
+    } catch (e) { console.error(e); setDetailMsg('Ошибка назначения', true); takeBtn.disabled = false; }
+  };
+
+  // Отметка оплаты (#4)
+  const paidChk = document.getElementById('orderPaid');
+  if (paidChk) paidChk.onchange = async () => {
+    try {
+      await api.setPaid(o.id, paidChk.checked);
+      o.is_paid = paidChk.checked;
+      o.paid_at = paidChk.checked ? new Date().toISOString() : null;
+      const inArr = orders.find(x => String(x.id) === String(o.id));
+      if (inArr) { inArr.is_paid = o.is_paid; inArr.paid_at = o.paid_at; }
+      setDetailMsg('Отметка оплаты сохранена ✓');
+      renderOrderDetail(o.id);
+    } catch (e) { console.error(e); setDetailMsg('Ошибка', true); paidChk.checked = !paidChk.checked; }
+  };
+
+  // Трек-номер (#4) — сохранить и опционально отправить клиенту
+  const trackSave = document.getElementById('orderTrackSave');
+  if (trackSave) trackSave.onclick = async () => {
+    const track = document.getElementById('orderTrack').value.trim();
+    trackSave.disabled = true;
+    try {
+      await api.setTrackingNumber(o.id, track);
+      o.tracking_number = track;
+      const notify = document.getElementById('trackNotify')?.checked;
+      if (track && notify) {
+        await api.sendReply(o.customer_tg_id,
+          `Ваш заказ №${o.id} отправлен 📦\nТрек-номер для отслеживания: ${track}`,
+          managerUsername, { order_id: o.id });
+      }
+      setDetailMsg('Трек сохранён ✓' + (track && notify ? ' Клиент уведомлён.' : ''));
+    } catch (e) { console.error(e); setDetailMsg('Ошибка сохранения трека', true); }
+    finally { trackSave.disabled = false; }
+  };
+
+  // История статусов (#3)
+  loadAndRenderHistory({ order_id: o.id });
 
   // Кнопки быстрого статуса
   box.querySelectorAll('[data-status]').forEach(btn => {
@@ -553,8 +725,13 @@ async function saveAddItems(order) {
 async function changeOrderStatus(order, status) {
   if (statusBusy) return;                          // защита от спама
   if (status === order.status) { setDetailMsg('Этот статус уже установлен'); return; }
-  // Подтверждение для необратимой отмены
-  if (status === 'cancelled' && !confirm(`Отменить заказ №${order.id}? Это действие нежелательно отменять.`)) return;
+  // Подтверждение + причина для необратимой отмены
+  let cancelReason = null;
+  if (status === 'cancelled') {
+    if (!confirm(`Отменить заказ №${order.id}?`)) return;
+    cancelReason = prompt('Причина отмены (необязательно):\nнапр. нет в наличии / клиент отказался / дубль', '') || '';
+  }
+  const oldStatus = order.status;
   statusBusy = true;
   // Блокируем все кнопки статуса визуально
   document.querySelectorAll('.status-actions button, #orderStatusApply').forEach(b => b.disabled = true);
@@ -563,13 +740,17 @@ async function changeOrderStatus(order, status) {
   const fullMsg = clientMsg ? `${clientMsg}\n\nЗаказ №${order.id}` : null;
   setDetailMsg('Меняем статус…');
   try {
-    await api.setOrderStatus(order.id, status, fullMsg, order.customer_tg_id, managerUsername);
+    await api.setOrderStatus(order.id, status, fullMsg, order.customer_tg_id, managerUsername, oldStatus, cancelReason);
     order.status = status;
+    order.status_changed_at = new Date().toISOString();
+    if (cancelReason != null) order.cancel_reason = cancelReason;
     const inArr = orders.find(x => String(x.id) === String(order.id));
-    if (inArr) inArr.status = status;
+    if (inArr) { inArr.status = status; inArr.status_changed_at = order.status_changed_at; }
     setDetailMsg('Статус обновлён ✓' + (fullMsg ? ' Клиент уведомлён.' : ''));
     renderOrdersList();
     renderOrderDetail(order.id);     // перерисовка покажет новый статус и доступность переписки
+    // Заготовка действия для нового статуса (#2): подставляем в поле ответа
+    applyStatusTemplate(status, order.id);
   } catch (e) {
     console.error(e);
     setDetailMsg('Ошибка смены статуса', true);
@@ -613,6 +794,12 @@ function renderInquiryDetail(id) {
         <div class="status-actions">${statusButtons}</div>
         <button class="btn-primary btn-create-order" id="inqCreateOrder">➕ Создать заказ</button>
       </div>
+      <div class="detail-assign-row">
+        ${q.assigned_to
+          ? `<span class="assign-badge">👤 ${escapeHtml(q.assigned_to)}</span>`
+          : `<button class="btn-take" id="takeInqBtn">✋ Взять в работу</button>`}
+        <span class="status-age" title="Время в текущем статусе">⏱ в статусе ${timeAgo(q.status_changed_at || q.updated_at)}</span>
+      </div>
       <details class="detail-collapse">
         <summary>Детали обращения и оформление заказа</summary>
         <div class="detail-meta">
@@ -638,6 +825,11 @@ function renderInquiryDetail(id) {
             </div>
           </div>
         </div>
+        ${q.cancel_reason ? `<div class="detail-section"><div class="cancel-reason">❌ Причина: ${escapeHtml(q.cancel_reason)}</div></div>` : ''}
+        <div class="detail-section">
+          <div class="detail-section-title">История статусов</div>
+          <div class="status-history" id="statusHistory">загрузка…</div>
+        </div>
       </details>
       <div class="detail-status-msg" id="detailStatusMsg"></div>
     </div>
@@ -658,22 +850,41 @@ function renderInquiryDetail(id) {
   if (mbq) mbq.onclick = backToList;
   setupCopyId();
 
+  // Взять в работу (#8)
+  const takeBtn = document.getElementById('takeInqBtn');
+  if (takeBtn) takeBtn.onclick = async () => {
+    takeBtn.disabled = true;
+    try {
+      await api.assignManager({ inquiry_id: q.id }, managerUsername);
+      q.assigned_to = managerUsername;
+      const inArr = inquiries.find(x => String(x.id) === String(q.id));
+      if (inArr) inArr.assigned_to = managerUsername;
+      renderInquiryDetail(q.id);
+      renderOrdersList();
+    } catch (e) { console.error(e); setDetailMsg('Ошибка назначения', true); takeBtn.disabled = false; }
+  };
+
+  // История статусов (#3)
+  loadAndRenderHistory({ inquiry_id: q.id });
+
   setupConvo({ inquiry_id: q.id }, q.customer_tg_id, isInquiryActive(q.status));
 }
 
 async function changeInquiryStatus(q, status) {
   if (statusBusy) return;
+  const oldStatus = q.status;
   statusBusy = true;
   document.querySelectorAll('.status-actions button').forEach(b => b.disabled = true);
   const notify = document.getElementById('inqNotify')?.checked;
   const clientMsg = (notify && INQUIRY_STATUS[status]) ? INQUIRY_STATUS[status].client : null;
   setDetailMsg('Меняем статус…');
   try {
-    await api.setInquiryStatus(q.id, status, clientMsg, q.customer_tg_id, managerUsername);
+    await api.setInquiryStatus(q.id, status, clientMsg, q.customer_tg_id, managerUsername, oldStatus);
     // Обновляем статус и в самом объекте, и в массиве (на случай если это разные ссылки)
     q.status = status;
+    q.status_changed_at = new Date().toISOString();
     const inArr = inquiries.find(x => String(x.id) === String(q.id));
-    if (inArr) inArr.status = status;
+    if (inArr) { inArr.status = status; inArr.status_changed_at = q.status_changed_at; }
     setDetailMsg('Статус обновлён ✓' + (clientMsg ? ' Клиент уведомлён.' : ''));
     renderOrdersList();
     renderInquiryDetail(q.id);

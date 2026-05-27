@@ -314,15 +314,19 @@ export async function loadInquiries() {
   });
 }
 
-// Сменить статус заказа + (опционально) поставить клиенту уведомление в outbox.
-export async function setOrderStatus(orderId, status, clientMessage, customerTgId, managerUsername) {
+// Сменить статус заказа + (опционально) уведомить клиента + записать в историю.
+// oldStatus — прежний статус (для лога); cancelReason — причина при отмене.
+export async function setOrderStatus(orderId, status, clientMessage, customerTgId, managerUsername, oldStatus = null, cancelReason = null) {
+  const now = new Date().toISOString();
+  const patch = { status, updated_at: now, status_changed_at: now };
+  if (cancelReason != null) patch.cancel_reason = cancelReason;
   const res = await fetchRetry(`${BASE}/orders?id=eq.${encodeURIComponent(orderId)}`, {
     method: 'PATCH',
     headers: { ...HEADERS, 'Prefer': 'return=minimal' },
-    body: JSON.stringify({ status, updated_at: new Date().toISOString() }),
+    body: JSON.stringify(patch),
   });
   if (!res.ok) throw new Error(`setOrderStatus failed: ${res.status}`);
-  // Уведомление клиенту — через ту же очередь outbox, с привязкой к заказу
+  logStatusChange({ order_id: orderId }, oldStatus, status, managerUsername);
   if (clientMessage && customerTgId) {
     await queueClientNotice(customerTgId, clientMessage, managerUsername, { order_id: orderId });
   }
@@ -330,16 +334,82 @@ export async function setOrderStatus(orderId, status, clientMessage, customerTgI
 }
 
 // Сменить статус обращения.
-export async function setInquiryStatus(inquiryId, status, clientMessage, customerTgId, managerUsername) {
+export async function setInquiryStatus(inquiryId, status, clientMessage, customerTgId, managerUsername, oldStatus = null, cancelReason = null) {
+  const now = new Date().toISOString();
+  const patch = { status, updated_at: now, status_changed_at: now };
+  if (cancelReason != null) patch.cancel_reason = cancelReason;
   const res = await fetchRetry(`${BASE}/inquiries?id=eq.${encodeURIComponent(inquiryId)}`, {
     method: 'PATCH',
     headers: { ...HEADERS, 'Prefer': 'return=minimal' },
-    body: JSON.stringify({ status, updated_at: new Date().toISOString() }),
+    body: JSON.stringify(patch),
   });
   if (!res.ok) throw new Error(`setInquiryStatus failed: ${res.status}`);
+  logStatusChange({ inquiry_id: inquiryId }, oldStatus, status, managerUsername);
   if (clientMessage && customerTgId) {
     await queueClientNotice(customerTgId, clientMessage, managerUsername, { inquiry_id: inquiryId });
   }
+  return true;
+}
+
+// Записать смену статуса в историю (не критично — не блокируем основную операцию).
+async function logStatusChange(context, oldStatus, newStatus, changedBy) {
+  try {
+    await fetchRetry(`${BASE}/status_history`, {
+      method: 'POST',
+      headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+      body: JSON.stringify({
+        order_id: context.order_id || null,
+        inquiry_id: context.inquiry_id || null,
+        old_status: oldStatus,
+        new_status: newStatus,
+        changed_by: changedBy || null,
+      }),
+    });
+  } catch (e) { console.warn('logStatusChange failed:', e); }
+}
+
+// История статусов заказа/обращения (по возрастанию времени).
+export async function loadStatusHistory(context) {
+  const params = { select: '*', order: 'created_at.asc', limit: '100' };
+  if (context.order_id != null) params.order_id = `eq.${context.order_id}`;
+  else params.inquiry_id = `eq.${context.inquiry_id}`;
+  try {
+    return await get('status_history', params);
+  } catch (e) { return []; }
+}
+
+// Назначить менеджера на заказ/обращение («Взять в работу»).
+export async function assignManager(context, username) {
+  const table = context.order_id != null ? 'orders' : 'inquiries';
+  const id = context.order_id != null ? context.order_id : context.inquiry_id;
+  const res = await fetchRetry(`${BASE}/${table}?id=eq.${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ assigned_to: username, updated_at: new Date().toISOString() }),
+  });
+  if (!res.ok) throw new Error(`assignManager failed: ${res.status}`);
+  return true;
+}
+
+// Сохранить трек-номер заказа.
+export async function setTrackingNumber(orderId, track) {
+  const res = await fetchRetry(`${BASE}/orders?id=eq.${encodeURIComponent(orderId)}`, {
+    method: 'PATCH',
+    headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ tracking_number: track, updated_at: new Date().toISOString() }),
+  });
+  if (!res.ok) throw new Error(`setTrackingNumber failed: ${res.status}`);
+  return true;
+}
+
+// Отметить/снять оплату заказа.
+export async function setPaid(orderId, isPaid) {
+  const res = await fetchRetry(`${BASE}/orders?id=eq.${encodeURIComponent(orderId)}`, {
+    method: 'PATCH',
+    headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ is_paid: isPaid, paid_at: isPaid ? new Date().toISOString() : null, updated_at: new Date().toISOString() }),
+  });
+  if (!res.ok) throw new Error(`setPaid failed: ${res.status}`);
   return true;
 }
 
