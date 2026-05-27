@@ -96,12 +96,17 @@ function applyCustomerData(customer) {
 }
 
 function mergeFavorites(dbFavs) {
-  if (!Array.isArray(dbFavs) || dbFavs.length === 0) return false;
+  // БД — источник истины. Состояние заменяем данными из БД, а не сливаем:
+  // иначе удалённый на другом устройстве товар «воскресал» бы из локального кэша.
+  if (!Array.isArray(dbFavs)) return false;
   const key = f => f.productId + '::' + (f.size || '');
-  const merged = new Map();
-  dbFavs.forEach(f => merged.set(key(f), f));
-  state.favorites.forEach(f => merged.set(key(f), f));
-  const newFavs = Array.from(merged.values());
+  // Разовая миграция: БД пустая, локально есть — заливаем локальное в БД.
+  if (dbFavs.length === 0 && state.favorites.length > 0) {
+    state.favorites.forEach(f => { try { api.addFavorite(f.productId, f.size); } catch (e) {} });
+    return false;
+  }
+  const newFavs = dbFavs.map(f => ({ ...f }));
+  // Без изменений? (тот же состав)
   if (newFavs.length === state.favorites.length &&
       newFavs.every(f => state.favorites.some(s => key(s) === key(f)))) {
     return false;
@@ -112,19 +117,16 @@ function mergeFavorites(dbFavs) {
 }
 
 function mergeCart(dbCart) {
-  if (!Array.isArray(dbCart) || dbCart.length === 0) return false;
+  // БД — источник истины (см. mergeFavorites). Заменяем локальное состояние.
+  if (!Array.isArray(dbCart)) return false;
   const key = c => c.productId + '::' + (c.size || '');
-  const merged = new Map();
-  dbCart.forEach(c => merged.set(key(c), { ...c }));
-  state.cart.forEach(c => {
-    const k = key(c);
-    if (merged.has(k)) merged.get(k).qty = Math.max(merged.get(k).qty, c.qty);
-    else merged.set(k, { ...c });
-  });
-  const newCart = Array.from(merged.values());
-  // Синхронизируем merged в БД (на случай если устройства расходились)
-  newCart.forEach(c => api.setCartItem(c.productId, c.size, c.qty));
-  // Сравниваем: если состав и количества те же — не считаем изменением
+  // Разовая миграция: БД пустая, но локально что-то есть (старый клиент на
+  // localStorage до появления синка) — заливаем локальное в БД, не теряя его.
+  if (dbCart.length === 0 && state.cart.length > 0) {
+    state.cart.forEach(c => { try { api.setCartItem(c.productId, c.size, c.qty); } catch (e) {} });
+    return false;
+  }
+  const newCart = dbCart.map(c => ({ ...c }));
   if (newCart.length === state.cart.length) {
     const same = newCart.every(c => {
       const existing = state.cart.find(s => key(s) === key(c));

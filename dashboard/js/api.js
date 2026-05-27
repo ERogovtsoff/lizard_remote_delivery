@@ -315,6 +315,36 @@ export async function setInquiryStatus(inquiryId, status, clientMessage, custome
   return true;
 }
 
+// Добавить позиции в существующий заказ + пересчитать сумму.
+export async function addOrderItems(orderId, items) {
+  // 1. Вставляем позиции
+  const rows = items.map(it => ({
+    order_id: orderId,
+    product_id: it.product_id,
+    size: it.size || '',
+    qty: it.qty || 1,
+    price_usd_snapshot: Number(it.price_usd) || 0,
+    price_byn_snapshot: Number(it.price_byn) || 0,
+  }));
+  const res = await fetch(`${BASE}/order_items`, {
+    method: 'POST',
+    headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+    body: JSON.stringify(rows),
+  });
+  if (!res.ok) throw new Error(`addOrderItems failed: ${res.status}`);
+
+  // 2. Пересчитываем сумму заказа по всем его позициям
+  const allItems = await get('order_items', { select: '*', order_id: `eq.${orderId}` });
+  const totalUsd = (allItems || []).reduce((s, it) => s + (Number(it.price_usd_snapshot) || 0) * (it.qty || 1), 0);
+  const totalByn = (allItems || []).reduce((s, it) => s + (Number(it.price_byn_snapshot) || 0) * (it.qty || 1), 0);
+  await fetch(`${BASE}/orders?id=eq.${encodeURIComponent(orderId)}`, {
+    method: 'PATCH',
+    headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ total_usd: totalUsd, total_byn: totalByn, updated_at: new Date().toISOString() }),
+  });
+  return { totalUsd, totalByn };
+}
+
 // Сохранить внутреннюю заметку менеджера к заказу.
 export async function setOrderNote(orderId, note) {
   const res = await fetch(`${BASE}/orders?id=eq.${encodeURIComponent(orderId)}`, {
@@ -328,7 +358,7 @@ export async function setOrderNote(orderId, note) {
 
 // Создать заказ из обращения. items = [{product_id, size, qty, price_usd, price_byn}].
 // Возвращает созданный заказ { id, ... }.
-export async function createOrder(customerTgId, items, currency, inquiryId) {
+export async function createOrder(customerTgId, items, currency, inquiryId, status = 'in_progress') {
   const totalUsd = items.reduce((s, it) => s + (Number(it.price_usd) || 0) * (it.qty || 1), 0);
   const totalByn = items.reduce((s, it) => s + (Number(it.price_byn) || 0) * (it.qty || 1), 0);
 
@@ -341,7 +371,7 @@ export async function createOrder(customerTgId, items, currency, inquiryId) {
       total_usd: totalUsd,
       total_byn: totalByn,
       currency: currency || 'USD',
-      status: 'new',
+      status: status,
       is_paid: false,
     }),
   });

@@ -48,9 +48,11 @@ export async function renderHistory() {
   const lang = getLang();
   let products = [];
   try {
-    products = await api.loadProducts();
+    // Берём ВСЕ товары, включая скрытые: у клиента в истории может быть заказ
+    // по товару, который уже скрыли — название и данные всё равно нужны.
+    products = await api.loadAllProducts();
   } catch (_) {
-    products = [];   // каталог не критичен для истории — продолжаем без него
+    try { products = await api.loadProducts(); } catch (_) { products = []; }
   }
   const map = new Map(products.map(p => [p.id, p]));
 
@@ -135,7 +137,7 @@ function orderProgressHtml(status) {
   if (status === 'completed') {
     currentIdx = PROGRESS_STEPS.length; // всё пройдено
   } else if (status === 'new') {
-    currentIdx = 0; // ещё не начали двигаться по воронке
+    currentIdx = -1; // заказ принят, но движение по воронке ещё не началось — ничего не активно
   } else {
     currentIdx = PROGRESS_STEPS.indexOf(status);
     if (currentIdx < 0) return '';

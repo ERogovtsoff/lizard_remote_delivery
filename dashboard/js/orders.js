@@ -1,7 +1,7 @@
 // Раздел «Заказы» в панели: заказы и обращения, перемещение по статусам.
 // Смена статуса пишет в БД и (через outbox) уведомляет клиента — бот доставит.
 import * as api from './api.js';
-import { escapeHtml, customerName, formatTime, formatFullDate } from './utils.js';
+import { escapeHtml, customerName, formatTime, formatFullDate, makeId } from './utils.js';
 
 // Статусы заказов с подписью и текстом клиенту (синхронно с ботом).
 const ORDER_STATUS = {
@@ -182,6 +182,7 @@ function renderOrdersList() {
         Обращения${countInq ? ` <span class="tab-badge">${countInq}</span>` : ''}
       </button>
     </div>
+    <button class="new-order-btn" id="newOrderBtn">➕ Новый заказ</button>
     <div class="orders-items">`;
 
   if (!items.length) {
@@ -217,6 +218,9 @@ function renderOrdersList() {
   }
   html += `</div>`;
   list.innerHTML = html;
+
+  const newBtn = document.getElementById('newOrderBtn');
+  if (newBtn) newBtn.onclick = startBlankOrder;
 
   list.querySelectorAll('.orders-tab').forEach(t => {
     t.onclick = () => { activeTab = t.getAttribute('data-tab'); activeId = null; renderOrdersList(); clearDetail(); };
@@ -302,6 +306,17 @@ function renderOrderDetail(id) {
     <div class="detail-section">
       <div class="detail-section-title">Состав заказа</div>
       ${items}
+      <button class="btn-light" id="addToOrderBtn" style="margin-top:10px">➕ Добавить позицию в заказ</button>
+      <div class="order-form" id="addItemsForm" style="display:none;margin-top:10px">
+        <div id="orderItems"></div>
+        <button class="btn-light" id="addOrderItem">+ Ещё позиция</button>
+        <button class="btn-light" id="addNewProductBtn2">🆕 Нет в каталоге — создать товар</button>
+        <div class="order-form-total" id="orderFormTotal"></div>
+        <div class="order-form-actions">
+          <button class="btn-primary" id="saveAddItems">Добавить в заказ</button>
+          <button class="btn-light" id="cancelAddItems">Отмена</button>
+        </div>
+      </div>
     </div>
 
     <div class="detail-section">
@@ -350,8 +365,51 @@ function renderOrderDetail(id) {
     } catch (e) { setDetailMsg('Ошибка сохранения заметки', true); }
   };
 
+  // Добавление позиций в существующий заказ (#9)
+  const addBtn = document.getElementById('addToOrderBtn');
+  if (addBtn) {
+    addBtn.onclick = () => {
+      orderDraft = { existingOrder: o, items: [{ product_id: '', size: '', qty: 1 }] };
+      addBtn.style.display = 'none';
+      document.getElementById('addItemsForm').style.display = 'block';
+      renderOrderForm();
+      document.getElementById('addOrderItem').onclick = () => { orderDraft.items.push({ product_id:'', size:'', qty:1 }); renderOrderForm(); };
+      document.getElementById('addNewProductBtn2').onclick = openQuickProductModal;
+      document.getElementById('cancelAddItems').onclick = () => {
+        orderDraft = null;
+        document.getElementById('addItemsForm').style.display = 'none';
+        addBtn.style.display = '';
+      };
+      document.getElementById('saveAddItems').onclick = () => saveAddItems(o);
+    };
+  }
+
   // Переписка + композер
   setupConvo({ order_id: o.id }, o.customer_tg_id, isOrderActive(o.status));
+}
+
+async function saveAddItems(order) {
+  if (!orderDraft) return;
+  const items = orderDraft.items.filter(it => it.product_id).map(it => {
+    const p = productsById[it.product_id];
+    return { product_id: it.product_id, size: it.size || '', qty: it.qty || 1,
+             price_usd: p ? p.price_usd : 0, price_byn: p ? p.price_byn : 0 };
+  });
+  if (!items.length) { setDetailMsg('Выберите товар для добавления', true); return; }
+  const btn = document.getElementById('saveAddItems');
+  btn.disabled = true;
+  setDetailMsg('Добавляем…');
+  try {
+    await api.addOrderItems(order.id, items);
+    orderDraft = null;
+    await loadOrdersSection();
+    openDetail(String(order.id));
+    setDetailMsg('Позиции добавлены ✓');
+  } catch (e) {
+    console.error(e);
+    setDetailMsg('Ошибка добавления', true);
+    btn.disabled = false;
+  }
 }
 
 async function changeOrderStatus(order, status) {
@@ -790,20 +848,46 @@ function renderOrderForm() {
   const box = document.getElementById('orderItems');
   const prods = Object.values(productsById);
   box.innerHTML = orderDraft.items.map((it, i) => {
-    const opts = prods.map(p =>
-      `<option value="${escapeHtml(p.id)}" ${it.product_id === p.id ? 'selected' : ''}>${escapeHtml(p.name_ru || p.name_en || p.id)}</option>`
-    ).join('');
+    // Опции с ценой и наличием прямо в тексте
+    const opts = prods.map(p => {
+      const price = p.price_usd ? `$${p.price_usd}` : '';
+      const hidden = p.is_active === false ? ' • скрыт' : '';
+      const stockTotal = p.stock ? Object.values(p.stock).reduce((s, n) => s + (Number(n) || 0), 0) : 0;
+      const stockInfo = (p.sizes && p.sizes.length) ? ` • ${stockTotal} шт` : '';
+      const label = `${p.name_ru || p.name_en || p.id} — ${price}${stockInfo}${hidden}`;
+      return `<option value="${escapeHtml(p.id)}" ${it.product_id === p.id ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+    }).join('');
     const prod = productsById[it.product_id];
     const sizes = (prod && prod.sizes) || [];
     const sizeOpts = sizes.length
       ? `<select class="oi-size" data-i="${i}"><option value="">размер</option>` +
-        sizes.map(s => `<option value="${escapeHtml(s)}" ${it.size === s ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('') + `</select>`
+        sizes.map(s => {
+          const st = prod.stock && prod.stock[s] != null ? ` (${prod.stock[s]})` : '';
+          return `<option value="${escapeHtml(s)}" ${it.size === s ? 'selected' : ''}>${escapeHtml(s)}${st}</option>`;
+        }).join('') + `</select>`
       : `<input class="oi-size-text" data-i="${i}" placeholder="размер" value="${escapeHtml(it.size || '')}">`;
-    return `<div class="order-item-row">
-      <select class="oi-product" data-i="${i}"><option value="">— товар —</option>${opts}</select>
-      ${sizeOpts}
-      <input type="number" class="oi-qty" data-i="${i}" value="${it.qty || 1}" min="1" title="кол-во">
-      <button class="oi-del" data-i="${i}">✕</button>
+
+    // Превью выбранного товара (фото + цена)
+    let preview = '';
+    if (prod) {
+      const img = (prod.images && prod.images[0]) || '';
+      preview = `<div class="oi-preview">
+        <div class="oi-preview-img">${img ? `<img src="${escapeHtml(img)}" alt="">` : '🖼'}</div>
+        <div class="oi-preview-info">
+          <div class="oi-preview-name">${escapeHtml(prod.name_ru || prod.name_en || prod.id)}</div>
+          <div class="oi-preview-price">$${prod.price_usd || 0} · ${prod.price_byn || 0} BYN${prod.is_active === false ? ' · <span class="oi-hidden-tag">скрыт</span>' : ''}</div>
+        </div>
+      </div>`;
+    }
+
+    return `<div class="order-item-row-wrap">
+      <div class="order-item-row">
+        <select class="oi-product" data-i="${i}"><option value="">— выберите товар —</option>${opts}</select>
+        ${sizeOpts}
+        <input type="number" class="oi-qty" data-i="${i}" value="${it.qty || 1}" min="1" title="кол-во">
+        <button class="oi-del" data-i="${i}" title="Убрать позицию">✕</button>
+      </div>
+      ${preview}
     </div>`;
   }).join('');
 
@@ -885,4 +969,157 @@ export function announcePendingOnLogin() {
     showToast(`Ждут внимания: ${activeOrders} заказов, ${activeInq} обращений`);
     playBeep();
   }
+}
+
+// ============ СОЗДАНИЕ ЗАКАЗА С НУЛЯ (без обращения) ============
+
+function startBlankOrder() {
+  activeId = null;
+  activeTab = 'orders';
+  renderOrdersList();
+  document.getElementById('orderDetailEmpty').style.display = 'none';
+  const box = document.getElementById('orderDetail');
+  box.style.display = 'flex';
+  document.body.classList.add('mobile-detail');
+  orderDraft = { inquiry: null, items: [{ product_id: '', size: '', qty: 1 }], blankCustomer: '' };
+
+  box.innerHTML = `
+    <button class="mobile-back" id="mobileBack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>К списку</button>
+    <div class="detail-head"><h2>Новый заказ</h2></div>
+    <div class="detail-section">
+      <label class="blank-cust-label">Telegram ID клиента
+        <input type="text" id="blankCustomerId" placeholder="например 123456789" inputmode="numeric">
+      </label>
+      <div class="field-hint">ID можно увидеть в карточке клиента или в сообщениях бота. Клиент должен был хотя бы раз написать боту.</div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-section-title">Состав заказа</div>
+      <div class="order-form" id="orderForm" style="display:block">
+        <div id="orderItems"></div>
+        <button class="btn-light" id="addOrderItem">+ Добавить позицию</button>
+        <button class="btn-light" id="addNewProductBtn">🆕 Нет в каталоге — создать товар</button>
+        <div class="order-form-total" id="orderFormTotal"></div>
+        <div class="order-form-actions">
+          <button class="btn-primary" id="saveBlankOrder">Создать заказ</button>
+        </div>
+      </div>
+    </div>
+    <div class="detail-status-msg" id="detailStatusMsg"></div>
+  `;
+
+  document.getElementById('mobileBack').onclick = backToList;
+  document.getElementById('blankCustomerId').oninput = (e) => { orderDraft.blankCustomer = e.target.value.trim(); };
+  document.getElementById('addOrderItem').onclick = () => { orderDraft.items.push({ product_id:'', size:'', qty:1 }); renderOrderForm(); };
+  document.getElementById('addNewProductBtn').onclick = openQuickProductModal;
+  document.getElementById('saveBlankOrder').onclick = saveBlankOrder;
+  renderOrderForm();
+}
+
+async function saveBlankOrder() {
+  if (!orderDraft) return;
+  const cid = parseInt(orderDraft.blankCustomer);
+  if (!cid) { setDetailMsg('Укажите корректный Telegram ID клиента', true); return; }
+  const items = orderDraft.items.filter(it => it.product_id).map(it => {
+    const p = productsById[it.product_id];
+    return { product_id: it.product_id, size: it.size || '', qty: it.qty || 1,
+             price_usd: p ? p.price_usd : 0, price_byn: p ? p.price_byn : 0 };
+  });
+  if (!items.length) { setDetailMsg('Добавьте хотя бы одну позицию', true); return; }
+
+  const btn = document.getElementById('saveBlankOrder');
+  btn.disabled = true;
+  setDetailMsg('Создаём заказ…');
+  try {
+    // Заказ напрямую на клиента, статус in_progress (создан менеджером)
+    const order = await api.createOrder(cid, items, 'USD', null, 'in_progress');
+    const notice = `Мы оформили для вас заказ №${order.id} 🎉 Будем держать вас в курсе по статусу.`;
+    await api.sendReply(cid, notice, managerUsername, { order_id: order.id });
+    setDetailMsg('Заказ №' + order.id + ' создан ✓');
+    orderDraft = null;
+    await loadOrdersSection();
+    activeTab = 'orders';
+    openDetail(String(order.id));
+  } catch (e) {
+    console.error(e);
+    setDetailMsg('Ошибка создания заказа', true);
+    btn.disabled = false;
+  }
+}
+
+// ============ БЫСТРОЕ СОЗДАНИЕ ТОВАРА ИЗ КАРТОЧКИ (#6) ============
+
+function openQuickProductModal() {
+  // Снимаем старую модалку, если есть
+  const old = document.getElementById('quickProdModal');
+  if (old) old.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'quickProdModal';
+  modal.className = 'qp-modal';
+  modal.innerHTML = `
+    <div class="qp-card">
+      <div class="qp-head">Новый товар в каталог</div>
+      <label class="qp-label">Название (рус)<input type="text" id="qpNameRu"></label>
+      <label class="qp-label">Название (eng)<input type="text" id="qpNameEn"></label>
+      <div class="qp-row">
+        <label class="qp-label">Цена USD<input type="number" id="qpPriceUsd" value="0"></label>
+        <label class="qp-label">Цена BYN<input type="number" id="qpPriceByn" value="0"></label>
+      </div>
+      <label class="qp-label">Размеры через запятую (если есть)<input type="text" id="qpSizes" placeholder="напр. S, M, L или 40, 41"></label>
+      <label class="qp-label">Фото (ссылка, опционально)<input type="text" id="qpImage" placeholder="https://..."></label>
+      <div class="qp-actions">
+        <button class="btn-primary" id="qpSave">Создать товар</button>
+        <button class="btn-light" id="qpCancel">Отмена</button>
+      </div>
+      <div class="qp-status" id="qpStatus"></div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  document.getElementById('qpCancel').onclick = () => modal.remove();
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  document.getElementById('qpSave').onclick = async () => {
+    const nameRu = document.getElementById('qpNameRu').value.trim();
+    const nameEn = document.getElementById('qpNameEn').value.trim();
+    if (!nameRu && !nameEn) { qpSetStatus('Укажите название', true); return; }
+    const sizesRaw = document.getElementById('qpSizes').value.trim();
+    const sizes = sizesRaw ? sizesRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const stock = {};
+    sizes.forEach(s => { stock[s] = 99; });   // условный остаток, можно поправить в каталоге
+    const img = document.getElementById('qpImage').value.trim();
+    const product = {
+      id: makeId('p'),
+      name_ru: nameRu, name_en: nameEn || nameRu,
+      desc_ru: '', desc_en: '',
+      price_usd: Number(document.getElementById('qpPriceUsd').value) || 0,
+      price_byn: Number(document.getElementById('qpPriceByn').value) || 0,
+      images: img ? [img] : [],
+      sizes, stock,
+      is_active: true, badge_text: '', badge_color: 'accent',
+    };
+    const btn = document.getElementById('qpSave');
+    btn.disabled = true;
+    qpSetStatus('Создаём…');
+    try {
+      await api.saveProduct(product);
+      // Добавляем в локальный каталог, чтобы сразу выбрать в форме
+      productsById[product.id] = product;
+      // Подставляем новый товар в первую пустую позицию черновика
+      if (orderDraft && orderDraft.items) {
+        const empty = orderDraft.items.find(it => !it.product_id);
+        if (empty) empty.product_id = product.id;
+        else orderDraft.items.push({ product_id: product.id, size: '', qty: 1 });
+        renderOrderForm();
+      }
+      modal.remove();
+    } catch (e) {
+      console.error(e);
+      qpSetStatus('Ошибка создания', true);
+      btn.disabled = false;
+    }
+  };
+}
+
+function qpSetStatus(text, isError) {
+  const el = document.getElementById('qpStatus');
+  if (el) { el.textContent = text; el.className = 'qp-status' + (isError ? ' error' : ''); }
 }

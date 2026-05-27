@@ -171,6 +171,31 @@ _RETRYABLE = (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout,
               httpx.ReadError, httpx.RemoteProtocolError, httpx.PoolTimeout)
 
 
+async def retry_network(coro_factory, *, what: str = "network", retries: int = 10):
+    """
+    Повторяет асинхронную операцию при сетевых ошибках (экспонента, потолок 5с,
+    до 10 попыток). coro_factory — функция без аргументов, возвращающая корутину
+    (новую на каждую попытку). Пробрасывает результат или последнюю ошибку.
+    Подходит для Telegram-вызовов (get_file/download/send) и прочего ввода-вывода.
+    """
+    last_err = None
+    for attempt in range(1, retries + 1):
+        try:
+            return await coro_factory()
+        except _RETRYABLE as e:
+            last_err = e
+            if attempt < retries:
+                delay = min(0.5 * (2 ** (attempt - 1)), 5.0)
+                log.warning("%s: сетевая ошибка (попытка %d/%d), повтор через %.1fс",
+                            what, attempt, retries, delay)
+                await asyncio.sleep(delay)
+            else:
+                log.warning("%s: не удалось после %d попыток (%s)",
+                            what, retries, type(e).__name__)
+    if last_err:
+        raise last_err
+
+
 async def _supabase_request(method: str, path: str, *, params=None, json=None,
                             headers_extra=None, retries: int = 10):
     """
@@ -286,9 +311,10 @@ async def upload_to_storage(bot: Bot, file_id: str, suffix: str = "") -> Optiona
     if not supabase_ready() or not file_id:
         return None
     try:
-        # 1. Получаем файл из Telegram
-        tg_file = await bot.get_file(file_id)
-        file_bytes_io = await bot.download_file(tg_file.file_path)
+        # 1. Получаем файл из Telegram (с ретраями на случай обрыва)
+        tg_file = await retry_network(lambda: bot.get_file(file_id), what="tg.get_file")
+        file_bytes_io = await retry_network(
+            lambda: bot.download_file(tg_file.file_path), what="tg.download_file")
         data = file_bytes_io.read()
 
         # 2. Имя в Storage: уникальное, только безопасные символы
@@ -300,7 +326,7 @@ async def upload_to_storage(bot: Bot, file_id: str, suffix: str = "") -> Optiona
         safe = re.sub(r"[^A-Za-z0-9_-]", "", file_id)[:40]
         object_name = f"{safe}{ext}"
 
-        # 3. Заливаем через Storage REST API
+        # 3. Заливаем через Storage REST API (общий клиент с пулом + ретраи)
         url = f"{SUPABASE_URL}/storage/v1/object/{STORAGE_BUCKET}/{object_name}"
         headers = {
             "apikey": SUPABASE_KEY,
@@ -308,11 +334,13 @@ async def upload_to_storage(bot: Bot, file_id: str, suffix: str = "") -> Optiona
             "Content-Type": "application/octet-stream",
             "x-upsert": "true",
         }
-        async with httpx.AsyncClient(timeout=30) as client:
-            r = await client.post(url, headers=headers, content=data)
-            if r.status_code >= 400:
-                log.warning("Storage upload failed: %s %s", r.status_code, r.text[:200])
-                return None
+        client = get_http_client()
+        r = await retry_network(
+            lambda: client.post(url, headers=headers, content=data),
+            what="storage.upload")
+        if r.status_code >= 400:
+            log.warning("Storage upload failed: %s %s", r.status_code, r.text[:200])
+            return None
         # 4. Публичный URL
         return f"{SUPABASE_URL}/storage/v1/object/public/{STORAGE_BUCKET}/{object_name}"
     except Exception as e:
@@ -400,7 +428,8 @@ async def notify_client(bot: Bot, customer_tg_id: int, text: str,
     """
     delivered = False
     try:
-        await bot.send_message(customer_tg_id, text)
+        await retry_network(lambda: bot.send_message(customer_tg_id, text),
+                            what="notify_client")
         delivered = True
     except TelegramForbiddenError:
         log.info("notify_client: клиент %s заблокировал бота", customer_tg_id)
@@ -1490,11 +1519,13 @@ async def handle_manager_reply(message: Message, bot: Bot) -> None:
     # Копируем сообщение менеджера клиенту. copy_message сохраняет фото/документ/текст,
     # но без подписи «от кого» — это и есть смысл бота-посредника.
     try:
-        await bot.copy_message(
-            chat_id=client_tg_id,
-            from_chat_id=message.chat.id,
-            message_id=message.message_id,
-        )
+        await retry_network(
+            lambda: bot.copy_message(
+                chat_id=client_tg_id,
+                from_chat_id=message.chat.id,
+                message_id=message.message_id,
+            ),
+            what="manager_reply.copy")
         # Лёгкая обратная связь — менеджер увидит галочку и поймёт, что доставлено
         try:
             from aiogram.types import ReactionTypeEmoji
@@ -2273,9 +2304,13 @@ async def process_outbox(bot: Bot) -> int:
                 # Отправляем клиенту. Если есть вложение — шлём по URL, иначе текст.
                 if attachment_url:
                     caption = text or None
-                    await bot.send_photo(customer_tg_id, attachment_url, caption=caption)
+                    await retry_network(
+                        lambda: bot.send_photo(customer_tg_id, attachment_url, caption=caption),
+                        what="outbox.send_photo")
                 elif text:
-                    await bot.send_message(customer_tg_id, text)
+                    await retry_network(
+                        lambda: bot.send_message(customer_tg_id, text),
+                        what="outbox.send_message")
                 else:
                     # Пустая запись — нечего слать, просто закрываем
                     await supabase_patch("outbox", {"id": f"eq.{outbox_id}"},
