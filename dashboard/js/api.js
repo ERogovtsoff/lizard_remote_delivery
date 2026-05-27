@@ -113,58 +113,27 @@ export async function loadConversation(customerTgId) {
   });
 }
 
-// Переписка в рамках конкретного обращения.
-// Показываем привязанные к обращению + непривязанные сообщения этого клиента
-// (последние — для устойчивости к старым/непривязанным сообщениям).
+// Переписка в рамках конкретного обращения — СТРОГО только привязанные сюда.
+// customerTgId оставлен в сигнатуре для совместимости вызовов, но не используется:
+// fallback на «бесконтекстные» сообщения убран, чтобы в карточку не попадал
+// чужой хлам (старые сообщения, напоминания и т.п.).
 export async function loadInquiryMessages(inquiryId, customerTgId) {
-  const bound = await get('messages', {
+  return get('messages', {
     select: '*',
     inquiry_id: `eq.${inquiryId}`,
     order: 'created_at.asc',
     limit: '500',
   });
-  if (customerTgId == null) return bound;
-  // Непривязанные сообщения клиента (inquiry_id и order_id оба пусты)
-  let orphan = [];
-  try {
-    orphan = await get('messages', {
-      select: '*',
-      customer_tg_id: `eq.${customerTgId}`,
-      inquiry_id: 'is.null',
-      order_id: 'is.null',
-      order: 'created_at.asc',
-      limit: '500',
-    });
-  } catch (_) {}
-  // Объединяем и сортируем по времени
-  const all = [...bound, ...orphan];
-  all.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-  return all;
 }
 
-// Переписка в рамках конкретного заказа (с тем же fallback).
+// Переписка в рамках конкретного заказа — СТРОГО только привязанные сюда.
 export async function loadOrderMessages(orderId, customerTgId) {
-  const bound = await get('messages', {
+  return get('messages', {
     select: '*',
     order_id: `eq.${orderId}`,
     order: 'created_at.asc',
     limit: '500',
   });
-  if (customerTgId == null) return bound;
-  let orphan = [];
-  try {
-    orphan = await get('messages', {
-      select: '*',
-      customer_tg_id: `eq.${customerTgId}`,
-      inquiry_id: 'is.null',
-      order_id: 'is.null',
-      order: 'created_at.asc',
-      limit: '500',
-    });
-  } catch (_) {}
-  const all = [...bound, ...orphan];
-  all.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-  return all;
 }
 
 // Пометить входящие сообщения клиента прочитанными.
