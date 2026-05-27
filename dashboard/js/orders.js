@@ -291,55 +291,58 @@ function renderOrderDetail(id) {
     `<option value="${key}" ${o.status === key ? 'selected' : ''}>${s.label}</option>`).join('');
 
   box.innerHTML = `
-    <button class="mobile-back" id="mobileBack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>К списку</button>
-    <div class="detail-head">
-      <h2>Заказ №${o.id}</h2>
-      <span class="detail-status-badge">${escapeHtml(st.label)}</span>
-    </div>
-    <div class="detail-meta">
-      <div><b>Клиент:</b> ${escapeHtml(name)}</div>
-      <div><b>ID:</b> ${o.customer_tg_id}</div>
-      <div><b>Сумма:</b> $${o.total_usd} / ${o.total_byn} BYN</div>
-      <div><b>Создан:</b> ${escapeHtml(formatFullDate(o.created_at))} ${escapeHtml(formatTime(o.created_at))}</div>
-    </div>
-
-    <div class="detail-section">
-      <div class="detail-section-title">Состав заказа</div>
-      ${items}
-      <button class="btn-light" id="addToOrderBtn" style="margin-top:10px">➕ Добавить позицию в заказ</button>
-      <div class="order-form" id="addItemsForm" style="display:none;margin-top:10px">
-        <div id="orderItems"></div>
-        <button class="btn-light" id="addOrderItem">+ Ещё позиция</button>
-        <button class="btn-light" id="addNewProductBtn2">🆕 Нет в каталоге — создать товар</button>
-        <div class="order-form-total" id="orderFormTotal"></div>
-        <div class="order-form-actions">
-          <button class="btn-primary" id="saveAddItems">Добавить в заказ</button>
-          <button class="btn-light" id="cancelAddItems">Отмена</button>
+    <div class="detail-top">
+      <button class="mobile-back" id="mobileBack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>К списку</button>
+      <div class="detail-head-compact">
+        <h2>Заказ №${o.id}</h2>
+        <span class="detail-status-badge">${escapeHtml(st.label)}</span>
+        <span class="detail-head-sum">$${o.total_usd} / ${o.total_byn} BYN</span>
+      </div>
+      <div class="detail-quickstatus">
+        <div class="status-actions">${statusButtons}</div>
+      </div>
+      <details class="detail-collapse">
+        <summary>Детали заказа, статус, заметка</summary>
+        <div class="detail-meta">
+          <div><b>Клиент:</b> ${escapeHtml(name)}</div>
+          <div><b>ID:</b> ${o.customer_tg_id}</div>
+          <div><b>Создан:</b> ${escapeHtml(formatFullDate(o.created_at))} ${escapeHtml(formatTime(o.created_at))}</div>
         </div>
-      </div>
+        <div class="detail-section">
+          <div class="detail-section-title">Состав заказа</div>
+          ${items}
+          <button class="btn-light" id="addToOrderBtn" style="margin-top:10px">➕ Добавить позицию</button>
+          <div class="order-form" id="addItemsForm" style="display:none;margin-top:10px">
+            <div id="orderItems"></div>
+            <button class="btn-light" id="addOrderItem">+ Ещё позиция</button>
+            <button class="btn-light" id="addNewProductBtn2">🆕 Нет в каталоге — создать товар</button>
+            <div class="order-form-total" id="orderFormTotal"></div>
+            <div class="order-form-actions">
+              <button class="btn-primary" id="saveAddItems">Добавить в заказ</button>
+              <button class="btn-light" id="cancelAddItems">Отмена</button>
+            </div>
+          </div>
+        </div>
+        <div class="detail-section">
+          <div class="detail-section-title">Сменить статус (полный список)</div>
+          <div class="status-manual">
+            <select id="orderStatusSelect">${statusOptions}</select>
+            <button class="btn-light" id="orderStatusApply">Применить</button>
+          </div>
+          <label class="notify-check">
+            <input type="checkbox" id="orderNotify" checked> Уведомить клиента в Telegram
+          </label>
+        </div>
+        <div class="detail-section">
+          <div class="detail-section-title">Заметка менеджера</div>
+          <textarea id="orderNote" rows="2" placeholder="Внутренняя заметка (клиент не видит)">${escapeHtml(o.manager_note || '')}</textarea>
+          <button class="btn-light" id="orderNoteSave">Сохранить заметку</button>
+        </div>
+      </details>
+      <div class="detail-status-msg" id="detailStatusMsg"></div>
     </div>
-
-    <div class="detail-section">
-      <div class="detail-section-title">Сменить статус</div>
-      <div class="status-actions">${statusButtons}</div>
-      <div class="status-manual">
-        <select id="orderStatusSelect">${statusOptions}</select>
-        <button class="btn-light" id="orderStatusApply">Применить</button>
-      </div>
-      <label class="notify-check">
-        <input type="checkbox" id="orderNotify" checked> Уведомить клиента в Telegram
-      </label>
-    </div>
-
-    <div class="detail-section">
-      <div class="detail-section-title">Заметка менеджера</div>
-      <textarea id="orderNote" rows="2" placeholder="Внутренняя заметка (клиент не видит)">${escapeHtml(o.manager_note || '')}</textarea>
-      <button class="btn-light" id="orderNoteSave">Сохранить заметку</button>
-    </div>
-    <div class="detail-status-msg" id="detailStatusMsg"></div>
 
     <div class="convo-section">
-      <div class="detail-section-title">Переписка с клиентом</div>
       <div class="convo-messages" id="convoMessages"></div>
       ${renderComposer(isOrderActive(o.status))}
     </div>
@@ -371,6 +374,8 @@ function renderOrderDetail(id) {
     addBtn.onclick = () => {
       orderDraft = { existingOrder: o, items: [{ product_id: '', size: '', qty: 1 }] };
       addBtn.style.display = 'none';
+      const details = document.querySelector('.detail-collapse');
+      if (details) details.open = true;
       document.getElementById('addItemsForm').style.display = 'block';
       renderOrderForm();
       document.getElementById('addOrderItem').onclick = () => { orderDraft.items.push({ product_id:'', size:'', qty:1 }); renderOrderForm(); };
@@ -462,44 +467,47 @@ function renderInquiryDetail(id) {
     }).join('');
 
   box.innerHTML = `
-    <button class="mobile-back" id="mobileBack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>К списку</button>
-    <div class="detail-head">
-      <h2>Обращение №${q.number || ''}</h2>
-      <span class="detail-status-badge">${escapeHtml(st.label)}</span>
-    </div>
-    <div class="detail-meta">
-      <div><b>Клиент:</b> ${escapeHtml(name)}</div>
-      <div><b>ID:</b> ${q.customer_tg_id}</div>
-      <div><b>Тип:</b> ${escapeHtml(typeLabel)}</div>
-      ${prodLine}
-      <div><b>Создано:</b> ${escapeHtml(formatFullDate(q.created_at))} ${escapeHtml(formatTime(q.created_at))}</div>
-    </div>
-    <div class="detail-section">
-      <div class="detail-section-title">Сменить статус</div>
-      <div class="status-actions">${statusButtons}</div>
-      <label class="notify-check">
-        <input type="checkbox" id="inqNotify" checked> Уведомить клиента в Telegram
-      </label>
-    </div>
-
-    <div class="detail-section">
-      <div class="detail-section-title">Оформление заказа</div>
-      <button class="btn-primary" id="inqCreateOrder">➕ Создать заказ из обращения</button>
-      <div class="order-form" id="orderForm" style="display:none">
-        <div id="orderItems"></div>
-        <button class="btn-light" id="addOrderItem">+ Добавить позицию</button>
-        <div class="order-form-total" id="orderFormTotal"></div>
-        <div class="order-form-actions">
-          <button class="btn-primary" id="saveOrder">Создать заказ</button>
-          <button class="btn-light" id="cancelOrderForm">Отмена</button>
-        </div>
+    <div class="detail-top">
+      <button class="mobile-back" id="mobileBack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>К списку</button>
+      <div class="detail-head-compact">
+        <h2>Обращение №${q.number || ''}</h2>
+        <span class="detail-status-badge">${escapeHtml(st.label)}</span>
+        <span class="detail-head-sum">${escapeHtml(typeLabel)}</span>
       </div>
+      <div class="detail-quickstatus">
+        <div class="status-actions">${statusButtons}</div>
+        <button class="btn-primary btn-create-order" id="inqCreateOrder">➕ Создать заказ</button>
+      </div>
+      <details class="detail-collapse">
+        <summary>Детали обращения и оформление заказа</summary>
+        <div class="detail-meta">
+          <div><b>Клиент:</b> ${escapeHtml(name)}</div>
+          <div><b>ID:</b> ${q.customer_tg_id}</div>
+          <div><b>Тип:</b> ${escapeHtml(typeLabel)}</div>
+          ${prodLine}
+          <div><b>Создано:</b> ${escapeHtml(formatFullDate(q.created_at))} ${escapeHtml(formatTime(q.created_at))}</div>
+        </div>
+        <label class="notify-check">
+          <input type="checkbox" id="inqNotify" checked> Уведомлять клиента в Telegram при смене статуса
+        </label>
+        <div class="detail-section">
+          <div class="order-form" id="orderForm" style="display:none">
+            <div class="detail-section-title">Состав заказа</div>
+            <div id="orderItems"></div>
+            <button class="btn-light" id="addOrderItem">+ Добавить позицию</button>
+            <button class="btn-light" id="addNewProductBtn">🆕 Нет в каталоге — создать товар</button>
+            <div class="order-form-total" id="orderFormTotal"></div>
+            <div class="order-form-actions">
+              <button class="btn-primary" id="saveOrder">Создать заказ</button>
+              <button class="btn-light" id="cancelOrderForm">Отмена</button>
+            </div>
+          </div>
+        </div>
+      </details>
+      <div class="detail-status-msg" id="detailStatusMsg"></div>
     </div>
-
-    <div class="detail-status-msg" id="detailStatusMsg"></div>
 
     <div class="convo-section">
-      <div class="detail-section-title">Переписка с клиентом</div>
       <div class="convo-messages" id="convoMessages"></div>
       ${renderComposer(isInquiryActive(q.status))}
     </div>
@@ -830,12 +838,17 @@ let orderDraft = null;   // { inquiry, items: [{product_id, size, qty}] }
 function startOrderForm(inquiry) {
   orderDraft = { inquiry, items: [{ product_id: '', size: '', qty: 1 }] };
   document.getElementById('inqCreateOrder').style.display = 'none';
+  // Раскрываем свёрнутую секцию деталей, чтобы форма была видна
+  const details = document.querySelector('.detail-collapse');
+  if (details) details.open = true;
   document.getElementById('orderForm').style.display = 'block';
   renderOrderForm();
   document.getElementById('addOrderItem').onclick = () => {
     orderDraft.items.push({ product_id: '', size: '', qty: 1 });
     renderOrderForm();
   };
+  const addNewBtn = document.getElementById('addNewProductBtn');
+  if (addNewBtn) addNewBtn.onclick = openQuickProductModal;
   document.getElementById('cancelOrderForm').onclick = () => {
     orderDraft = null;
     document.getElementById('orderForm').style.display = 'none';

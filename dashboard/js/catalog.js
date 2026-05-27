@@ -114,9 +114,16 @@ function renderEditor() {
     <label class="field-full">Описание (eng)<textarea id="e_desc_en" rows="2">${escapeHtml(p.desc_en || '')}</textarea></label>
 
     <div class="field-section">
-      <div class="field-section-title">Фотографии (ссылки)</div>
+      <div class="field-section-title">Фотографии</div>
       <div id="e_images"></div>
-      <button class="btn-light" id="e_add_image">+ Добавить фото</button>
+      <div class="img-add-row">
+        <button class="btn-light" id="e_add_image">+ Добавить по ссылке</button>
+        <label class="btn-light img-upload-label">
+          ⬆ Загрузить файл
+          <input type="file" id="e_upload_image" accept="image/*" style="display:none" multiple>
+        </label>
+        <span class="img-upload-status" id="e_upload_status"></span>
+      </div>
     </div>
 
     <div class="field-section">
@@ -151,6 +158,36 @@ function renderEditor() {
   document.getElementById('e_save').onclick = saveDraft;
   const delBtn = document.getElementById('e_delete');
   if (delBtn) delBtn.onclick = removeDraft;
+
+  // Загрузка фото файлом в Storage (#11)
+  const uploadInput = document.getElementById('e_upload_image');
+  if (uploadInput) {
+    uploadInput.addEventListener('change', async () => {
+      const files = Array.from(uploadInput.files || []);
+      if (!files.length) return;
+      const statusEl = document.getElementById('e_upload_status');
+      let done = 0;
+      for (const f of files) {
+        statusEl.textContent = `Загрузка ${done + 1}/${files.length}…`;
+        try {
+          const url = await api.uploadFile(f);
+          // убираем пустые слоты, добавляем загруженный URL
+          draft.images = draft.images.filter(Boolean);
+          draft.images.push(url);
+          done++;
+          renderImages();
+        } catch (e) {
+          console.error(e);
+          statusEl.textContent = '⚠️ Ошибка загрузки';
+          uploadInput.value = '';
+          return;
+        }
+      }
+      statusEl.textContent = `Загружено: ${done} ✓`;
+      uploadInput.value = '';
+      setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
+    });
+  }
 }
 
 function renderImages() {

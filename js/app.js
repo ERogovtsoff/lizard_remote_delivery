@@ -270,6 +270,15 @@ async function bootstrap() {
   window.addEventListener('offline', updateOnlineStatus);
   updateOnlineStatus();
 
+  // Предупреждение «Гость»: если Telegram не передал данные пользователя,
+  // приложение открыто вне бота / по кривой ссылке — часть функций не работает.
+  const guestBar = document.getElementById('guestBar');
+  if (guestBar && !getUser()) {
+    guestBar.textContent = t('guestWarning');
+    guestBar.style.display = 'block';
+    guestBar.onclick = () => { guestBar.style.display = 'none'; };  // тап — скрыть
+  }
+
   // Предзагружаем аватарку пользователя в кэш браузера — чтобы при открытии
   // профиля она появилась мгновенно, без мигания/повторного запроса.
   try {

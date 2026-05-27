@@ -1131,3 +1131,93 @@ html, body {
 .qp-actions { display: flex; gap: 10px; margin-top: 8px; }
 .qp-status { font-size: 13px; color: var(--accent-dark); margin-top: 10px; min-height: 16px; }
 .qp-status.error { color: var(--danger); }
+
+/* ====================== Загрузка фото товара (#11) ====================== */
+.img-add-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.img-upload-label {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+.img-upload-status {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* ====================== Компактная карточка (#3) ====================== */
+.detail-top {
+  flex-shrink: 0;
+  padding: 16px 28px 10px;
+  border-bottom: 1px solid var(--border);
+  max-height: 55vh;
+  overflow-y: auto;
+}
+.detail-head-compact {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.detail-head-compact h2 { font-size: 18px; margin: 0; }
+.detail-head-sum {
+  font-size: 13px;
+  color: var(--accent-dark);
+  font-weight: 600;
+  margin-left: auto;
+}
+.detail-quickstatus {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.btn-create-order { white-space: nowrap; }
+.detail-collapse {
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 12px;
+  background: var(--bg);
+}
+.detail-collapse > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 6px 0;
+  user-select: none;
+}
+.detail-collapse[open] > summary { margin-bottom: 8px; }
+.detail-collapse .detail-meta { background: var(--surface); }
+
+/* Чат занимает всё оставшееся место */
+.order-detail > .convo-section,
+.convo-section {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Мобильная адаптация карточки (#5) */
+@media (max-width: 760px) {
+  .detail-top {
+    padding: 12px 16px 8px;
+    max-height: 48vh;
+  }
+  .detail-head-compact h2 { font-size: 16px; }
+  .detail-head-sum { font-size: 12px; }
+  .status-actions button,
+  .btn-create-order {
+    font-size: 13px;
+    padding: 9px 12px;
+  }
+  /* Кнопки статуса в строку с переносом, крупные тач-цели */
+  .status-actions { gap: 6px; }
+}

@@ -1333,6 +1333,19 @@ img { display: block; max-width: 100%; }
   from { transform: translateY(-100%); }
   to   { transform: translateY(0); }
 }
+#guestBar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 9998;
+  background: #f39c12;
+  color: #fff;
+  text-align: center;
+  font-size: 12.5px; font-weight: 600;
+  line-height: 1.4;
+  padding: 10px 14px;
+  cursor: pointer;
+  animation: offlineSlide 0.25s ease;
+}
 /* Кнопка «Повторить» в error-state */
 .retry-btn {
   margin-top: 14px;
