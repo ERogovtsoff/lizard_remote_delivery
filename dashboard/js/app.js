@@ -98,6 +98,8 @@ function setupSectionTabs() {
 function switchSection(section) {
   if (section === currentSection) return;
   currentSection = section;
+  // При смене раздела всегда показываем список (снимаем мобильный режим деталей)
+  document.body.classList.remove('mobile-detail');
   document.querySelectorAll('.nav-tab').forEach(t =>
     t.classList.toggle('active', t.getAttribute('data-section') === section));
 

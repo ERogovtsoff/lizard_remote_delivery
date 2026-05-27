@@ -1080,6 +1080,14 @@ function openQuickProductModal() {
       </div>
       <label class="qp-label">Размеры через запятую (если есть)<input type="text" id="qpSizes" placeholder="напр. S, M, L или 40, 41"></label>
       <label class="qp-label">Фото (ссылка, опционально)<input type="text" id="qpImage" placeholder="https://..."></label>
+      <div class="qp-upload-row">
+        <label class="btn-light qp-upload-label">
+          ⬆ Загрузить фото с устройства
+          <input type="file" id="qpUpload" accept="image/*" multiple style="display:none">
+        </label>
+        <span class="qp-upload-status" id="qpUploadStatus"></span>
+      </div>
+      <div class="qp-thumbs" id="qpThumbs"></div>
       <div class="qp-actions">
         <button class="btn-primary" id="qpSave">Создать товар</button>
         <button class="btn-light" id="qpCancel">Отмена</button>
@@ -1087,6 +1095,43 @@ function openQuickProductModal() {
       <div class="qp-status" id="qpStatus"></div>
     </div>`;
   document.body.appendChild(modal);
+
+  // Загруженные через Storage картинки накапливаем здесь
+  const uploadedImages = [];
+
+  function renderQpThumbs() {
+    const wrap = document.getElementById('qpThumbs');
+    wrap.innerHTML = uploadedImages.map((u, i) =>
+      `<div class="qp-thumb"><img src="${escapeHtml(u)}" alt=""><button class="qp-thumb-del" data-i="${i}">✕</button></div>`
+    ).join('');
+    wrap.querySelectorAll('.qp-thumb-del').forEach(b => {
+      b.onclick = () => { uploadedImages.splice(+b.dataset.i, 1); renderQpThumbs(); };
+    });
+  }
+
+  const uploadInput = document.getElementById('qpUpload');
+  uploadInput.addEventListener('change', async () => {
+    const files = Array.from(uploadInput.files || []);
+    if (!files.length) return;
+    const st = document.getElementById('qpUploadStatus');
+    let done = 0;
+    for (const f of files) {
+      st.textContent = `Загрузка ${done + 1}/${files.length}…`;
+      try {
+        const url = await api.uploadFile(f);
+        uploadedImages.push(url);
+        done++;
+        renderQpThumbs();
+      } catch (e) {
+        console.error(e);
+        st.textContent = '⚠️ Ошибка загрузки';
+        uploadInput.value = '';
+        return;
+      }
+    }
+    st.textContent = `Загружено: ${done} ✓`;
+    uploadInput.value = '';
+  });
 
   document.getElementById('qpCancel').onclick = () => modal.remove();
   modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
@@ -1099,13 +1144,16 @@ function openQuickProductModal() {
     const stock = {};
     sizes.forEach(s => { stock[s] = 99; });   // условный остаток, можно поправить в каталоге
     const img = document.getElementById('qpImage').value.trim();
+    // Картинки: загруженные файлы + ссылка (если указана)
+    const images = [...uploadedImages];
+    if (img) images.push(img);
     const product = {
       id: makeId('p'),
       name_ru: nameRu, name_en: nameEn || nameRu,
       desc_ru: '', desc_en: '',
       price_usd: Number(document.getElementById('qpPriceUsd').value) || 0,
       price_byn: Number(document.getElementById('qpPriceByn').value) || 0,
-      images: img ? [img] : [],
+      images,
       sizes, stock,
       is_active: true, badge_text: '', badge_color: 'accent',
     };

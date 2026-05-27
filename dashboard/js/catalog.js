@@ -67,39 +67,42 @@ function blankProduct() {
 }
 
 export function startNewProduct() {
-  try {
-    draft = blankProduct();
-    activeId = draft.id;
-    renderEditor();
-    renderList();
-  } catch (e) {
-    console.error('[catalog] startNewProduct error:', e);
-    alert('Ошибка открытия редактора: ' + e.message);
-  }
+  draft = blankProduct();
+  activeId = draft.id;
+  renderEditor();
+  renderList();
 }
 
 function openEditor(id) {
-  try {
-    const prod = products.find(p => p.id === id);
-    if (!prod) { console.warn('[catalog] товар не найден:', id); return; }
-    // Глубокая копия в черновик
-    draft = JSON.parse(JSON.stringify(prod));
-    if (!Array.isArray(draft.images)) draft.images = [];
-    if (!Array.isArray(draft.sizes)) draft.sizes = [];
-    if (!draft.stock || typeof draft.stock !== 'object') draft.stock = {};
-    activeId = id;
-    renderEditor();
-    renderList();
-  } catch (e) {
-    console.error('[catalog] openEditor error:', e);
-    alert('Ошибка открытия товара: ' + e.message);
-  }
+  const prod = products.find(p => p.id === id);
+  if (!prod) return;
+  // Глубокая копия в черновик
+  draft = JSON.parse(JSON.stringify(prod));
+  if (!Array.isArray(draft.images)) draft.images = [];
+  if (!Array.isArray(draft.sizes)) draft.sizes = [];
+  if (!draft.stock || typeof draft.stock !== 'object') draft.stock = {};
+  activeId = id;
+  renderEditor();
+  renderList();
+}
+
+// Закрыть редактор и вернуться к списку (на мобиле — сменить экран)
+function closeEditor() {
+  draft = null;
+  activeId = null;
+  document.body.classList.remove('mobile-detail');
+  const box = document.getElementById('catalogEditor');
+  if (box) box.style.display = 'none';
+  const empty = document.getElementById('catalogEditorEmpty');
+  if (empty) empty.style.display = 'flex';
+  renderList();
 }
 
 function renderEditor() {
   document.getElementById('catalogEditorEmpty').style.display = 'none';
   const box = document.getElementById('catalogEditor');
   box.style.display = 'block';
+  document.body.classList.add('mobile-detail');   // на мобиле показать редактор поверх списка
   const p = draft;
 
   // Опции цветов плашки
@@ -108,6 +111,7 @@ function renderEditor() {
   ).join('');
 
   box.innerHTML = `
+    <button class="mobile-back" id="cat_back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>К списку</button>
     <div class="editor-head">
       <h2>${p._isNew ? 'Новый товар' : 'Редактирование'}</h2>
       <code class="editor-id">${escapeHtml(p.id)}</code>
@@ -162,6 +166,10 @@ function renderEditor() {
 
   renderImages();
   renderSizes();
+
+  // Кнопка «назад» к списку (мобильный режим)
+  const backBtn = document.getElementById('cat_back');
+  if (backBtn) backBtn.onclick = closeEditor;
 
   document.getElementById('e_add_image').onclick = () => { draft.images.push(''); renderImages(); };
   document.getElementById('e_add_size').onclick = () => { addSizeRow(); };
@@ -316,10 +324,7 @@ async function removeDraft() {
   btn.disabled = true;
   try {
     await api.deleteProduct(draft.id);
-    activeId = null;
-    draft = null;
-    document.getElementById('catalogEditor').style.display = 'none';
-    document.getElementById('catalogEditorEmpty').style.display = 'flex';
+    closeEditor();           // вернуться к списку (+ снять mobile-detail)
     await loadCatalog();
   } catch (e) {
     console.error(e);
@@ -339,8 +344,7 @@ function setStatus(text, isError) {
 
 export function setupCatalog() {
   const addBtn = document.getElementById('catalogAddBtn');
-  if (!addBtn) { console.error('[catalog] catalogAddBtn не найден в DOM'); return; }
-  addBtn.onclick = () => { console.log('[catalog] клик Добавить товар'); startNewProduct(); };
+  if (addBtn) addBtn.onclick = startNewProduct;
   const searchInput = document.getElementById('catalogSearch');
   if (searchInput) searchInput.oninput = () => { search = searchInput.value; renderList(); };
 }
