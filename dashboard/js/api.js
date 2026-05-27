@@ -149,6 +149,44 @@ export async function markRead(customerTgId) {
   }
 }
 
+// Какие заказы/обращения имеют непрочитанные входящие сообщения от клиента.
+// Возвращает { orderIds: Set, inquiryIds: Set } — для индикатора «ждёт ответа».
+export async function loadUnreadContexts() {
+  const res = { orderIds: new Set(), inquiryIds: new Set() };
+  try {
+    const rows = await get('messages', {
+      select: 'order_id,inquiry_id',
+      direction: 'eq.in',
+      read_at: 'is.null',
+      limit: '1000',
+    });
+    (rows || []).forEach(m => {
+      if (m.order_id != null) res.orderIds.add(String(m.order_id));
+      if (m.inquiry_id != null) res.inquiryIds.add(String(m.inquiry_id));
+    });
+  } catch (e) {
+    console.warn('loadUnreadContexts failed:', e);
+  }
+  return res;
+}
+
+// Пометить прочитанными входящие конкретного заказа/обращения.
+export async function markContextRead(context) {
+  try {
+    let filter;
+    if (context.order_id != null) filter = `order_id=eq.${context.order_id}`;
+    else if (context.inquiry_id != null) filter = `inquiry_id=eq.${context.inquiry_id}`;
+    else return;
+    await fetchRetry(`${BASE}/messages?${filter}&direction=eq.in&read_at=is.null`, {
+      method: 'PATCH',
+      headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ read_at: new Date().toISOString() }),
+    });
+  } catch (e) {
+    console.warn('markContextRead failed:', e);
+  }
+}
+
 // Отправить ответ клиенту: пишем в очередь outbox, бот её разберёт и отправит
 // в Telegram. context = { inquiry_id } или { order_id }.
 export async function sendReply(customerTgId, text, managerUsername, context = {}, attachmentUrl = null) {
@@ -335,7 +373,39 @@ export async function addOrderItems(orderId, items) {
   return { totalUsd, totalByn };
 }
 
-// Сохранить внутреннюю заметку менеджера к заказу.
+// Пересчитать и сохранить сумму заказа по его позициям.
+async function recalcOrderTotal(orderId) {
+  const allItems = await get('order_items', { select: '*', order_id: `eq.${orderId}` });
+  const totalUsd = (allItems || []).reduce((s, it) => s + (Number(it.price_usd_snapshot) || 0) * (it.qty || 1), 0);
+  const totalByn = (allItems || []).reduce((s, it) => s + (Number(it.price_byn_snapshot) || 0) * (it.qty || 1), 0);
+  await fetchRetry(`${BASE}/orders?id=eq.${encodeURIComponent(orderId)}`, {
+    method: 'PATCH',
+    headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ total_usd: totalUsd, total_byn: totalByn, updated_at: new Date().toISOString() }),
+  });
+  return { totalUsd, totalByn };
+}
+
+// Удалить позицию заказа (по id строки order_items) + пересчёт суммы.
+export async function deleteOrderItem(itemId, orderId) {
+  const res = await fetchRetry(`${BASE}/order_items?id=eq.${encodeURIComponent(itemId)}`, {
+    method: 'DELETE',
+    headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+  });
+  if (!res.ok) throw new Error(`deleteOrderItem failed: ${res.status}`);
+  return recalcOrderTotal(orderId);
+}
+
+// Изменить количество позиции + пересчёт суммы.
+export async function updateOrderItemQty(itemId, qty, orderId) {
+  const res = await fetchRetry(`${BASE}/order_items?id=eq.${encodeURIComponent(itemId)}`, {
+    method: 'PATCH',
+    headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ qty: Math.max(1, parseInt(qty) || 1) }),
+  });
+  if (!res.ok) throw new Error(`updateOrderItemQty failed: ${res.status}`);
+  return recalcOrderTotal(orderId);
+}
 export async function setOrderNote(orderId, note) {
   const res = await fetchRetry(`${BASE}/orders?id=eq.${encodeURIComponent(orderId)}`, {
     method: 'PATCH',

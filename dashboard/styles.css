@@ -1235,3 +1235,84 @@ html, body {
   background: rgba(0,0,0,0.6); color: #fff; font-size: 11px; cursor: pointer;
   display: flex; align-items: center; justify-content: center; line-height: 1;
 }
+
+/* ====================== Поиск и фильтры списка ====================== */
+.list-controls {
+  display: flex;
+  gap: 8px;
+  padding: 0 16px 10px;
+}
+.list-search {
+  flex: 1;
+  min-width: 0;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+.list-search:focus { border-color: var(--accent); }
+.list-filter {
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  background: var(--surface);
+  outline: none;
+  max-width: 140px;
+}
+
+/* Индикатор непрочитанного «ждёт ответа» */
+.unread-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  background: var(--danger);
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.order-row.has-unread {
+  background: #fff7e6;
+  border-left: 3px solid #f39c12;
+}
+.order-row.has-unread .order-row-id { font-weight: 700; }
+
+/* Кнопка копирования ID клиента */
+.copy-id {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  color: var(--accent-dark);
+}
+.copy-id:hover { background: var(--accent-soft); }
+
+/* Редактирование позиций заказа */
+.editable-item { align-items: center; }
+.di-name { flex: 1; }
+.di-controls { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.di-qty-btn {
+  width: 22px; height: 22px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text-secondary);
+}
+.di-qty-btn:hover { background: var(--accent-soft); }
+.di-qty { min-width: 18px; text-align: center; font-weight: 600; font-size: 13px; }
+.di-price { font-size: 13px; color: var(--text-secondary); margin-left: 4px; }
+.di-del {
+  width: 22px; height: 22px;
+  border: none; background: none;
+  color: var(--danger); cursor: pointer;
+  font-size: 13px; margin-left: 2px;
+}
+.di-del:hover { background: #fde8e6; border-radius: 5px; }

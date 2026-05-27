@@ -33,10 +33,58 @@ let managerUsername = '';
 let productsById = {};
 let statusBusy = false;        // защита от спама кнопок статуса
 let convoTimer = null;         // автообновление переписки в открытой карточке
+let searchQuery = '';          // строка поиска по списку
+let statusFilter = 'active';   // active | all | <конкретный статус>
+let unreadOrders = new Set();  // id заказов с непрочитанными входящими
+let unreadInquiries = new Set(); // id обращений с непрочитанными
 
 // Активен ли заказ/обращение (можно ли писать клиенту)
 function isOrderActive(status) { return status !== 'completed' && status !== 'cancelled'; }
 function isInquiryActive(status) { return status !== 'closed'; }
+
+// Навешивает копирование Telegram ID клиента по кнопке в карточке.
+function setupCopyId() {
+  document.querySelectorAll('.copy-id').forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.getAttribute('data-id');
+      try {
+        await navigator.clipboard.writeText(id);
+        const orig = btn.innerHTML;
+        btn.innerHTML = 'скопировано ✓';
+        setTimeout(() => { btn.innerHTML = orig; }, 1500);
+      } catch (_) {
+        // Фолбэк: выделение текста, если clipboard API недоступен
+        const r = document.createRange();
+        r.selectNodeContents(btn);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(r);
+      }
+    };
+  });
+}
+
+// Применяет к списку текущий поиск и фильтр статуса.
+function applyListFilters(items) {
+  // Фильтр статуса
+  if (statusFilter === 'active') {
+    items = items.filter(it => activeTab === 'orders' ? isOrderActive(it.status) : isInquiryActive(it.status));
+  } else if (statusFilter !== 'all') {
+    items = items.filter(it => it.status === statusFilter);
+  }
+  // Поиск по номеру, имени, Telegram ID
+  const q = searchQuery.trim().toLowerCase();
+  if (q) {
+    items = items.filter(it => {
+      const cust = customersById[it.customer_tg_id];
+      const name = customerName(cust, it.customer_tg_id).toLowerCase();
+      const num = activeTab === 'orders' ? String(it.id) : String(it.number || '');
+      const tgId = String(it.customer_tg_id);
+      return name.includes(q) || num.includes(q) || tgId.includes(q);
+    });
+  }
+  return items;
+}
 
 export function initOrders(mgrUsername) {
   managerUsername = mgrUsername;
@@ -61,11 +109,21 @@ export async function loadOrdersSection() {
     } catch (_) {}
     // Первичная инициализация набора известных ID (без звука при первой загрузке)
     initKnownIds();
+    await loadUnread();
   } catch (e) {
     console.error('loadOrdersSection failed:', e);
   }
   renderOrdersList();
   updateNavBadges();
+}
+
+// Подгружает, какие заказы/обращения имеют непрочитанные сообщения от клиента.
+async function loadUnread() {
+  try {
+    const u = await api.loadUnreadContexts();
+    unreadOrders = u.orderIds;
+    unreadInquiries = u.inquiryIds;
+  } catch (_) {}
 }
 
 // Лёгкое обновление списка заказов/обращений без сброса открытой карточки.
@@ -76,6 +134,7 @@ export async function refreshList() {
       api.loadInquiries().catch(() => inquiries),
     ]);
     detectNew();        // проверяем, появилось ли что-то новое → звук + индикатор
+    await loadUnread(); // обновляем индикаторы «ждёт ответа»
     renderOrdersList();
     updateNavBadges();
   } catch (e) {
@@ -169,9 +228,19 @@ function renderOrdersList() {
   const list = document.getElementById('ordersList');
   if (!list) return;
 
-  const items = activeTab === 'orders' ? orders : inquiries;
   const countOrders = orders.filter(o => o.status !== 'completed' && o.status !== 'cancelled').length;
   const countInq = inquiries.filter(q => q.status !== 'closed').length;
+
+  // Применяем поиск и фильтр статуса
+  let items = activeTab === 'orders' ? orders.slice() : inquiries.slice();
+  items = applyListFilters(items);
+
+  // Варианты фильтра статуса зависят от вкладки
+  const statusFilterOpts = activeTab === 'orders'
+    ? [['active', 'Активные'], ['all', 'Все'],
+       ...Object.entries(ORDER_STATUS).map(([k, v]) => [k, v.label])]
+    : [['active', 'Активные'], ['all', 'Все'],
+       ...Object.entries(INQUIRY_STATUS).map(([k, v]) => [k, v.label])];
 
   let html = `
     <div class="orders-tabs">
@@ -183,10 +252,20 @@ function renderOrdersList() {
       </button>
     </div>
     <button class="new-order-btn" id="newOrderBtn">➕ Новый заказ</button>
+    <div class="list-controls">
+      <input type="text" class="list-search" id="listSearch" placeholder="Поиск: номер, имя, ID…" value="${escapeHtml(searchQuery)}">
+      <select class="list-filter" id="listFilter">
+        ${statusFilterOpts.map(([k, label]) =>
+          `<option value="${k}" ${statusFilter === k ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}
+      </select>
+    </div>
     <div class="orders-items">`;
 
   if (!items.length) {
-    html += `<div class="empty-hint">${activeTab === 'orders' ? 'Заказов пока нет' : 'Обращений пока нет'}</div>`;
+    const emptyMsg = (searchQuery || statusFilter !== 'active')
+      ? 'Ничего не найдено по фильтрам'
+      : (activeTab === 'orders' ? 'Заказов пока нет' : 'Обращений пока нет');
+    html += `<div class="empty-hint">${emptyMsg}</div>`;
   } else {
     html += items.map(it => {
       const cust = customersById[it.customer_tg_id];
@@ -195,9 +274,10 @@ function renderOrdersList() {
       if (activeTab === 'orders') {
         const st = ORDER_STATUS[it.status] || { label: it.status };
         const sumLabel = it.currency === 'BYN' ? `${it.total_byn} BYN` : `$${it.total_usd}`;
-        return `<div class="order-row${active}" data-id="${it.id}">
+        const unread = unreadOrders.has(String(it.id)) ? '<span class="unread-dot" title="Есть непрочитанное сообщение"></span>' : '';
+        return `<div class="order-row${active}${unread ? ' has-unread' : ''}" data-id="${it.id}">
           <div class="order-row-top">
-            <span class="order-row-id">Заказ №${it.id}</span>
+            <span class="order-row-id">${unread}Заказ №${it.id}</span>
             <span class="order-row-sum">${escapeHtml(sumLabel)}</span>
           </div>
           <div class="order-row-name">${escapeHtml(name)}</div>
@@ -206,9 +286,10 @@ function renderOrdersList() {
       } else {
         const st = INQUIRY_STATUS[it.status] || { label: it.status };
         const typeLabel = it.type === 'product_question' ? 'Вопрос о товаре' : 'Запрос на подбор';
-        return `<div class="order-row${active}" data-id="${it.id}">
+        const unread = unreadInquiries.has(String(it.id)) ? '<span class="unread-dot" title="Есть непрочитанное сообщение"></span>' : '';
+        return `<div class="order-row${active}${unread ? ' has-unread' : ''}" data-id="${it.id}">
           <div class="order-row-top">
-            <span class="order-row-id">Обращение №${it.number || ''}</span>
+            <span class="order-row-id">${unread}Обращение №${it.number || ''}</span>
           </div>
           <div class="order-row-name">${escapeHtml(name)}</div>
           <div class="order-row-status">${escapeHtml(typeLabel)} · ${escapeHtml(st.label)}</div>
@@ -222,8 +303,23 @@ function renderOrdersList() {
   const newBtn = document.getElementById('newOrderBtn');
   if (newBtn) newBtn.onclick = startBlankOrder;
 
+  // Поиск (сохраняем фокус: не перерисовываем весь список на каждый символ грубо,
+  // но т.к. список лёгкий — просто перерисовываем и возвращаем фокус)
+  const searchInput = document.getElementById('listSearch');
+  if (searchInput) {
+    searchInput.oninput = () => {
+      searchQuery = searchInput.value;
+      const pos = searchInput.selectionStart;
+      renderOrdersList();
+      const ni = document.getElementById('listSearch');
+      if (ni) { ni.focus(); try { ni.setSelectionRange(pos, pos); } catch (_) {} }
+    };
+  }
+  const filterSel = document.getElementById('listFilter');
+  if (filterSel) filterSel.onchange = () => { statusFilter = filterSel.value; renderOrdersList(); };
+
   list.querySelectorAll('.orders-tab').forEach(t => {
-    t.onclick = () => { activeTab = t.getAttribute('data-tab'); activeId = null; renderOrdersList(); clearDetail(); };
+    t.onclick = () => { activeTab = t.getAttribute('data-tab'); activeId = null; statusFilter = 'active'; searchQuery = ''; renderOrdersList(); clearDetail(); };
   });
   list.querySelectorAll('.order-row').forEach(el => {
     el.onclick = () => openDetail(el.getAttribute('data-id'));
@@ -268,9 +364,15 @@ function renderOrderDetail(id) {
     const p = productsById[it.product_id];
     const pname = p ? (p.name_ru || p.name_en || it.product_id) : it.product_id;
     const sz = it.size ? `, ${escapeHtml(it.size)}` : '';
-    return `<div class="detail-item">
-      <span>${escapeHtml(pname)}${sz} × ${it.qty}</span>
-      <span>$${it.price_usd_snapshot}</span>
+    return `<div class="detail-item editable-item" data-item-id="${it.id}">
+      <span class="di-name">${escapeHtml(pname)}${sz}</span>
+      <span class="di-controls">
+        <button class="di-qty-btn" data-act="dec" data-item-id="${it.id}" title="Меньше">−</button>
+        <span class="di-qty">${it.qty}</span>
+        <button class="di-qty-btn" data-act="inc" data-item-id="${it.id}" title="Больше">+</button>
+        <span class="di-price">$${it.price_usd_snapshot}</span>
+        <button class="di-del" data-item-id="${it.id}" title="Удалить позицию">✕</button>
+      </span>
     </div>`;
   }).join('') || '<div class="detail-item muted">Позиции не указаны</div>';
 
@@ -305,7 +407,7 @@ function renderOrderDetail(id) {
         <summary>Детали заказа, статус, заметка</summary>
         <div class="detail-meta">
           <div><b>Клиент:</b> ${escapeHtml(name)}</div>
-          <div><b>ID:</b> ${o.customer_tg_id}</div>
+          <div><b>ID:</b> <button class="copy-id" data-id="${o.customer_tg_id}" title="Копировать ID">${o.customer_tg_id} 📋</button></div>
           <div><b>Создан:</b> ${escapeHtml(formatFullDate(o.created_at))} ${escapeHtml(formatTime(o.created_at))}</div>
         </div>
         <div class="detail-section">
@@ -351,6 +453,7 @@ function renderOrderDetail(id) {
   // Кнопка «назад» (мобильная)
   const mb = document.getElementById('mobileBack');
   if (mb) mb.onclick = backToList;
+  setupCopyId();
 
   // Кнопки быстрого статуса
   box.querySelectorAll('[data-status]').forEach(btn => {
@@ -367,6 +470,37 @@ function renderOrderDetail(id) {
       setDetailMsg('Заметка сохранена ✓');
     } catch (e) { setDetailMsg('Ошибка сохранения заметки', true); }
   };
+
+  // Редактирование/удаление позиций заказа
+  const box = document.getElementById('orderDetail');
+  box.querySelectorAll('.di-qty-btn').forEach(btn => {
+    btn.onclick = async () => {
+      const itemId = btn.getAttribute('data-item-id');
+      const act = btn.getAttribute('data-act');
+      const item = (o.order_items || []).find(x => String(x.id) === String(itemId));
+      if (!item) return;
+      const newQty = act === 'inc' ? item.qty + 1 : item.qty - 1;
+      if (newQty < 1) return;
+      btn.disabled = true;
+      try {
+        await api.updateOrderItemQty(itemId, newQty, o.id);
+        await loadOrdersSection();
+        openDetail(String(o.id));
+      } catch (e) { console.error(e); setDetailMsg('Ошибка изменения количества', true); btn.disabled = false; }
+    };
+  });
+  box.querySelectorAll('.di-del').forEach(btn => {
+    btn.onclick = async () => {
+      if (!confirm('Удалить позицию из заказа?')) return;
+      const itemId = btn.getAttribute('data-item-id');
+      btn.disabled = true;
+      try {
+        await api.deleteOrderItem(itemId, o.id);
+        await loadOrdersSection();
+        openDetail(String(o.id));
+      } catch (e) { console.error(e); setDetailMsg('Ошибка удаления позиции', true); btn.disabled = false; }
+    };
+  });
 
   // Добавление позиций в существующий заказ (#9)
   const addBtn = document.getElementById('addToOrderBtn');
@@ -420,6 +554,8 @@ async function saveAddItems(order) {
 async function changeOrderStatus(order, status) {
   if (statusBusy) return;                          // защита от спама
   if (status === order.status) { setDetailMsg('Этот статус уже установлен'); return; }
+  // Подтверждение для необратимой отмены
+  if (status === 'cancelled' && !confirm(`Отменить заказ №${order.id}? Это действие нежелательно отменять.`)) return;
   statusBusy = true;
   // Блокируем все кнопки статуса визуально
   document.querySelectorAll('.status-actions button, #orderStatusApply').forEach(b => b.disabled = true);
@@ -482,7 +618,7 @@ function renderInquiryDetail(id) {
         <summary>Детали обращения и оформление заказа</summary>
         <div class="detail-meta">
           <div><b>Клиент:</b> ${escapeHtml(name)}</div>
-          <div><b>ID:</b> ${q.customer_tg_id}</div>
+          <div><b>ID:</b> <button class="copy-id" data-id="${q.customer_tg_id}" title="Копировать ID">${q.customer_tg_id} 📋</button></div>
           <div><b>Тип:</b> ${escapeHtml(typeLabel)}</div>
           ${prodLine}
           <div><b>Создано:</b> ${escapeHtml(formatFullDate(q.created_at))} ${escapeHtml(formatTime(q.created_at))}</div>
@@ -521,6 +657,7 @@ function renderInquiryDetail(id) {
   document.getElementById('inqCreateOrder').onclick = () => startOrderForm(q);
   const mbq = document.getElementById('mobileBack');
   if (mbq) mbq.onclick = backToList;
+  setupCopyId();
 
   setupConvo({ inquiry_id: q.id }, q.customer_tg_id, isInquiryActive(q.status));
 }
@@ -632,6 +769,14 @@ async function setupConvo(context, customerTgId, active) {
   pendingOut = [];
 
   await refreshConvo();
+
+  // Помечаем входящие этого заказа/обращения прочитанными и снимаем индикатор
+  try {
+    await api.markContextRead(context);
+    if (context.order_id != null) unreadOrders.delete(String(context.order_id));
+    if (context.inquiry_id != null) unreadInquiries.delete(String(context.inquiry_id));
+    renderOrdersList();
+  } catch (_) {}
 
   // Автообновление переписки каждые 5с, пока карточка открыта
   if (convoTimer) clearInterval(convoTimer);
