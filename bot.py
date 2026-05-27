@@ -845,7 +845,9 @@ async def notify_manager(bot: Bot, text: str, client_tg_id: int,
     first_msg_id = None
     for chat in chats:
         try:
-            sent = await bot.send_message(chat, text, reply_markup=reply_markup)
+            sent = await retry_network(
+                lambda: bot.send_message(chat, text, reply_markup=reply_markup),
+                what="notify_manager")
             add_routing(sent.message_id, client_tg_id)
             if first_msg_id is None:
                 first_msg_id = sent.message_id
@@ -858,7 +860,8 @@ async def notify_duty_plain(bot: Bot, text: str) -> None:
     """Простое уведомление всем дежурным менеджерам (без routing-привязки)."""
     for chat in await get_duty_chat_ids():
         try:
-            await bot.send_message(chat, text)
+            await retry_network(lambda: bot.send_message(chat, text),
+                                what="notify_duty_plain")
         except Exception as e:
             log.warning("notify_duty_plain failed for %s: %s", chat, e)
 
@@ -870,7 +873,9 @@ async def send_card_to_chat(bot: Bot, chat_id: int, text: str, client_tg_id: int
     В отличие от notify_manager, не рассылает всем дежурным.
     """
     try:
-        sent = await bot.send_message(chat_id, text, reply_markup=reply_markup)
+        sent = await retry_network(
+            lambda: bot.send_message(chat_id, text, reply_markup=reply_markup),
+            what="send_card_to_chat")
         add_routing(sent.message_id, client_tg_id)
         return sent.message_id
     except Exception as e:
@@ -1663,7 +1668,9 @@ async def forward_client_to_manager(message: Message, bot: Bot) -> None:
                     "откройте наше приложение и нажмите «Заказать товар». "
                     "Так мы сразу видим, что именно вам нужно 💛"
                 )
-                await bot.send_message(message.from_user.id, hint)
+                await retry_network(
+                    lambda: bot.send_message(message.from_user.id, hint),
+                    what="forward.hint")
                 await save_message(
                     message.from_user.id, "out", text=hint,
                     sender="bot", source="bot", inquiry_id=inquiry["id"],
@@ -1685,18 +1692,22 @@ async def forward_client_to_manager(message: Message, bot: Bot) -> None:
     for manager_chat in chats:
         # 1. Заголовок — reply-target
         try:
-            header_msg = await bot.send_message(manager_chat, header)
+            header_msg = await retry_network(
+                lambda: bot.send_message(manager_chat, header),
+                what="forward.header")
             add_routing(header_msg.message_id, message.from_user.id)
         except Exception as e:
             log.warning("Failed to send header to %s: %s", manager_chat, e)
             continue
         # 2. Содержимое — копия как есть
         try:
-            copied = await bot.copy_message(
-                chat_id=manager_chat,
-                from_chat_id=message.chat.id,
-                message_id=message.message_id,
-            )
+            copied = await retry_network(
+                lambda: bot.copy_message(
+                    chat_id=manager_chat,
+                    from_chat_id=message.chat.id,
+                    message_id=message.message_id,
+                ),
+                what="forward.copy")
             add_routing(copied.message_id, message.from_user.id)
         except Exception as e:
             log.warning("Failed to copy message to %s: %s", manager_chat, e)
@@ -2346,8 +2357,14 @@ async def process_outbox(bot: Bot) -> int:
                 await supabase_patch("outbox", {"id": f"eq.{outbox_id}"},
                                      {"sent_at": now_iso(), "error": "blocked"})
                 log.info("Outbox %s: клиент %s заблокировал бота", outbox_id, customer_tg_id)
+            except _RETRYABLE as e:
+                # Сетевой сбой даже после ретраев — НЕ закрываем запись.
+                # Оставляем в очереди: следующий цикл воркера попробует снова,
+                # когда сеть восстановится. Сообщение не потеряется.
+                log.warning("Outbox %s: сеть недоступна, оставляю в очереди (%s)",
+                            outbox_id, type(e).__name__)
             except Exception as e:
-                # Прочая ошибка — помечаем, чтобы не застряло навсегда
+                # Окончательная (несетевая) ошибка — помечаем, чтобы не застряло навсегда
                 await supabase_patch("outbox", {"id": f"eq.{outbox_id}"},
                                      {"sent_at": now_iso(), "error": str(e)[:200]})
                 log.warning("Outbox %s send failed: %s", outbox_id, e)

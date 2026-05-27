@@ -9,10 +9,31 @@ const HEADERS = {
   'Content-Type': 'application/json',
 };
 
+// fetch с автоповтором при сетевых сбоях (обрыв соединения, отсутствие сети).
+// Экспонента с потолком 4с, до 8 попыток. HTTP-ответы (даже 4xx/5xx) НЕ
+// повторяются — это не сетевая ошибка, их обрабатывает вызывающий код.
+// Критично для доставки сообщений менеджера, когда у него нестабильный интернет.
+async function fetchRetry(url, options = {}, retries = 8) {
+  let lastErr;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await fetch(url, options);
+    } catch (e) {
+      // TypeError от fetch = сетевой сбой (нет соединения, обрыв, DNS)
+      lastErr = e;
+      if (attempt < retries) {
+        const delay = Math.min(500 * Math.pow(2, attempt - 1), 4000);
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
+  }
+  throw lastErr;
+}
+
 // GET с query-параметрами PostgREST. params — объект вида { select: '*', order: 'created_at.desc' }
 async function get(table, params = {}) {
   const qs = new URLSearchParams(params).toString();
-  const res = await fetch(`${BASE}/${table}?${qs}`, { headers: HEADERS });
+  const res = await fetchRetry(`${BASE}/${table}?${qs}`, { headers: HEADERS });
   if (!res.ok) throw new Error(`GET ${table} failed: ${res.status}`);
   return res.json();
 }
@@ -149,7 +170,7 @@ export async function loadOrderMessages(orderId, customerTgId) {
 // Пометить входящие сообщения клиента прочитанными.
 export async function markRead(customerTgId) {
   try {
-    await fetch(`${BASE}/messages?customer_tg_id=eq.${customerTgId}&direction=eq.in&read_at=is.null`, {
+    await fetchRetry(`${BASE}/messages?customer_tg_id=eq.${customerTgId}&direction=eq.in&read_at=is.null`, {
       method: 'PATCH',
       headers: { ...HEADERS, 'Prefer': 'return=minimal' },
       body: JSON.stringify({ read_at: new Date().toISOString() }),
@@ -162,7 +183,7 @@ export async function markRead(customerTgId) {
 // Отправить ответ клиенту: пишем в очередь outbox, бот её разберёт и отправит
 // в Telegram. context = { inquiry_id } или { order_id }.
 export async function sendReply(customerTgId, text, managerUsername, context = {}, attachmentUrl = null) {
-  const res = await fetch(`${BASE}/outbox`, {
+  const res = await fetchRetry(`${BASE}/outbox`, {
     method: 'POST',
     headers: { ...HEADERS, 'Prefer': 'return=minimal' },
     body: JSON.stringify({
@@ -184,7 +205,7 @@ export async function uploadFile(file) {
   const ext = file.name && file.name.includes('.') ? '.' + file.name.split('.').pop() : '';
   const objectName = `dash_${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`;
   const url = `${CONFIG.SUPABASE_URL}/storage/v1/object/chat-files/${objectName}`;
-  const res = await fetch(url, {
+  const res = await fetchRetry(url, {
     method: 'POST',
     headers: {
       'apikey': CONFIG.SUPABASE_ANON_KEY,
@@ -233,7 +254,7 @@ function productToRow(p) {
 // Создать или обновить один товар (upsert по id).
 export async function saveProduct(product) {
   const row = productToRow(product);
-  const res = await fetch(`${BASE}/products`, {
+  const res = await fetchRetry(`${BASE}/products`, {
     method: 'POST',
     headers: { ...HEADERS, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
     body: JSON.stringify(row),
@@ -247,7 +268,7 @@ export async function saveProduct(product) {
 
 // Удалить один товар по id.
 export async function deleteProduct(id) {
-  const res = await fetch(`${BASE}/products?id=eq.${encodeURIComponent(id)}`, {
+  const res = await fetchRetry(`${BASE}/products?id=eq.${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: { ...HEADERS, 'Prefer': 'return=minimal' },
   });
@@ -257,7 +278,7 @@ export async function deleteProduct(id) {
 
 // Быстрое переключение видимости (скрыть/показать).
 export async function setProductActive(id, isActive) {
-  const res = await fetch(`${BASE}/products?id=eq.${encodeURIComponent(id)}`, {
+  const res = await fetchRetry(`${BASE}/products?id=eq.${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: { ...HEADERS, 'Prefer': 'return=minimal' },
     body: JSON.stringify({ is_active: isActive }),
@@ -288,7 +309,7 @@ export async function loadInquiries() {
 
 // Сменить статус заказа + (опционально) поставить клиенту уведомление в outbox.
 export async function setOrderStatus(orderId, status, clientMessage, customerTgId, managerUsername) {
-  const res = await fetch(`${BASE}/orders?id=eq.${encodeURIComponent(orderId)}`, {
+  const res = await fetchRetry(`${BASE}/orders?id=eq.${encodeURIComponent(orderId)}`, {
     method: 'PATCH',
     headers: { ...HEADERS, 'Prefer': 'return=minimal' },
     body: JSON.stringify({ status, updated_at: new Date().toISOString() }),
@@ -303,7 +324,7 @@ export async function setOrderStatus(orderId, status, clientMessage, customerTgI
 
 // Сменить статус обращения.
 export async function setInquiryStatus(inquiryId, status, clientMessage, customerTgId, managerUsername) {
-  const res = await fetch(`${BASE}/inquiries?id=eq.${encodeURIComponent(inquiryId)}`, {
+  const res = await fetchRetry(`${BASE}/inquiries?id=eq.${encodeURIComponent(inquiryId)}`, {
     method: 'PATCH',
     headers: { ...HEADERS, 'Prefer': 'return=minimal' },
     body: JSON.stringify({ status, updated_at: new Date().toISOString() }),
@@ -326,7 +347,7 @@ export async function addOrderItems(orderId, items) {
     price_usd_snapshot: Number(it.price_usd) || 0,
     price_byn_snapshot: Number(it.price_byn) || 0,
   }));
-  const res = await fetch(`${BASE}/order_items`, {
+  const res = await fetchRetry(`${BASE}/order_items`, {
     method: 'POST',
     headers: { ...HEADERS, 'Prefer': 'return=minimal' },
     body: JSON.stringify(rows),
@@ -337,7 +358,7 @@ export async function addOrderItems(orderId, items) {
   const allItems = await get('order_items', { select: '*', order_id: `eq.${orderId}` });
   const totalUsd = (allItems || []).reduce((s, it) => s + (Number(it.price_usd_snapshot) || 0) * (it.qty || 1), 0);
   const totalByn = (allItems || []).reduce((s, it) => s + (Number(it.price_byn_snapshot) || 0) * (it.qty || 1), 0);
-  await fetch(`${BASE}/orders?id=eq.${encodeURIComponent(orderId)}`, {
+  await fetchRetry(`${BASE}/orders?id=eq.${encodeURIComponent(orderId)}`, {
     method: 'PATCH',
     headers: { ...HEADERS, 'Prefer': 'return=minimal' },
     body: JSON.stringify({ total_usd: totalUsd, total_byn: totalByn, updated_at: new Date().toISOString() }),
@@ -347,7 +368,7 @@ export async function addOrderItems(orderId, items) {
 
 // Сохранить внутреннюю заметку менеджера к заказу.
 export async function setOrderNote(orderId, note) {
-  const res = await fetch(`${BASE}/orders?id=eq.${encodeURIComponent(orderId)}`, {
+  const res = await fetchRetry(`${BASE}/orders?id=eq.${encodeURIComponent(orderId)}`, {
     method: 'PATCH',
     headers: { ...HEADERS, 'Prefer': 'return=minimal' },
     body: JSON.stringify({ manager_note: note }),
@@ -363,7 +384,7 @@ export async function createOrder(customerTgId, items, currency, inquiryId, stat
   const totalByn = items.reduce((s, it) => s + (Number(it.price_byn) || 0) * (it.qty || 1), 0);
 
   // 1. Создаём заказ
-  const orderRes = await fetch(`${BASE}/orders`, {
+  const orderRes = await fetchRetry(`${BASE}/orders`, {
     method: 'POST',
     headers: { ...HEADERS, 'Prefer': 'return=representation' },
     body: JSON.stringify({
@@ -389,7 +410,7 @@ export async function createOrder(customerTgId, items, currency, inquiryId, stat
     price_usd_snapshot: Number(it.price_usd) || 0,
     price_byn_snapshot: Number(it.price_byn) || 0,
   }));
-  const itemsRes = await fetch(`${BASE}/order_items`, {
+  const itemsRes = await fetchRetry(`${BASE}/order_items`, {
     method: 'POST',
     headers: { ...HEADERS, 'Prefer': 'return=minimal' },
     body: JSON.stringify(rows),
@@ -399,7 +420,7 @@ export async function createOrder(customerTgId, items, currency, inquiryId, stat
   // 3. Привязываем сообщения обращения к заказу (чтобы переписка продолжилась в заказе)
   if (inquiryId) {
     try {
-      await fetch(`${BASE}/messages?inquiry_id=eq.${inquiryId}`, {
+      await fetchRetry(`${BASE}/messages?inquiry_id=eq.${inquiryId}`, {
         method: 'PATCH',
         headers: { ...HEADERS, 'Prefer': 'return=minimal' },
         body: JSON.stringify({ order_id: order.id }),
@@ -411,7 +432,7 @@ export async function createOrder(customerTgId, items, currency, inquiryId, stat
 
 // Положить клиентское уведомление в очередь (бот доставит и сохранит в messages).
 async function queueClientNotice(customerTgId, text, managerUsername, context = {}) {
-  await fetch(`${BASE}/outbox`, {
+  await fetchRetry(`${BASE}/outbox`, {
     method: 'POST',
     headers: { ...HEADERS, 'Prefer': 'return=minimal' },
     body: JSON.stringify({
