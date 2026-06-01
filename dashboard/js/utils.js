@@ -70,3 +70,29 @@ export const BADGE_COLORS = {
   black:  { bg: '#1a1a1a', fg: '#ffffff', label: 'Чёрный' },
   accent: { bg: '#01C2C3', fg: '#ffffff', label: 'Бирюзовый' },
 };
+
+// CSV-экспорт (#16). rows — массив объектов, columns — [{key, label}].
+export function exportToCsv(filename, rows, columns) {
+  const escapeCell = (v) => {
+    if (v == null) return '';
+    const s = String(v);
+    // Если есть кавычка, запятая, перевод строки — оборачиваем в кавычки, удваиваем внутренние
+    if (/[",\n\r;]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  };
+  const header = columns.map(c => escapeCell(c.label)).join(',');
+  const lines = rows.map(r => columns.map(c => {
+    let v = r[c.key];
+    if (typeof c.format === 'function') v = c.format(v, r);
+    return escapeCell(v);
+  }).join(','));
+  // BOM в начале, чтобы Excel корректно распознавал UTF-8
+  const csv = '\ufeff' + header + '\n' + lines.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}

@@ -1,7 +1,7 @@
 // Раздел «Заказы» в панели: заказы и обращения, перемещение по статусам.
 // Смена статуса пишет в БД и (через outbox) уведомляет клиента — бот доставит.
 import * as api from './api.js';
-import { escapeHtml, customerName, formatTime, formatFullDate, makeId } from './utils.js';
+import { escapeHtml, customerName, formatTime, formatFullDate, makeId, exportToCsv } from './utils.js';
 
 // Статусы заказов с подписью и текстом клиенту (синхронно с ботом).
 const ORDER_STATUS = {
@@ -115,7 +115,26 @@ function customerStatsHtml(customerTgId) {
     ? '<span class="cust-tag returning">💛 постоянный</span>'
     : '<span class="cust-tag new">🆕 новый клиент</span>';
   const spent = totalUsd > 0 ? ` · выкуплено на $${totalUsd}` : '';
-  return `<div class="cust-stats">${tag}<span class="cust-stats-meta">заказов: ${myOrders.length}${spent}</span></div>`;
+  const note = cust && cust.manager_note ? cust.manager_note : '';
+  const noteBlock = note
+    ? `<div class="cust-note-block"><span class="cust-note-label">📌</span><span class="cust-note-text">${escapeHtml(note)}</span><button class="cust-note-edit" data-tg="${customerTgId}" title="Изменить">✎</button></div>`
+    : `<button class="cust-note-add" data-tg="${customerTgId}">📌 + добавить заметку о клиенте</button>`;
+  return `<div class="cust-stats">${tag}<span class="cust-stats-meta">заказов: ${myOrders.length}${spent}</span></div>${noteBlock}`;
+}
+
+// Открывает prompt для редактирования постоянной заметки клиента.
+async function editCustomerNote(tgId) {
+  const cust = customersById[tgId];
+  const current = (cust && cust.manager_note) || '';
+  const next = prompt('Постоянная заметка о клиенте (видна во всех его заказах, не видна клиенту):', current);
+  if (next == null) return;
+  try {
+    await api.setCustomerNote(tgId, next, managerUsername);
+    if (cust) cust.manager_note = next;
+    // Перерисуем открытую карточку, чтобы заметка обновилась
+    if (activeId) openDetail(String(activeId));
+    setDetailMsg('Заметка о клиенте сохранена ✓');
+  } catch (e) { console.error(e); setDetailMsg('Ошибка сохранения заметки', true); }
 }
 
 // ===== Реквизиты оплаты (#3) — хранятся локально в браузере панели =====
@@ -193,7 +212,8 @@ function orderRowHtml(it) {
 // Навешивает копирование Telegram ID клиента по кнопке в карточке.
 function setupCopyId() {
   document.querySelectorAll('.copy-id').forEach(btn => {
-    btn.onclick = async () => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
       const id = btn.getAttribute('data-id');
       try {
         await navigator.clipboard.writeText(id);
@@ -201,13 +221,19 @@ function setupCopyId() {
         btn.innerHTML = 'скопировано ✓';
         setTimeout(() => { btn.innerHTML = orig; }, 1500);
       } catch (_) {
-        // Фолбэк: выделение текста, если clipboard API недоступен
         const r = document.createRange();
         r.selectNodeContents(btn);
         const sel = window.getSelection();
         sel.removeAllRanges();
         sel.addRange(r);
       }
+    };
+  });
+  // Кнопки редактирования постоянной заметки о клиенте (#14)
+  document.querySelectorAll('.cust-note-add, .cust-note-edit').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      editCustomerNote(Number(btn.getAttribute('data-tg')));
     };
   });
 }
@@ -414,7 +440,10 @@ function renderOrdersList() {
         Обращения${countInq ? ` <span class="tab-badge">${countInq}</span>` : ''}
       </button>
     </div>
-    <button class="new-order-btn" id="newOrderBtn">➕ Новый заказ</button>
+    <div class="orders-toprow">
+      <button class="new-order-btn" id="newOrderBtn">➕ Новый заказ</button>
+      <button class="export-btn" id="exportOrdersBtn" title="Экспорт списка в CSV">📥</button>
+    </div>
     ${renderSummary()}
     <div class="list-controls">
       <input type="text" class="list-search" id="listSearch" placeholder="Поиск: номер, имя, ID…" value="${escapeHtml(searchQuery)}">
@@ -476,6 +505,8 @@ function renderOrdersList() {
 
   const newBtn = document.getElementById('newOrderBtn');
   if (newBtn) newBtn.onclick = startBlankOrder;
+  const exportBtn = document.getElementById('exportOrdersBtn');
+  if (exportBtn) exportBtn.onclick = () => exportCurrentList();
 
   // Поиск (сохраняем фокус: не перерисовываем весь список на каждый символ грубо,
   // но т.к. список лёгкий — просто перерисовываем и возвращаем фокус)
@@ -549,7 +580,7 @@ function renderOrderDetail(id) {
         <button class="di-qty-btn" data-act="dec" data-item-id="${it.id}" title="Меньше">−</button>
         <span class="di-qty">${it.qty}</span>
         <button class="di-qty-btn" data-act="inc" data-item-id="${it.id}" title="Больше">+</button>
-        <span class="di-price">$${it.price_usd_snapshot}</span>
+        <button class="di-price" data-item-id="${it.id}" data-price="${it.price_usd_snapshot}" data-priceb="${it.price_byn_snapshot}" title="Изменить цену">$${it.price_usd_snapshot}</button>
         <button class="di-del" data-item-id="${it.id}" title="Удалить позицию">✕</button>
       </span>
     </div>`;
@@ -681,7 +712,7 @@ function renderOrderDetail(id) {
   const paidChk = document.getElementById('orderPaid');
   if (paidChk) paidChk.onchange = async () => {
     try {
-      await api.setPaid(o.id, paidChk.checked);
+      await api.setPaid(o.id, paidChk.checked, managerUsername);
       o.is_paid = paidChk.checked;
       o.paid_at = paidChk.checked ? new Date().toISOString() : null;
       const inArr = orders.find(x => String(x.id) === String(o.id));
@@ -697,7 +728,7 @@ function renderOrderDetail(id) {
     const track = document.getElementById('orderTrack').value.trim();
     trackSave.disabled = true;
     try {
-      await api.setTrackingNumber(o.id, track);
+      await api.setTrackingNumber(o.id, track, managerUsername);
       o.tracking_number = track;
       const notify = document.getElementById('trackNotify')?.checked;
       if (track && notify) {
@@ -760,7 +791,7 @@ function renderOrderDetail(id) {
       if (newQty < 1) return;
       btn.disabled = true;
       try {
-        await api.updateOrderItemQty(itemId, newQty, o.id);
+        await api.updateOrderItemQty(itemId, newQty, o.id, managerUsername);
         await loadOrdersSection();
         openDetail(String(o.id));
       } catch (e) { console.error(e); setDetailMsg('Ошибка изменения количества', true); btn.disabled = false; }
@@ -772,10 +803,36 @@ function renderOrderDetail(id) {
       const itemId = btn.getAttribute('data-item-id');
       btn.disabled = true;
       try {
-        await api.deleteOrderItem(itemId, o.id);
+        await api.deleteOrderItem(itemId, o.id, managerUsername);
         await loadOrdersSection();
         openDetail(String(o.id));
       } catch (e) { console.error(e); setDetailMsg('Ошибка удаления позиции', true); btn.disabled = false; }
+    };
+  });
+  box.querySelectorAll('.di-price').forEach(btn => {
+    btn.onclick = async () => {
+      const itemId = btn.getAttribute('data-item-id');
+      const curUsd = Number(btn.getAttribute('data-price')) || 0;
+      const curByn = Number(btn.getAttribute('data-priceb')) || 0;
+      const newUsdStr = prompt(`Новая цена за единицу, USD (сейчас $${curUsd}):`, curUsd);
+      if (newUsdStr == null) return;
+      const newUsd = Number(newUsdStr);
+      if (isNaN(newUsd) || newUsd < 0) { setDetailMsg('Некорректная цена', true); return; }
+      // Если у заказа есть BYN-стоимость — спросим и её, иначе оставим 0/прежнюю
+      let newByn = curByn;
+      if (curByn > 0 || o.currency === 'BYN') {
+        const bynStr = prompt(`Новая цена в BYN (сейчас ${curByn}):`, curByn);
+        if (bynStr == null) return;
+        newByn = Number(bynStr);
+        if (isNaN(newByn) || newByn < 0) { setDetailMsg('Некорректная цена BYN', true); return; }
+      }
+      btn.disabled = true;
+      try {
+        await api.updateOrderItemPrice(itemId, newUsd, newByn, o.id, managerUsername);
+        await loadOrdersSection();
+        openDetail(String(o.id));
+        setDetailMsg('Цена обновлена ✓');
+      } catch (e) { console.error(e); setDetailMsg('Ошибка изменения цены', true); btn.disabled = false; }
     };
   });
 
@@ -1795,3 +1852,145 @@ export function openTemplatesEditor() {
 
 // Экспорт для кнопки реквизитов в подвале панели.
 export function showRequisitesModal() { openRequisitesModal(); }
+
+// Экспорт текущего отфильтрованного списка (заказы или обращения) в CSV (#16).
+function exportCurrentList() {
+  const items = applyListFilters((activeTab === 'orders' ? orders : inquiries).slice());
+  const date = new Date().toISOString().slice(0, 10);
+  if (activeTab === 'orders') {
+    const rows = items.map(o => {
+      const c = customersById[o.customer_tg_id] || {};
+      return {
+        id: o.id,
+        created_at: o.created_at,
+        status: (ORDER_STATUS[o.status] || {}).label || o.status,
+        status_changed_at: o.status_changed_at || '',
+        customer_tg_id: o.customer_tg_id,
+        customer: customerName(c, o.customer_tg_id),
+        username: c.username || '',
+        total_usd: Number(o.total_usd) || 0,
+        total_byn: Number(o.total_byn) || 0,
+        currency: o.currency || 'USD',
+        is_paid: o.is_paid ? 'да' : 'нет',
+        paid_at: o.paid_at || '',
+        tracking: o.tracking_number || '',
+        assigned_to: o.assigned_to || '',
+        cancel_reason: o.cancel_reason || '',
+      };
+    });
+    const columns = [
+      { key: 'id', label: 'Номер' },
+      { key: 'created_at', label: 'Создан' },
+      { key: 'status', label: 'Статус' },
+      { key: 'status_changed_at', label: 'В статусе с' },
+      { key: 'customer_tg_id', label: 'TG ID' },
+      { key: 'customer', label: 'Клиент' },
+      { key: 'username', label: 'Username' },
+      { key: 'total_usd', label: 'Сумма USD' },
+      { key: 'total_byn', label: 'Сумма BYN' },
+      { key: 'currency', label: 'Валюта' },
+      { key: 'is_paid', label: 'Оплачен' },
+      { key: 'paid_at', label: 'Дата оплаты' },
+      { key: 'tracking', label: 'Трек' },
+      { key: 'assigned_to', label: 'Менеджер' },
+      { key: 'cancel_reason', label: 'Причина отмены' },
+    ];
+    exportToCsv(`orders-${date}.csv`, rows, columns);
+  } else {
+    const rows = items.map(q => {
+      const c = customersById[q.customer_tg_id] || {};
+      return {
+        number: q.number || '',
+        created_at: q.created_at,
+        type: q.type === 'product_question' ? 'Вопрос о товаре' : 'Запрос на подбор',
+        status: (INQUIRY_STATUS[q.status] || {}).label || q.status,
+        customer_tg_id: q.customer_tg_id,
+        customer: customerName(c, q.customer_tg_id),
+        username: c.username || '',
+        assigned_to: q.assigned_to || '',
+      };
+    });
+    const columns = [
+      { key: 'number', label: 'Номер' },
+      { key: 'created_at', label: 'Создано' },
+      { key: 'type', label: 'Тип' },
+      { key: 'status', label: 'Статус' },
+      { key: 'customer_tg_id', label: 'TG ID' },
+      { key: 'customer', label: 'Клиент' },
+      { key: 'username', label: 'Username' },
+      { key: 'assigned_to', label: 'Менеджер' },
+    ];
+    exportToCsv(`inquiries-${date}.csv`, rows, columns);
+  }
+}
+
+// ============ ЖУРНАЛ ДЕЙСТВИЙ (#17) ============
+
+const AUDIT_LABELS = {
+  order_status_change:   '🔄 Статус заказа',
+  inquiry_status_change: '🔄 Статус обращения',
+  order_item_delete:     '🗑 Удаление позиции',
+  order_item_qty_change: '✏️ Кол-во позиции',
+  order_item_price_change: '💵 Цена позиции',
+  assign:                '👤 Назначение',
+  tracking_set:          '🚚 Трек-номер',
+  paid_on:               '✅ Отмечен оплаченным',
+  paid_off:              '↩️ Снята оплата',
+  customer_note_set:     '📌 Заметка о клиенте',
+};
+
+function formatAuditDetails(r) {
+  const d = r.details || {};
+  switch (r.action) {
+    case 'order_status_change':
+    case 'inquiry_status_change': {
+      const from = d.from ? (ORDER_STATUS[d.from] || INQUIRY_STATUS[d.from] || { label: d.from }).label : '—';
+      const to = d.to ? (ORDER_STATUS[d.to] || INQUIRY_STATUS[d.to] || { label: d.to }).label : '—';
+      return `${escapeHtml(from)} → ${escapeHtml(to)}`;
+    }
+    case 'order_item_qty_change': return `qty = ${escapeHtml(d.qty)}`;
+    case 'order_item_price_change': return `USD ${escapeHtml(d.price_usd)} · BYN ${escapeHtml(d.price_byn)}`;
+    case 'tracking_set': return `${escapeHtml(d.track || '—')}`;
+    case 'assign': return `→ @${escapeHtml(d.to || '—')}`;
+    default: return '';
+  }
+}
+
+export async function openAuditLog() {
+  const old = document.getElementById('auditModal');
+  if (old) { old.remove(); return; }
+  const modal = document.createElement('div');
+  modal.id = 'auditModal';
+  modal.className = 'qp-modal';
+  modal.innerHTML = `
+    <div class="qp-card audit-card">
+      <div class="qp-head">Журнал действий</div>
+      <p class="req-hint">Последние 200 действий менеджеров. Помогает понять, кто что менял.</p>
+      <div id="auditList" class="audit-list">Загрузка…</div>
+      <div class="qp-actions">
+        <button class="btn-light" id="auditClose">Закрыть</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  document.getElementById('auditClose').onclick = () => modal.remove();
+
+  try {
+    const rows = await api.loadAuditLog({ limit: 200 });
+    const box = document.getElementById('auditList');
+    if (!rows || !rows.length) { box.innerHTML = '<div class="sh-empty">Действий пока нет</div>'; return; }
+    box.innerHTML = rows.map(r => {
+      const label = AUDIT_LABELS[r.action] || r.action;
+      const who = r.manager ? `@${escapeHtml(r.manager)}` : '—';
+      const when = `${escapeHtml(formatFullDate(r.created_at))} ${escapeHtml(formatTime(r.created_at))}`;
+      const entity = r.entity_id ? ` · ${escapeHtml(r.entity_type || '')} #${escapeHtml(r.entity_id)}` : '';
+      const details = formatAuditDetails(r);
+      return `<div class="audit-row">
+        <div class="audit-row-top"><span class="audit-action">${label}${entity}</span><span class="audit-meta">${who} · ${when}</span></div>
+        ${details ? `<div class="audit-details">${details}</div>` : ''}
+      </div>`;
+    }).join('');
+  } catch (e) {
+    document.getElementById('auditList').innerHTML = '<div class="sh-empty">Не удалось загрузить</div>';
+  }
+}

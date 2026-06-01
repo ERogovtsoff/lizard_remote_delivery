@@ -1686,3 +1686,98 @@ html, body {
   .cust-grid { grid-template-columns: 1fr; }
   .cust-controls .list-filter { flex: 1; max-width: none; }
 }
+
+/* ====================== Заметка о клиенте, цена позиции, журнал, экспорт ====================== */
+
+/* Кликабельная цена позиции (#12) */
+button.di-price {
+  border: 1px dashed transparent;
+  background: none;
+  cursor: pointer;
+  font-size: 13px; color: var(--text-secondary);
+  padding: 1px 6px; margin-left: 4px;
+  border-radius: 4px; font-family: inherit;
+}
+button.di-price:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-dark); }
+
+/* Постоянная заметка о клиенте (#14) */
+.cust-note-block {
+  display: flex; align-items: flex-start; gap: 6px;
+  background: #fff8e1;
+  border: 1px solid #ffe082;
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-top: 6px;
+  font-size: 12px;
+}
+.cust-note-label { color: #b07a00; flex-shrink: 0; }
+.cust-note-text { flex: 1; color: #6b4f00; line-height: 1.4; }
+.cust-note-edit {
+  background: none; border: none; cursor: pointer;
+  color: #b07a00; font-size: 13px; padding: 0 4px;
+}
+.cust-note-add {
+  display: inline-block;
+  margin-top: 4px;
+  background: none; border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px; color: var(--text-muted);
+  cursor: pointer; font-family: inherit;
+}
+.cust-note-add:hover { border-color: var(--accent); color: var(--accent-dark); }
+
+/* Постоянная заметка в карточке клиента раздела Клиенты */
+.cust-perm-note {
+  background: #fff8e1;
+  border-left: 3px solid #ffd54f;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #6b4f00;
+  margin-bottom: 10px;
+  line-height: 1.4;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Экспорт (#16) */
+.orders-toprow {
+  display: flex; gap: 8px;
+  margin: 0 16px 8px;
+}
+.orders-toprow .new-order-btn { flex: 1; margin: 0; }
+.export-btn {
+  flex-shrink: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 12px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.export-btn:hover { background: var(--accent-soft); color: var(--accent-dark); }
+.cust-actions { display: flex; gap: 8px; }
+
+/* Журнал действий (#17) */
+.audit-card { max-width: 640px; }
+.audit-list {
+  max-height: 60vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 6px;
+  margin-bottom: 16px;
+}
+.audit-row {
+  background: var(--bg);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+.audit-row-top {
+  display: flex; justify-content: space-between; gap: 12px;
+  flex-wrap: wrap;
+}
+.audit-action { font-weight: 600; }
+.audit-meta { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.audit-details {
+  margin-top: 3px;
+  font-size: 12px; color: var(--text-secondary);
+}

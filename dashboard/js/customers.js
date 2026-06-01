@@ -3,7 +3,7 @@
 // клиента открывает его последний заказ/обращение в нужной вкладке.
 
 import * as api from './api.js';
-import { escapeHtml, customerName, formatTime, formatFullDate } from './utils.js';
+import { escapeHtml, customerName, formatTime, formatFullDate, exportToCsv } from './utils.js';
 
 let customers = [];                // массив объектов customers
 let aggregates = new Map();        // tg_id → { ordersTotal, ordersActive, lastOrderAt, lastInquiryAt }
@@ -48,6 +48,9 @@ function renderCustomersSection() {
   const html = `
     <div class="cust-header">
       <h2>Клиенты <span class="cust-total">${customers.length}</span></h2>
+      <div class="cust-actions">
+        <button class="btn-light" id="exportCustomersBtn">📥 Экспорт CSV</button>
+      </div>
       <div class="cust-summary">${renderCustomerSummary()}</div>
     </div>
     <div class="cust-controls">
@@ -81,6 +84,9 @@ function renderCustomersSection() {
   };
   document.getElementById('custFilter').onchange = (e) => { filter = e.target.value; renderCustomersSection(); };
   document.getElementById('custSort').onchange = (e) => { sortBy = e.target.value; renderCustomersSection(); };
+
+  const exportBtn = document.getElementById('exportCustomersBtn');
+  if (exportBtn) exportBtn.onclick = () => exportCustomers();
 
   sec.querySelectorAll('.cust-card .copy-id').forEach(btn => {
     btn.onclick = async (e) => {
@@ -191,6 +197,7 @@ function renderCustomerCard(c) {
       </div>
     </div>
     <div class="cust-tags">${tags.join('')}</div>
+    ${c.manager_note ? `<div class="cust-perm-note" title="${escapeHtml(c.manager_note)}">📌 ${escapeHtml(c.manager_note)}</div>` : ''}
     <div class="cust-card-stats">
       <div><span class="cust-stat-label">Заказов</span><span class="cust-stat-val">${agg.ordersTotal}${agg.ordersActive ? ` <span class="cust-stat-active">· ${agg.ordersActive} акт.</span>` : ''}</span></div>
       <div><span class="cust-stat-label">Выкуплено</span><span class="cust-stat-val">$${spent.toFixed(0)}${spentByn ? ` · ${spentByn.toFixed(0)} BYN` : ''}</span></div>
@@ -247,4 +254,39 @@ function timeAgo(iso) {
   if (h < 24) return `${h} ч`;
   const d = Math.floor(h / 24);
   return `${d} дн`;
+}
+
+// Экспорт текущего отфильтрованного списка в CSV (#16).
+function exportCustomers() {
+  const items = applyCustomerFilters(customers);
+  const rows = items.map(c => {
+    const agg = aggregates.get(c.tg_id) || {};
+    const lastTs = lastActivityTs(c);
+    return {
+      tg_id: c.tg_id,
+      username: c.username || '',
+      name: customerName(c, c.tg_id),
+      created_at: c.created_at,
+      last_activity: lastTs ? new Date(lastTs).toISOString() : '',
+      orders_total: agg.ordersTotal || 0,
+      orders_active: agg.ordersActive || 0,
+      spent_usd: Number(c.purchases_total) || 0,
+      spent_byn: Number(c.purchases_total_byn) || 0,
+      manager_note: c.manager_note || '',
+    };
+  });
+  const columns = [
+    { key: 'tg_id', label: 'Telegram ID' },
+    { key: 'username', label: 'Username' },
+    { key: 'name', label: 'Имя' },
+    { key: 'created_at', label: 'Регистрация' },
+    { key: 'last_activity', label: 'Последняя активность' },
+    { key: 'orders_total', label: 'Всего заказов' },
+    { key: 'orders_active', label: 'Активных' },
+    { key: 'spent_usd', label: 'Выкуплено USD' },
+    { key: 'spent_byn', label: 'Выкуплено BYN' },
+    { key: 'manager_note', label: 'Заметка о клиенте' },
+  ];
+  const date = new Date().toISOString().slice(0, 10);
+  exportToCsv(`customers-${date}.csv`, rows, columns);
 }

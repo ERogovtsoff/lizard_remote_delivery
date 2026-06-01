@@ -133,6 +133,8 @@ function init() {
   if (reqBtn) reqBtn.onclick = () => orders.showRequisitesModal();
   const tplBtn = document.getElementById('templatesBtn');
   if (tplBtn) tplBtn.onclick = () => orders.openTemplatesEditor();
+  const auditBtn = document.getElementById('auditBtn');
+  if (auditBtn) auditBtn.onclick = () => orders.openAuditLog();
 
   // Переход «Клиенты → конкретный заказ/обращение» через события из customers.js
   window.addEventListener('switch-section', (e) => switchSection(e.detail.section));

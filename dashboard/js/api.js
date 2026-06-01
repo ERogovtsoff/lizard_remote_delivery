@@ -95,7 +95,7 @@ export async function loadCustomers(ids) {
   if (!ids || ids.length === 0) return {};
   const list = ids.join(',');
   const rows = await get('customers', {
-    select: 'tg_id,username,first_name,last_name,purchases_total,purchases_total_byn',
+    select: 'tg_id,username,first_name,last_name,purchases_total,purchases_total_byn,manager_note',
     tg_id: `in.(${list})`,
   });
   const map = {};
@@ -439,6 +439,82 @@ async function logStatusChange(context, oldStatus, newStatus, changedBy) {
       }),
     });
   } catch (e) { console.warn('logStatusChange failed:', e); }
+  // И в общий audit-log
+  logAudit({
+    action: context.inquiry_id ? 'inquiry_status_change' : 'order_status_change',
+    entity_type: context.inquiry_id ? 'inquiry' : 'order',
+    entity_id: String(context.order_id || context.inquiry_id),
+    manager: changedBy,
+    details: { from: oldStatus, to: newStatus },
+  });
+}
+
+// Универсальный журнал действий менеджера (#17).
+// Не блокирует основную операцию — ошибки игнорируем.
+export async function logAudit({ action, entity_type, entity_id, manager, details }) {
+  try {
+    await fetchRetry(`${BASE}/audit_log`, {
+      method: 'POST',
+      headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+      body: JSON.stringify({
+        manager: manager || null,
+        action,
+        entity_type: entity_type || null,
+        entity_id: entity_id != null ? String(entity_id) : null,
+        details: details || null,
+      }),
+    });
+  } catch (e) { console.warn('logAudit failed:', e); }
+}
+
+// Журнал действий — фильтры опциональны. Возвращает последние N записей.
+export async function loadAuditLog({ manager, entityType, entityId, limit = 200 } = {}) {
+  const params = { select: '*', order: 'created_at.desc', limit: String(limit) };
+  if (manager) params.manager = `eq.${manager}`;
+  if (entityType) params.entity_type = `eq.${entityType}`;
+  if (entityId) params.entity_id = `eq.${entityId}`;
+  try { return await get('audit_log', params); } catch (e) { return []; }
+}
+
+// Постоянная заметка о клиенте (#14) — отдельно от заметок к заказам.
+export async function setCustomerNote(tgId, note, manager) {
+  const res = await fetchRetry(`${BASE}/customers?tg_id=eq.${encodeURIComponent(tgId)}`, {
+    method: 'PATCH',
+    headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ manager_note: note, updated_at: new Date().toISOString() }),
+  });
+  if (!res.ok) throw new Error(`setCustomerNote failed: ${res.status}`);
+  logAudit({ action: 'customer_note_set', entity_type: 'customer', entity_id: tgId, manager });
+  return true;
+}
+
+// Полный профиль клиента — для модалки/раздела.
+export async function loadCustomerProfile(tgId) {
+  const [custRows, orders, inquiries] = await Promise.all([
+    get('customers', { select: '*', tg_id: `eq.${tgId}`, limit: '1' }).catch(() => []),
+    get('orders', { select: '*,order_items(*)', customer_tg_id: `eq.${tgId}`, order: 'created_at.desc' }).catch(() => []),
+    get('inquiries', { select: '*', customer_tg_id: `eq.${tgId}`, order: 'created_at.desc' }).catch(() => []),
+  ]);
+  return { customer: custRows[0] || null, orders, inquiries };
+}
+
+// Обновить цену позиции заказа (snapshot) + пересчёт + audit (#12).
+export async function updateOrderItemPrice(itemId, priceUsd, priceByn, orderId, manager) {
+  const res = await fetchRetry(`${BASE}/order_items?id=eq.${encodeURIComponent(itemId)}`, {
+    method: 'PATCH',
+    headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+    body: JSON.stringify({
+      price_usd_snapshot: Number(priceUsd) || 0,
+      price_byn_snapshot: Number(priceByn) || 0,
+    }),
+  });
+  if (!res.ok) throw new Error(`updateOrderItemPrice failed: ${res.status}`);
+  logAudit({
+    action: 'order_item_price_change',
+    entity_type: 'order_item', entity_id: itemId, manager,
+    details: { order_id: orderId, price_usd: priceUsd, price_byn: priceByn },
+  });
+  return recalcOrderTotal(orderId);
 }
 
 // История статусов заказа/обращения (по возрастанию времени).
@@ -461,28 +537,34 @@ export async function assignManager(context, username) {
     body: JSON.stringify({ assigned_to: username, updated_at: new Date().toISOString() }),
   });
   if (!res.ok) throw new Error(`assignManager failed: ${res.status}`);
+  logAudit({
+    action: 'assign', entity_type: context.order_id != null ? 'order' : 'inquiry',
+    entity_id: String(id), manager: username, details: { to: username },
+  });
   return true;
 }
 
 // Сохранить трек-номер заказа.
-export async function setTrackingNumber(orderId, track) {
+export async function setTrackingNumber(orderId, track, manager) {
   const res = await fetchRetry(`${BASE}/orders?id=eq.${encodeURIComponent(orderId)}`, {
     method: 'PATCH',
     headers: { ...HEADERS, 'Prefer': 'return=minimal' },
     body: JSON.stringify({ tracking_number: track, updated_at: new Date().toISOString() }),
   });
   if (!res.ok) throw new Error(`setTrackingNumber failed: ${res.status}`);
+  logAudit({ action: 'tracking_set', entity_type: 'order', entity_id: String(orderId), manager, details: { track } });
   return true;
 }
 
 // Отметить/снять оплату заказа.
-export async function setPaid(orderId, isPaid) {
+export async function setPaid(orderId, isPaid, manager) {
   const res = await fetchRetry(`${BASE}/orders?id=eq.${encodeURIComponent(orderId)}`, {
     method: 'PATCH',
     headers: { ...HEADERS, 'Prefer': 'return=minimal' },
     body: JSON.stringify({ is_paid: isPaid, paid_at: isPaid ? new Date().toISOString() : null, updated_at: new Date().toISOString() }),
   });
   if (!res.ok) throw new Error(`setPaid failed: ${res.status}`);
+  logAudit({ action: isPaid ? 'paid_on' : 'paid_off', entity_type: 'order', entity_id: String(orderId), manager });
   return true;
 }
 
@@ -530,23 +612,26 @@ async function recalcOrderTotal(orderId) {
 }
 
 // Удалить позицию заказа (по id строки order_items) + пересчёт суммы.
-export async function deleteOrderItem(itemId, orderId) {
+export async function deleteOrderItem(itemId, orderId, manager) {
   const res = await fetchRetry(`${BASE}/order_items?id=eq.${encodeURIComponent(itemId)}`, {
     method: 'DELETE',
     headers: { ...HEADERS, 'Prefer': 'return=minimal' },
   });
   if (!res.ok) throw new Error(`deleteOrderItem failed: ${res.status}`);
+  logAudit({ action: 'order_item_delete', entity_type: 'order_item', entity_id: itemId, manager, details: { order_id: orderId } });
   return recalcOrderTotal(orderId);
 }
 
 // Изменить количество позиции + пересчёт суммы.
-export async function updateOrderItemQty(itemId, qty, orderId) {
+export async function updateOrderItemQty(itemId, qty, orderId, manager) {
+  const newQty = Math.max(1, parseInt(qty) || 1);
   const res = await fetchRetry(`${BASE}/order_items?id=eq.${encodeURIComponent(itemId)}`, {
     method: 'PATCH',
     headers: { ...HEADERS, 'Prefer': 'return=minimal' },
-    body: JSON.stringify({ qty: Math.max(1, parseInt(qty) || 1) }),
+    body: JSON.stringify({ qty: newQty }),
   });
   if (!res.ok) throw new Error(`updateOrderItemQty failed: ${res.status}`);
+  logAudit({ action: 'order_item_qty_change', entity_type: 'order_item', entity_id: itemId, manager, details: { order_id: orderId, qty: newQty } });
   return recalcOrderTotal(orderId);
 }
 export async function setOrderNote(orderId, note) {
