@@ -397,6 +397,10 @@ export async function loadHistory() {
           productId: it.product_id,
           size: it.size,
           qty: it.qty,
+          // Snapshot цены на момент заказа — клиент видит ровно ту цену, по которой заказывал,
+          // независимо от того, поменялась ли цена товара в каталоге потом.
+          priceUsd: Number(it.price_usd_snapshot) || 0,
+          priceByn: Number(it.price_byn_snapshot) || 0,
         })),
         total_usd: Number(o.total_usd) || 0,
         total_byn: Number(o.total_byn) || 0,

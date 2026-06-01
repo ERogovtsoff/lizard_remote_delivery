@@ -119,7 +119,18 @@ function customerStatsHtml(customerTgId) {
   const noteBlock = note
     ? `<div class="cust-note-block"><span class="cust-note-label">📌</span><span class="cust-note-text">${escapeHtml(note)}</span><button class="cust-note-edit" data-tg="${customerTgId}" title="Изменить">✎</button></div>`
     : `<button class="cust-note-add" data-tg="${customerTgId}">📌 + добавить заметку о клиенте</button>`;
-  return `<div class="cust-stats">${tag}<span class="cust-stats-meta">заказов: ${myOrders.length}${spent}</span></div>${noteBlock}`;
+  // Онлайн-статус (#4): по customers.updated_at. <5 минут — «онлайн», иначе «N назад».
+  const presence = customerPresenceHtml(cust);
+  return `<div class="cust-stats">${tag}${presence}<span class="cust-stats-meta">заказов: ${myOrders.length}${spent}</span></div>${noteBlock}`;
+}
+
+function customerPresenceHtml(cust) {
+  if (!cust || !cust.updated_at) return '';
+  const diffMin = (Date.now() - new Date(cust.updated_at).getTime()) / 60000;
+  if (diffMin < 5) return '<span class="cust-presence online">🟢 онлайн</span>';
+  if (diffMin < 60) return `<span class="cust-presence recent">был ${Math.floor(diffMin)} мин назад</span>`;
+  if (diffMin < 1440) return `<span class="cust-presence">был ${Math.floor(diffMin / 60)} ч назад</span>`;
+  return `<span class="cust-presence">был ${Math.floor(diffMin / 1440)} дн назад</span>`;
 }
 
 // Открывает prompt для редактирования постоянной заметки клиента.
@@ -169,6 +180,23 @@ function openRequisitesModal() {
     modal.remove();
     setDetailMsg('Реквизиты сохранены ✓');
   };
+}
+
+// Простой лайтбокс для просмотра изображений (#11) — клик по миниатюре товара.
+function openLightbox(url) {
+  const old = document.getElementById('lightbox');
+  if (old) old.remove();
+  const lb = document.createElement('div');
+  lb.id = 'lightbox';
+  lb.className = 'lightbox';
+  lb.innerHTML = `<img src="${escapeHtml(url)}" alt=""><button class="lightbox-close" type="button">✕</button>`;
+  document.body.appendChild(lb);
+  const close = () => lb.remove();
+  lb.onclick = close;
+  lb.querySelector('.lightbox-close').onclick = close;
+  // Esc — закрыть
+  const onKey = (e) => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } };
+  document.addEventListener('keydown', onKey);
 }
 
 // Человекочитаемый возраст: «2 дня», «5 ч», «10 мин».
@@ -628,7 +656,12 @@ function renderOrderDetail(id) {
     const p = productsById[it.product_id];
     const pname = p ? (p.name_ru || p.name_en || it.product_id) : it.product_id;
     const sz = it.size ? `, ${escapeHtml(it.size)}` : '';
+    const img = p && p.images && p.images.length ? p.images[0] : '';
+    const thumb = img
+      ? `<img class="di-thumb" src="${escapeHtml(img)}" alt="" data-img="${escapeHtml(img)}">`
+      : `<span class="di-thumb di-thumb-empty">🖼</span>`;
     return `<div class="detail-item editable-item" data-item-id="${it.id}">
+      ${thumb}
       <span class="di-name">${escapeHtml(pname)}${sz}</span>
       <span class="di-controls">
         <button class="di-qty-btn" data-act="dec" data-item-id="${it.id}" title="Меньше">−</button>
@@ -835,6 +868,14 @@ function renderOrderDetail(id) {
   };
 
   // Редактирование/удаление позиций заказа
+  box.querySelectorAll('.di-thumb').forEach(t => {
+    if (t.classList.contains('di-thumb-empty')) return;
+    t.onclick = (e) => {
+      e.stopPropagation();
+      const url = t.getAttribute('data-img');
+      if (url) openLightbox(url);
+    };
+  });
   box.querySelectorAll('.di-qty-btn').forEach(btn => {
     btn.onclick = async () => {
       const itemId = btn.getAttribute('data-item-id');
@@ -958,6 +999,11 @@ async function changeOrderStatus(order, status) {
     // #11 Напоминание про трек при переходе в «В пути»
     if (status === 'shipping' && !order.tracking_number) {
       if (!confirm('Трек-номер не указан. Перейти в «В пути» без трека?\n(можно добавить трек позже в деталях заказа)')) return;
+    }
+    // #7 Защита: нельзя без оплаты в «Выкупаем»/«В пути» без явного подтверждения
+    if (!order.is_paid && (status === 'purchasing' || status === 'shipping')) {
+      const label = ORDER_STATUS[status].label;
+      if (!confirm(`Заказ не отмечен как оплаченный.\nТочно переводить в «${label}»?`)) return;
     }
   }
   const oldStatus = order.status;
@@ -1233,6 +1279,34 @@ async function setupConvo(context, customerTgId, active) {
   const sendBtn = document.getElementById('convoSend');
   const fileInput = document.getElementById('convoFile');
 
+  // Автосохранение черновика (#8): по ключу контекста хранится недописанный ответ.
+  // Восстанавливаем при открытии карточки и стираем после успешной отправки.
+  const draftKey = context.order_id != null ? `draft:o:${context.order_id}` : `draft:i:${context.inquiry_id}`;
+  if (input) {
+    try {
+      const saved = localStorage.getItem(draftKey);
+      if (saved) {
+        input.value = saved;
+        // Подгоним высоту
+        input.style.height = 'auto';
+        input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+      }
+    } catch (_) {}
+  }
+  // Сохраняем при изменении (с debounce 300мс)
+  let draftTimer = null;
+  function persistDraft() {
+    clearTimeout(draftTimer);
+    draftTimer = setTimeout(() => {
+      try {
+        if (input.value.trim()) localStorage.setItem(draftKey, input.value);
+        else localStorage.removeItem(draftKey);
+      } catch (_) {}
+    }, 300);
+  }
+  // Очистка черновика после успешной отправки — экспортируем для sendConvoMessage
+  window._clearCurrentDraft = () => { try { localStorage.removeItem(draftKey); } catch (_) {} };
+
   if (sendBtn) sendBtn.onclick = sendConvoMessage;
   if (input) {
     input.addEventListener('keydown', e => {
@@ -1241,6 +1315,7 @@ async function setupConvo(context, customerTgId, active) {
     input.addEventListener('input', () => {
       input.style.height = 'auto';
       input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+      persistDraft();
     });
   }
   if (fileInput) {
@@ -1326,7 +1401,48 @@ function renderConvoFromCache() {
   // Оптимистичные (неподтверждённые) — снизу, с пометкой состояния
   html += pendingOut.map(renderPendingMsg).join('');
   box.innerHTML = html;
+  // Привязка цитирования: клик на входящем сообщении → процитировать в composer (#5)
+  box.querySelectorAll('.cmsg-quotable').forEach(el => {
+    el.onclick = (e) => {
+      // Не цитируем при клике по ссылке внутри сообщения
+      if (e.target.closest('a')) return;
+      const text = el.getAttribute('data-quote') || '';
+      quoteInComposer(text);
+    };
+  });
   if (atBottom) box.scrollTop = box.scrollHeight;
+}
+
+// Вставляет цитату в composer (#5).
+function quoteInComposer(text) {
+  const input = document.getElementById('convoInput');
+  if (!input) return;
+  // Цитата: каждая строка с префиксом «> » + пустая строка после
+  const quoted = text.split('\n').map(l => '> ' + l).join('\n');
+  const prefix = input.value.trim() ? input.value + '\n\n' : '';
+  input.value = prefix + quoted + '\n\n';
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 160) + 'px';
+  input.focus();
+  // Курсор в конец
+  try { input.setSelectionRange(input.value.length, input.value.length); } catch (_) {}
+}
+
+// Превращает голые URL в кликабельные ссылки (#6).
+// Также безопасно экранирует остальной текст.
+function linkifyText(text) {
+  const escaped = escapeHtml(text);
+  // Простой паттерн URL: http(s)://… до пробела/закрывающей скобки
+  return escaped.replace(/(https?:\/\/[^\s<>()]+)/g, (url) => {
+    // Поджимаем хвостовую пунктуацию (точка/запятая/скобка после URL не относится к нему)
+    const m = url.match(/^(.*?)([.,;:!?)\]]+)$/);
+    const cleanUrl = m ? m[1] : url;
+    const tail = m ? m[2] : '';
+    // Короткий host для отображения
+    let host = cleanUrl;
+    try { host = new URL(cleanUrl).hostname.replace(/^www\./, ''); } catch (_) {}
+    return `<a href="${cleanUrl}" target="_blank" rel="noopener" class="cmsg-link" title="${cleanUrl}">🔗 ${host}</a>${tail}`;
+  });
 }
 
 function renderPendingMsg(p) {
@@ -1352,12 +1468,17 @@ function renderConvoMsg(m) {
       inner += `<a class="cmsg-file" href="${escapeHtml(m.attachment_url)}" target="_blank" rel="noopener">📎 Вложение</a>`;
     }
   }
-  if (m.text) inner += `<div class="cmsg-text">${escapeHtml(m.text)}</div>`;
+  if (m.text) inner += `<div class="cmsg-text">${linkifyText(m.text)}</div>`;
   if (!inner) inner = `<div class="cmsg-text cmsg-muted">📎 вложение (не удалось загрузить)</div>`;
   let who = '';
   if (out) who = isBot ? '🤖 авто' : (m.manager_username ? '@' + escapeHtml(m.manager_username) : 'менеджер');
   const meta = `<div class="cmsg-meta">${who ? who + ' · ' : ''}${escapeHtml(formatTime(m.created_at))} ✓</div>`;
-  return `<div class="${cls}"><div class="cmsg-bubble">${inner}${meta}</div></div>`;
+  // Только входящие сообщения с текстом — кликабельны для цитирования (#5)
+  const quoteAttrs = (!out && m.text)
+    ? ` data-quote="${escapeHtml(m.text)}" title="Кликните, чтобы процитировать"`
+    : '';
+  const quoteCls = (!out && m.text) ? ' cmsg-quotable' : '';
+  return `<div class="${cls}${quoteCls}"${quoteAttrs}><div class="cmsg-bubble">${inner}${meta}</div></div>`;
 }
 
 async function sendConvoMessage() {
@@ -1374,6 +1495,8 @@ async function sendConvoMessage() {
   // мгновенная реакция, менеджер видит, что сообщение принято к отправке.
   input.value = '';
   input.style.height = 'auto';
+  // Стираем сохранённый черновик (#8)
+  try { if (window._clearCurrentDraft) window._clearCurrentDraft(); } catch (_) {}
   convoAttachment = null;
   const preview = document.getElementById('convoAttachPreview');
   if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }

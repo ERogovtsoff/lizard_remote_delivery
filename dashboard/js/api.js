@@ -95,7 +95,7 @@ export async function loadCustomers(ids) {
   if (!ids || ids.length === 0) return {};
   const list = ids.join(',');
   const rows = await get('customers', {
-    select: 'tg_id,username,first_name,last_name,purchases_total,purchases_total_byn,manager_note',
+    select: 'tg_id,username,first_name,last_name,purchases_total,purchases_total_byn,manager_note,updated_at',
     tg_id: `in.(${list})`,
   });
   const map = {};
@@ -332,8 +332,14 @@ function productToRow(p) {
 }
 
 // Создать или обновить один товар (upsert по id).
-export async function saveProduct(product) {
+export async function saveProduct(product, manager) {
   const row = productToRow(product);
+  // Подгружаем старое для сравнения и audit (только ключевые поля)
+  let before = null;
+  try {
+    const rows = await get('products', { select: '*', id: `eq.${product.id}`, limit: '1' });
+    before = rows[0] || null;
+  } catch (_) {}
   const res = await fetchRetry(`${BASE}/products`, {
     method: 'POST',
     headers: { ...HEADERS, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
@@ -343,27 +349,44 @@ export async function saveProduct(product) {
     const txt = await res.text();
     throw new Error(`saveProduct failed: ${res.status} ${txt.slice(0, 200)}`);
   }
+  // Audit: фиксируем изменения видимых клиенту полей
+  const watch = ['price_usd', 'price_byn', 'name_ru', 'name_en', 'is_active', 'sizes', 'stock'];
+  if (before) {
+    const changes = {};
+    for (const k of watch) {
+      const a = JSON.stringify(before[k]);
+      const b = JSON.stringify(row[k]);
+      if (a !== b) changes[k] = { from: before[k], to: row[k] };
+    }
+    if (Object.keys(changes).length) {
+      logAudit({ action: 'product_update', entity_type: 'product', entity_id: product.id, manager, details: changes });
+    }
+  } else {
+    logAudit({ action: 'product_create', entity_type: 'product', entity_id: product.id, manager, details: { name: row.name_ru || row.name_en, price_usd: row.price_usd } });
+  }
   return true;
 }
 
 // Удалить один товар по id.
-export async function deleteProduct(id) {
+export async function deleteProduct(id, manager) {
   const res = await fetchRetry(`${BASE}/products?id=eq.${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: { ...HEADERS, 'Prefer': 'return=minimal' },
   });
   if (!res.ok) throw new Error(`deleteProduct failed: ${res.status}`);
+  logAudit({ action: 'product_delete', entity_type: 'product', entity_id: id, manager });
   return true;
 }
 
 // Быстрое переключение видимости (скрыть/показать).
-export async function setProductActive(id, isActive) {
+export async function setProductActive(id, isActive, manager) {
   const res = await fetchRetry(`${BASE}/products?id=eq.${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: { ...HEADERS, 'Prefer': 'return=minimal' },
     body: JSON.stringify({ is_active: isActive }),
   });
   if (!res.ok) throw new Error(`setProductActive failed: ${res.status}`);
+  logAudit({ action: isActive ? 'product_show' : 'product_hide', entity_type: 'product', entity_id: id, manager });
   return true;
 }
 
@@ -485,6 +508,47 @@ export async function setCustomerNote(tgId, note, manager) {
   });
   if (!res.ok) throw new Error(`setCustomerNote failed: ${res.status}`);
   logAudit({ action: 'customer_note_set', entity_type: 'customer', entity_id: tgId, manager });
+  return true;
+}
+
+// Объединить двух клиентов (#17): все заказы/обращения/сообщения от sourceId
+// перемещаются на targetId, sourceId удаляется. Это нужно когда клиент пишет
+// с другого аккаунта или появился дубль.
+export async function mergeCustomers(sourceId, targetId, manager) {
+  if (sourceId === targetId) throw new Error('Совпадают tg_id');
+  // 1. Переносим заказы
+  await fetchRetry(`${BASE}/orders?customer_tg_id=eq.${sourceId}`, {
+    method: 'PATCH',
+    headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ customer_tg_id: targetId }),
+  });
+  // 2. Обращения
+  await fetchRetry(`${BASE}/inquiries?customer_tg_id=eq.${sourceId}`, {
+    method: 'PATCH',
+    headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ customer_tg_id: targetId }),
+  });
+  // 3. Сообщения
+  await fetchRetry(`${BASE}/messages?customer_tg_id=eq.${sourceId}`, {
+    method: 'PATCH',
+    headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ customer_tg_id: targetId }),
+  });
+  // 4. Корзина и избранное — удалим источника (чтобы не дублировать), цель оставим как есть
+  await fetchRetry(`${BASE}/cart_items?customer_tg_id=eq.${sourceId}`, {
+    method: 'DELETE', headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+  });
+  await fetchRetry(`${BASE}/favorites?customer_tg_id=eq.${sourceId}`, {
+    method: 'DELETE', headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+  });
+  // 5. Удаляем самого клиента-источника
+  await fetchRetry(`${BASE}/customers?tg_id=eq.${sourceId}`, {
+    method: 'DELETE', headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+  });
+  logAudit({
+    action: 'customer_merge', entity_type: 'customer', entity_id: String(targetId),
+    manager, details: { source: sourceId, target: targetId },
+  });
   return true;
 }
 

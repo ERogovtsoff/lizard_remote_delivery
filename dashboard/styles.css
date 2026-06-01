@@ -471,6 +471,31 @@ html, body {
   body.mobile-detail .sidebar { display: none; }
   body.mobile-detail .main { display: flex; }
 
+  /* Полноэкранные разделы (Клиенты, Аналитика): sidebar = compact ⇒ show main, hide sidebar */
+  body:not(.mobile-detail) .sidebar.compact { display: none; }
+  body:not(.mobile-detail) .sidebar.compact ~ .main { display: flex; flex-direction: column; }
+  /* На полноэкранных разделах показываем мобильную навигацию сверху */
+  .mobile-section-nav { display: none; }
+  body:not(.mobile-detail) .sidebar.compact ~ .main .mobile-section-nav {
+    display: flex; gap: 6px;
+    padding: 12px 16px 0;
+    overflow-x: auto;
+  }
+  .mobile-section-nav button {
+    flex-shrink: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    color: var(--text-secondary);
+  }
+  .mobile-section-nav button.active {
+    background: var(--accent); color: #fff; border-color: var(--accent);
+  }
+
   .msg { max-width: 88%; }
   .cmsg { max-width: 88%; }
 
@@ -1973,4 +1998,195 @@ button.di-price:hover { border-color: var(--accent); background: var(--accent-so
 
 @media (max-width: 760px) {
   .profile-stats { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ====================== Финальный пакет улучшений ====================== */
+
+/* #11 Фото товаров в позиции заказа */
+.editable-item { display: flex; align-items: center; gap: 8px; }
+.di-thumb {
+  width: 36px; height: 36px;
+  border-radius: 6px; overflow: hidden;
+  background: var(--bg);
+  flex-shrink: 0;
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 16px;
+}
+.di-thumb.di-thumb-empty { cursor: default; color: var(--text-muted); }
+img.di-thumb { object-fit: cover; }
+img.di-thumb:hover { box-shadow: 0 0 0 2px var(--accent); }
+
+/* Лайтбокс */
+.lightbox {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.9);
+  z-index: 3000;
+  display: flex; align-items: center; justify-content: center;
+  cursor: zoom-out;
+}
+.lightbox img {
+  max-width: 92vw; max-height: 92vh;
+  object-fit: contain;
+  border-radius: 6px;
+}
+.lightbox-close {
+  position: absolute; top: 20px; right: 24px;
+  width: 40px; height: 40px;
+  background: rgba(255,255,255,0.15);
+  border: none; color: #fff; font-size: 18px;
+  border-radius: 50%; cursor: pointer;
+}
+
+/* #5 Цитирование */
+.cmsg-quotable { cursor: pointer; transition: opacity 0.15s; }
+.cmsg-quotable:hover { opacity: 0.85; }
+.cmsg-quotable:hover .cmsg-bubble { box-shadow: 0 0 0 2px var(--accent-soft); }
+
+/* Цитата внутри текста в composer */
+.cmsg-text { white-space: pre-wrap; word-break: break-word; }
+
+/* #6 Превью ссылок */
+.cmsg-link {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: rgba(0,0,0,0.05);
+  padding: 1px 8px;
+  border-radius: 6px;
+  text-decoration: none;
+  color: var(--accent-dark);
+  font-weight: 500;
+}
+.cmsg-out .cmsg-link { background: rgba(255,255,255,0.25); color: #fff; }
+.cmsg-link:hover { background: rgba(0,0,0,0.1); }
+[data-theme="dark"] .cmsg-link { background: rgba(255,255,255,0.1); }
+[data-theme="dark"] .cmsg-out .cmsg-link { background: rgba(0,0,0,0.25); }
+
+/* #4 Онлайн-статус клиента */
+.cust-presence {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-muted);
+}
+.cust-presence.online { background: #e1f5e1; color: #2a7a2a; font-weight: 600; }
+.cust-presence.recent { background: #fff4cc; color: #8a6500; }
+[data-theme="dark"] .cust-presence.online { background: #1a3a1a; color: #88e088; }
+[data-theme="dark"] .cust-presence.recent { background: #3a2f0d; color: #ffd870; }
+
+/* #2 Глобальный поиск */
+.global-search-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.global-search-btn:hover { background: var(--accent-soft); }
+.search-modal {
+  position: fixed; inset: 0;
+  background: rgba(16,32,48,0.55);
+  z-index: 2500;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 80px 16px 16px;
+}
+.search-box {
+  width: 100%; max-width: 600px;
+  background: var(--surface);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.25);
+  display: flex; flex-direction: column;
+  max-height: 70vh;
+  position: relative;
+}
+#searchInput {
+  border: none; border-bottom: 1px solid var(--border);
+  padding: 16px 20px; padding-right: 50px;
+  font-size: 15px; font-family: inherit;
+  outline: none;
+  border-radius: 12px 12px 0 0;
+  background: var(--surface); color: var(--text);
+}
+.search-close {
+  position: absolute; top: 14px; right: 14px;
+  width: 28px; height: 28px;
+  background: var(--bg); border: none;
+  border-radius: 50%; cursor: pointer;
+  color: var(--text-muted); font-size: 14px;
+}
+.search-results {
+  overflow-y: auto;
+  padding: 8px;
+}
+.search-hint {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.search-item {
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.search-item:hover, .search-item.active { background: var(--accent-soft); }
+.search-item-label { font-size: 14px; font-weight: 500; }
+.search-item-sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+[data-theme="dark"] .search-item:hover, [data-theme="dark"] .search-item.active { background: #1a3535; }
+
+/* ====================== Мобильная адаптация всех новинок ====================== */
+@media (max-width: 760px) {
+  /* Глобальный поиск — кнопка скрыта (есть Ctrl+K на десктопе, на мобиле просто меньше нужна) */
+  .global-search-btn { display: none; }
+
+  /* Лайтбокс */
+  .lightbox-close { top: 14px; right: 14px; width: 36px; height: 36px; }
+
+  /* Поиск — модалка на всю высоту */
+  .search-modal { padding: 12px; padding-top: 60px; }
+  .search-box { max-height: 80vh; }
+
+  /* Профиль клиента */
+  .profile-card { padding: 16px; }
+  .profile-head { flex-wrap: wrap; }
+  .profile-close { margin-left: auto; }
+  .profile-stats { grid-template-columns: 1fr 1fr; }
+
+  /* Аудит-журнал и шаблоны — модалки полнее */
+  .qp-card { padding: 16px; max-width: 100%; }
+  .audit-card, .profile-card { max-width: 100%; }
+
+  /* Раздел Клиенты: убираем верхний отступ, чтобы сразу видна была мобильная навигация */
+  .section-customers, .section-analytics { padding: 0 0 16px; }
+  .section-customers .cust-header,
+  .section-customers .cust-controls,
+  .section-customers .cust-grid { padding-left: 16px; padding-right: 16px; }
+  .section-analytics .an-header,
+  .section-analytics .an-tiles,
+  .section-analytics .an-row,
+  .section-analytics .an-block { margin-left: 16px; margin-right: 16px; }
+  .section-analytics .an-block { padding: 12px; }
+
+  /* Тач-цели */
+  .di-thumb { width: 44px; height: 44px; }
+  .di-qty-btn, .di-del, .di-price { min-height: 32px; }
+
+  /* Канбан-колонки уже стек на мобиле */
+
+  /* Кнопки экспорта/действий — компактнее */
+  .cust-actions { gap: 6px; }
+  .orders-toprow { gap: 6px; }
+
+  /* Сводка над списком — переносится */
+  .list-summary, .cust-summary { gap: 6px; }
+  .sum-chip { padding: 4px 8px; font-size: 11px; }
+  .sum-chip b { font-size: 12px; }
+
+  /* Onb-статус — мельче */
+  .cust-presence { font-size: 10px; }
+
+  /* Профиль клиента — заметка кнопки в колонку */
+  .profile-section textarea { font-size: 14px; }
 }

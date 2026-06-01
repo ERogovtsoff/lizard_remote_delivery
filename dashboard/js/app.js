@@ -6,6 +6,7 @@ import * as catalog from './catalog.js';
 import * as orders from './orders.js';
 import * as customers from './customers.js';
 import * as analytics from './analytics.js';
+import * as search from './search.js';
 
 let currentManager = null;
 let currentSection = 'orders';
@@ -142,6 +143,9 @@ function init() {
   const themeBtn = document.getElementById('themeBtn');
   if (themeBtn) themeBtn.onclick = toggleTheme;
   applyTheme(localStorage.getItem('lizard_theme') || 'light');
+  const searchBtn = document.getElementById('globalSearchBtn');
+  if (searchBtn) searchBtn.onclick = () => search.openGlobalSearch();
+  search.installGlobalSearchHotkey();
 
   // Переход «Клиенты → конкретный заказ/обращение» через события из customers.js
   window.addEventListener('switch-section', (e) => switchSection(e.detail.section));

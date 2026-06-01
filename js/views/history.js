@@ -176,7 +176,10 @@ function buildItem(h, productsMap, lang) {
       if (!prod) return;
       const p = localizedProduct(prod, orderCur);
       const sz = it.size ? ` (${escapeHtml(it.size)})` : '';
-      body += `<div>• ${escapeHtml(p.name)}${sz} × ${it.qty}</div>`;
+      // Цена из snapshot — та, по которой клиент заказывал
+      const itemPrice = orderCur === 'USD' ? it.priceUsd : it.priceByn;
+      const priceStr = itemPrice ? ` — ${escapeHtml(formatPrice(itemPrice * (it.qty || 1), orderCur, lang))}` : '';
+      body += `<div>• ${escapeHtml(p.name)}${sz} × ${it.qty}${priceStr}</div>`;
     });
     body += `<div class="history-total-line">${escapeHtml(t('cartTotal'))}: ${escapeHtml(formatPrice(orderTotal || 0, orderCur, lang))}</div>`;
     if (h.status === 'shipping' && h.eta) {

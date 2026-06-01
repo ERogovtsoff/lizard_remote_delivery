@@ -2,7 +2,13 @@
 // Точечные операции (saveProduct/deleteProduct/setProductActive) — безопасно
 // при параллельной работе с админкой в приложении.
 import * as api from './api.js';
+import { CONFIG } from './config.js';
 import { escapeHtml, makeId, BADGE_COLORS } from './utils.js';
+
+// Получает username текущего менеджера для audit-логирования
+function getManager() {
+  try { return JSON.parse(localStorage.getItem(CONFIG.AUTH_KEY) || '{}').username || ''; } catch (_) { return ''; }
+}
 
 let products = [];
 let activeId = null;       // редактируемый товар
@@ -306,7 +312,7 @@ async function saveDraft() {
   btn.disabled = true;
   setStatus('Сохраняем…');
   try {
-    await api.saveProduct(draft);
+    await api.saveProduct(draft, getManager());
     draft._isNew = false;
     setStatus('Сохранено ✓');
     await loadCatalog();
@@ -323,7 +329,7 @@ async function removeDraft() {
   const btn = document.getElementById('e_delete');
   btn.disabled = true;
   try {
-    await api.deleteProduct(draft.id);
+    await api.deleteProduct(draft.id, getManager());
     closeEditor();           // вернуться к списку (+ снять mobile-detail)
     await loadCatalog();
   } catch (e) {

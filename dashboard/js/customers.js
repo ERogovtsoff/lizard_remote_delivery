@@ -47,6 +47,12 @@ function renderCustomersSection() {
   const sec = document.getElementById('sectionCustomers');
   const items = applyCustomerFilters(customers);
   const html = `
+    <div class="mobile-section-nav">
+      <button data-section="orders">Заказы</button>
+      <button data-section="customers" class="active">Клиенты</button>
+      <button data-section="analytics">Аналитика</button>
+      <button data-section="catalog">Каталог</button>
+    </div>
     <div class="cust-header">
       <h2>Клиенты <span class="cust-total">${customers.length}</span></h2>
       <div class="cust-actions">
@@ -85,6 +91,13 @@ function renderCustomersSection() {
   };
   document.getElementById('custFilter').onchange = (e) => { filter = e.target.value; renderCustomersSection(); };
   document.getElementById('custSort').onchange = (e) => { sortBy = e.target.value; renderCustomersSection(); };
+
+  // Мобильная навигация между разделами
+  sec.querySelectorAll('.mobile-section-nav button').forEach(btn => {
+    btn.onclick = () => {
+      window.dispatchEvent(new CustomEvent('switch-section', { detail: { section: btn.getAttribute('data-section') } }));
+    };
+  });
 
   const exportBtn = document.getElementById('exportCustomersBtn');
   if (exportBtn) exportBtn.onclick = () => exportCustomers();
@@ -360,6 +373,12 @@ export async function openCustomerProfile(tgId) {
     </div>
 
     <div class="profile-section">
+      <div class="profile-section-title">🔀 Объединение дубликата</div>
+      <p class="req-hint">Если этот клиент — дубль другого аккаунта, можно перенести все его заказы, обращения и переписку на основной tg_id. После объединения этот клиент будет удалён.</p>
+      <button class="btn-light" id="mergeBtn">Объединить с другим клиентом…</button>
+    </div>
+
+    <div class="profile-section">
       <div class="profile-section-title">История заказов (${data.orders.length})</div>
       <div class="profile-orders">
         ${data.orders.length ? data.orders.slice(0, 50).map(o => `
@@ -398,6 +417,28 @@ export async function openCustomerProfile(tgId) {
       await api.setCustomerNote(c.tg_id, val, mgr);
       c.manager_note = val;
     } catch (e) { console.error(e); }
+  };
+  // Объединение дубликата (#17)
+  const mergeBtn = document.getElementById('mergeBtn');
+  if (mergeBtn) mergeBtn.onclick = async () => {
+    const targetIdStr = prompt(`Введите Telegram ID основного клиента, в которого ПЕРЕНЕСТИ все заказы и переписку этого аккаунта (${c.tg_id}).\n\nЭтот клиент (${c.tg_id}) после объединения будет удалён.`);
+    if (!targetIdStr) return;
+    const targetId = Number(targetIdStr);
+    if (!targetId || targetId === c.tg_id) { alert('Некорректный ID или совпадает с текущим'); return; }
+    if (!confirm(`Точно объединить клиента ${c.tg_id} в ${targetId}?\nЭто действие нельзя отменить.`)) return;
+    mergeBtn.disabled = true;
+    try {
+      const mgr = (function(){ try { return JSON.parse(localStorage.getItem(CONFIG.AUTH_KEY) || '{}').username || ''; } catch (_) { return ''; } })();
+      await api.mergeCustomers(c.tg_id, targetId, mgr);
+      alert('Клиенты объединены ✓');
+      modal.remove();
+      const sec = document.getElementById('sectionCustomers');
+      if (sec && sec.style.display !== 'none') loadCustomersSection();
+    } catch (e) {
+      console.error(e);
+      alert('Ошибка объединения: ' + e.message);
+      mergeBtn.disabled = false;
+    }
   };
   // Копирование ID
   modal.querySelectorAll('.copy-id').forEach(b => {
