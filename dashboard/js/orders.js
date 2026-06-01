@@ -588,6 +588,7 @@ function setupBoardDnD(list) {
       await changeOrderStatus(order, newStatus);
     });
   });
+}
 
 function clearDetail() {
   document.getElementById('orderDetailEmpty').style.display = 'flex';
