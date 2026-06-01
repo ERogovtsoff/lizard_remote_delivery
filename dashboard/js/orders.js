@@ -1308,6 +1308,16 @@ export function stopConvo() {
   if (convoTimer) { clearInterval(convoTimer); convoTimer = null; }
 }
 
+// Открыть заказ/обращение снаружи (например, из раздела «Клиенты»).
+// Переключает активную вкладку и открывает карточку.
+export async function openItemFromOutside(tab, id) {
+  activeTab = tab === 'inquiries' ? 'inquiries' : 'orders';
+  // Если данные ещё не загружены — подтянем
+  if (!orders.length && !inquiries.length) await loadOrdersSection();
+  renderOrdersList();
+  openDetail(String(id));
+}
+
 // ============ СОЗДАНИЕ ЗАКАЗА ИЗ ОБРАЩЕНИЯ ============
 
 let orderDraft = null;   // { inquiry, items: [{product_id, size, qty}] }

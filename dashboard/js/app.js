@@ -4,6 +4,7 @@ import { CONFIG } from './config.js';
 import * as api from './api.js';
 import * as catalog from './catalog.js';
 import * as orders from './orders.js';
+import * as customers from './customers.js';
 
 let currentManager = null;
 let currentSection = 'orders';
@@ -107,9 +108,15 @@ function switchSection(section) {
   document.getElementById('catalogSide').style.display = section === 'catalog' ? '' : 'none';
   document.getElementById('sectionOrders').style.display = section === 'orders' ? '' : 'none';
   document.getElementById('sectionCatalog').style.display = section === 'catalog' ? '' : 'none';
+  const secCust = document.getElementById('sectionCustomers');
+  if (secCust) secCust.style.display = section === 'customers' ? '' : 'none';
+  // Сайдбар скрываем на разделе Клиенты — он работает на полную ширину
+  const sidebar = document.querySelector('.sidebar');
+  if (sidebar) sidebar.classList.toggle('compact', section === 'customers');
 
   if (section === 'orders') orders.loadOrdersSection();
   if (section === 'catalog') { orders.stopConvo(); catalog.loadCatalog(); }
+  if (section === 'customers') { orders.stopConvo(); customers.loadCustomersSection(); }
 }
 
 // ============ ИНИЦИАЛИЗАЦИЯ ============
@@ -126,6 +133,13 @@ function init() {
   if (reqBtn) reqBtn.onclick = () => orders.showRequisitesModal();
   const tplBtn = document.getElementById('templatesBtn');
   if (tplBtn) tplBtn.onclick = () => orders.openTemplatesEditor();
+
+  // Переход «Клиенты → конкретный заказ/обращение» через события из customers.js
+  window.addEventListener('switch-section', (e) => switchSection(e.detail.section));
+  window.addEventListener('open-item', (e) => {
+    const { tab, id } = e.detail;
+    orders.openItemFromOutside(tab, id);
+  });
 
   const saved = loadAuth();
   if (saved && saved.username) {

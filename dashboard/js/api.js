@@ -103,6 +103,79 @@ export async function loadCustomers(ids) {
   return map;
 }
 
+// Все клиенты со всеми полями — для раздела «Клиенты».
+export async function loadAllCustomers() {
+  return get('customers', {
+    select: '*',
+    order: 'created_at.desc',
+    limit: '5000',
+  });
+}
+
+// Лёгкая агрегация по заказам/обращениям для раздела «Клиенты»:
+// возвращает Map<tg_id, { ordersTotal, ordersActive, lastOrderAt, lastInquiryAt }>.
+export async function loadCustomerAggregates() {
+  const [orders, inquiries] = await Promise.all([
+    get('orders', { select: 'id,customer_tg_id,status,created_at,updated_at', limit: '5000' }),
+    get('inquiries', { select: 'id,customer_tg_id,status,created_at,updated_at', limit: '5000' }),
+  ]);
+  const map = new Map();
+  function bag(tg) {
+    if (!map.has(tg)) map.set(tg, { ordersTotal: 0, ordersActive: 0, lastOrderAt: null, lastInquiryAt: null });
+    return map.get(tg);
+  }
+  for (const o of (orders || [])) {
+    const b = bag(o.customer_tg_id);
+    b.ordersTotal++;
+    if (o.status !== 'completed' && o.status !== 'cancelled') b.ordersActive++;
+    const t = o.updated_at || o.created_at;
+    if (!b.lastOrderAt || new Date(t) > new Date(b.lastOrderAt)) b.lastOrderAt = t;
+  }
+  for (const q of (inquiries || [])) {
+    const b = bag(q.customer_tg_id);
+    const t = q.updated_at || q.created_at;
+    if (!b.lastInquiryAt || new Date(t) > new Date(b.lastInquiryAt)) b.lastInquiryAt = t;
+  }
+  return map;
+}
+
+// Какие клиенты имеют хотя бы одно непрочитанное входящее сообщение.
+// Возвращает Set<tg_id>.
+export async function loadUnreadCustomers() {
+  try {
+    const rows = await get('messages', {
+      select: 'customer_tg_id',
+      direction: 'eq.in',
+      read_at: 'is.null',
+      limit: '5000',
+    });
+    const set = new Set();
+    (rows || []).forEach(m => set.add(m.customer_tg_id));
+    return set;
+  } catch (e) {
+    console.warn('loadUnreadCustomers failed:', e);
+    return new Set();
+  }
+}
+
+// Дата последнего сообщения от клиента (вход — настоящая активность пользователя).
+// Возвращает Map<tg_id, ISO-string>.
+export async function loadLastIncomingMessages() {
+  // Берём входящие сообщения, отсортированные по времени убывания. PostgREST
+  // не умеет distinct, поэтому берём ~5000 последних и схлопываем на фронте.
+  const rows = await get('messages', {
+    select: 'customer_tg_id,created_at',
+    direction: 'eq.in',
+    order: 'created_at.desc',
+    limit: '5000',
+  });
+  const map = new Map();
+  for (const m of (rows || [])) {
+    if (!map.has(m.customer_tg_id)) map.set(m.customer_tg_id, m.created_at);
+  }
+  return map;
+}
+
 // Полная переписка с одним клиентом (по возрастанию времени).
 export async function loadConversation(customerTgId) {
   return get('messages', {
