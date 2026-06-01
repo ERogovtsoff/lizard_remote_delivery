@@ -1398,3 +1398,167 @@ html, body {
 .sh-status { font-weight: 600; }
 .sh-meta { color: var(--text-muted); white-space: nowrap; }
 .sh-empty { color: var(--text-muted); font-size: 12px; padding: 6px; }
+
+/* ====================== Цвета статусов (#4) ====================== */
+.status-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.status-gray   { background: #e8eaed; color: #444; }
+.status-blue   { background: #d9eaff; color: #1a3f7a; }
+.status-orange { background: #ffe6c7; color: #8a4a00; }
+.status-green  { background: #d9f5d9; color: #1e6b1e; }
+.status-purple { background: #ece0ff; color: #5a3d8c; }
+.status-cyan   { background: #d0eef5; color: #1a5969; }
+.status-teal   { background: #c7ece9; color: #1d6a6a; }
+.status-done   { background: #cfe5cf; color: #1a4f1a; }
+.status-red    { background: #fadcd9; color: #8a1f1a; }
+
+/* Подсказка следующего шага (#1) */
+.next-step {
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  border-left: 3px solid var(--accent);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.4;
+  margin-bottom: 10px;
+}
+.next-step b { font-weight: 700; }
+
+/* Статистика клиента (#9) */
+.cust-stats {
+  display: flex; flex-wrap: wrap; gap: 6px 10px;
+  align-items: center; margin: 4px 0;
+}
+.cust-tag {
+  font-size: 12px; font-weight: 700;
+  padding: 2px 8px; border-radius: 8px;
+}
+.cust-tag.returning { background: #fff4cc; color: #8a6500; }
+.cust-tag.new { background: #d9eaff; color: #1a3f7a; }
+.cust-stats-meta { font-size: 12px; color: var(--text-secondary); }
+
+/* Кнопки в подвале сайдбара (Реквизиты / Шаблоны) */
+.foot-actions { display: flex; gap: 4px; flex-wrap: wrap; }
+.foot-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+.foot-btn:hover { background: var(--accent-soft); color: var(--accent-dark); }
+
+/* Модалка реквизитов */
+.req-hint { font-size: 12px; color: var(--text-secondary); margin: 0 0 12px; line-height: 1.4; }
+.req-textarea {
+  width: 100%; box-sizing: border-box;
+  border: 1.5px solid var(--border); border-radius: 8px;
+  padding: 10px; font-family: inherit; font-size: 13px;
+  resize: vertical; outline: none;
+  margin-bottom: 12px;
+}
+.req-textarea:focus { border-color: var(--accent); }
+
+/* Шаблоны: пикер над композером */
+.tpl-picker {
+  position: absolute;
+  bottom: 100%; left: 12px; right: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  max-height: 280px; overflow-y: auto;
+  padding: 6px;
+  z-index: 100;
+  margin-bottom: 6px;
+}
+.tpl-item {
+  display: flex; flex-direction: column; align-items: stretch;
+  width: 100%;
+  background: none; border: none;
+  text-align: left; padding: 8px 10px; border-radius: 8px;
+  cursor: pointer; font-family: inherit;
+}
+.tpl-item:hover { background: var(--bg); }
+.tpl-item b { font-size: 13px; margin-bottom: 2px; }
+.tpl-item span { font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tpl-edit {
+  display: block; width: 100%;
+  background: none; border: none; padding: 8px;
+  font-size: 12px; color: var(--accent-dark); cursor: pointer;
+  border-top: 1px solid var(--border); margin-top: 4px;
+}
+.convo-composer { position: relative; }   /* для абсолютного позиционирования пикера */
+
+/* Редактор шаблонов */
+.tpl-edit-row {
+  display: flex; gap: 6px; align-items: flex-start;
+  margin-bottom: 10px;
+}
+.tpl-title {
+  flex-shrink: 0; width: 130px;
+  border: 1.5px solid var(--border); border-radius: 6px;
+  padding: 6px 8px; font-size: 12px; font-family: inherit; outline: none;
+}
+.tpl-text {
+  flex: 1;
+  border: 1.5px solid var(--border); border-radius: 6px;
+  padding: 6px 8px; font-size: 12px; font-family: inherit; outline: none;
+  resize: vertical;
+}
+.tpl-del {
+  flex-shrink: 0; width: 26px; height: 26px;
+  border: none; background: none; color: var(--danger);
+  cursor: pointer; border-radius: 4px;
+}
+.tpl-del:hover { background: #fde8e6; }
+
+/* Канбан-вид (#7) */
+.list-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 16px 8px;
+  gap: 8px;
+}
+.view-switch {
+  display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
+}
+.view-btn {
+  background: var(--surface);
+  border: none;
+  padding: 5px 10px;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  border-right: 1px solid var(--border);
+}
+.view-btn:last-child { border-right: none; }
+.view-btn.active { background: var(--accent); color: #fff; }
+
+.board-cols {
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 0 12px 12px;
+}
+.board-col {
+  background: var(--bg); border-radius: 8px; padding: 6px;
+}
+.board-col-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 10px;
+  font-size: 12px; font-weight: 700;
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+.board-col-count {
+  background: rgba(255,255,255,0.6); border-radius: 10px;
+  padding: 1px 7px; font-size: 11px;
+}
+.board-col-items { display: flex; flex-direction: column; gap: 6px; }
+.board-col-items .order-row { padding: 8px 10px; }

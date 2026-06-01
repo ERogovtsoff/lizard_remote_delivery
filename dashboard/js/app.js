@@ -122,6 +122,10 @@ function init() {
     if (e.key === 'Enter') attemptLogin(e.target.value);
   });
   document.getElementById('logoutBtn').onclick = logout;
+  const reqBtn = document.getElementById('requisitesBtn');
+  if (reqBtn) reqBtn.onclick = () => orders.showRequisitesModal();
+  const tplBtn = document.getElementById('templatesBtn');
+  if (tplBtn) tplBtn.onclick = () => orders.openTemplatesEditor();
 
   const saved = loadAuth();
   if (saved && saved.username) {

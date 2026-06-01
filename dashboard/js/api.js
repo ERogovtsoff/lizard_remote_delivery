@@ -95,7 +95,7 @@ export async function loadCustomers(ids) {
   if (!ids || ids.length === 0) return {};
   const list = ids.join(',');
   const rows = await get('customers', {
-    select: 'tg_id,username,first_name,last_name',
+    select: 'tg_id,username,first_name,last_name,purchases_total,purchases_total_byn',
     tg_id: `in.(${list})`,
   });
   const map = {};
