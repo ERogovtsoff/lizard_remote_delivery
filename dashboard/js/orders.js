@@ -199,7 +199,8 @@ function orderRowHtml(it) {
   const statusLine = listView === 'board'
     ? `<div class="order-row-status">${age} ${assign}</div>`
     : `<div class="order-row-status"><span class="status-pill status-${st.color || 'gray'}">${escapeHtml(st.label)}</span> ${age} ${assign}</div>`;
-  return `<div class="order-row${active}${unread ? ' has-unread' : ''}" data-id="${it.id}">
+  const dragAttrs = listView === 'board' && isOrderActive(it.status) ? ' draggable="true"' : '';
+  return `<div class="order-row${active}${unread ? ' has-unread' : ''}" data-id="${it.id}"${dragAttrs}>
     <div class="order-row-top">
       <span class="order-row-id">${unread}Заказ №${it.id}</span>
       <span class="order-row-sum">${escapeHtml(sumLabel)}</span>
@@ -234,6 +235,13 @@ function setupCopyId() {
     btn.onclick = (e) => {
       e.stopPropagation();
       editCustomerNote(Number(btn.getAttribute('data-tg')));
+    };
+  });
+  // Кнопки открытия профиля клиента (#13)
+  document.querySelectorAll('.open-profile-btn').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      window.dispatchEvent(new CustomEvent('open-customer-profile', { detail: { tg: Number(btn.getAttribute('data-tg')) } }));
     };
   });
 }
@@ -310,6 +318,16 @@ export async function loadOrdersSection() {
 async function loadUnread() {
   try {
     const u = await api.loadUnreadContexts();
+    // Звук, если появилось хотя бы одно НОВОЕ непрочитанное (которого не было)
+    const before = new Set([...unreadOrders, ...[...unreadInquiries].map(x => 'i:' + x)]);
+    const after = new Set([...u.orderIds, ...[...u.inquiryIds].map(x => 'i:' + x)]);
+    let appeared = 0;
+    after.forEach(k => { if (!before.has(k)) appeared++; });
+    // Не пиликаем при самой первой загрузке (когда before пустое, а after сразу заполнено)
+    if (appeared > 0 && before.size > 0) {
+      try { playBeep(); } catch (_) {}
+      showToast(`✉️ Новое сообщение от клиента`);
+    }
     unreadOrders = u.orderIds;
     unreadInquiries = u.inquiryIds;
   } catch (_) {}
@@ -477,7 +495,7 @@ function renderOrdersList() {
       const list = byStatus[s];
       if (!list.length) return '';
       const st = ORDER_STATUS[s];
-      return `<div class="board-col">
+      return `<div class="board-col" data-status="${s}">
         <div class="board-col-head status-${st.color}">${escapeHtml(st.label)} <span class="board-col-count">${list.length}</span></div>
         <div class="board-col-items">${list.map(it => orderRowHtml(it)).join('')}</div>
       </div>`;
@@ -534,7 +552,42 @@ function renderOrdersList() {
   list.querySelectorAll('.order-row').forEach(el => {
     el.onclick = () => openDetail(el.getAttribute('data-id'));
   });
+  // Drag & drop в канбане (#11)
+  if (activeTab === 'orders' && listView === 'board') setupBoardDnD(list);
 }
+
+// Drag & drop карточек заказов между колонками статусов.
+function setupBoardDnD(list) {
+  let dragId = null;
+  list.querySelectorAll('.order-row[draggable="true"]').forEach(el => {
+    el.addEventListener('dragstart', (e) => {
+      dragId = el.getAttribute('data-id');
+      el.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', dragId); } catch (_) {}
+    });
+    el.addEventListener('dragend', () => {
+      el.classList.remove('dragging');
+      list.querySelectorAll('.board-col.drag-over').forEach(c => c.classList.remove('drag-over'));
+    });
+  });
+  list.querySelectorAll('.board-col').forEach(col => {
+    col.addEventListener('dragover', (e) => { e.preventDefault(); col.classList.add('drag-over'); });
+    col.addEventListener('dragleave', () => col.classList.remove('drag-over'));
+    col.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      col.classList.remove('drag-over');
+      const id = dragId;
+      const newStatus = col.getAttribute('data-status');
+      if (!id || !newStatus) return;
+      const order = orders.find(x => String(x.id) === String(id));
+      if (!order || order.status === newStatus) return;
+      // Используем существующую логику changeOrderStatus — она проверяет пропуск этапов и пр.
+      // Но не открываем карточку — мы в режиме канбана.
+      activeId = id;
+      await changeOrderStatus(order, newStatus);
+    });
+  });
 
 function clearDetail() {
   document.getElementById('orderDetailEmpty').style.display = 'flex';
@@ -624,7 +677,7 @@ function renderOrderDetail(id) {
       <details class="detail-collapse">
         <summary>Детали заказа, статус, заметка</summary>
         <div class="detail-meta">
-          <div><b>Клиент:</b> ${escapeHtml(name)}</div>
+          <div><b>Клиент:</b> <button class="open-profile-btn" data-tg="${o.customer_tg_id}">${escapeHtml(name)} →</button></div>
           ${customerStatsHtml(o.customer_tg_id)}
           <div><b>ID:</b> <button class="copy-id" data-id="${o.customer_tg_id}" title="Копировать ID">${o.customer_tg_id} 📋</button></div>
           <div><b>Создан:</b> ${escapeHtml(formatFullDate(o.created_at))} ${escapeHtml(formatTime(o.created_at))}</div>
@@ -978,7 +1031,7 @@ function renderInquiryDetail(id) {
       <details class="detail-collapse">
         <summary>Детали обращения и оформление заказа</summary>
         <div class="detail-meta">
-          <div><b>Клиент:</b> ${escapeHtml(name)}</div>
+          <div><b>Клиент:</b> <button class="open-profile-btn" data-tg="${q.customer_tg_id}">${escapeHtml(name)} →</button></div>
           ${customerStatsHtml(q.customer_tg_id)}
           <div><b>ID:</b> <button class="copy-id" data-id="${q.customer_tg_id}" title="Копировать ID">${q.customer_tg_id} 📋</button></div>
           <div><b>Тип:</b> ${escapeHtml(typeLabel)}</div>

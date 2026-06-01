@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>LIZARD · Панель управления</title>
 <link rel="preconnect" href="https://nhnbprmyqqpwcofkaasi.supabase.co" crossorigin />
-<link rel="stylesheet" href="./styles.css?v=19" />
+<link rel="stylesheet" href="./styles.css?v=20" />
 </head>
 <body>
 
@@ -34,6 +34,7 @@
       <div class="nav-tabs">
         <button class="nav-tab active" data-section="orders">Заказы</button>
         <button class="nav-tab" data-section="customers">Клиенты</button>
+        <button class="nav-tab" data-section="analytics">Аналитика</button>
         <button class="nav-tab" data-section="catalog">Каталог</button>
       </div>
     </div>
@@ -51,6 +52,7 @@
         <button class="foot-btn" id="requisitesBtn" title="Реквизиты для оплаты">💳 Реквизиты</button>
         <button class="foot-btn" id="templatesBtn" title="Шаблоны ответов">📝 Шаблоны</button>
         <button class="foot-btn" id="auditBtn" title="Журнал действий">📋 Журнал</button>
+        <button class="foot-btn" id="themeBtn" title="Переключить тему">🌙</button>
         <button class="logout-btn" id="logoutBtn" title="Выйти">Выйти</button>
       </div>
     </div>
@@ -78,6 +80,9 @@
 
     <!-- РАЗДЕЛ КЛИЕНТЫ -->
     <div class="section-customers" id="sectionCustomers" style="display:none"></div>
+
+    <!-- РАЗДЕЛ АНАЛИТИКА -->
+    <div class="section-analytics" id="sectionAnalytics" style="display:none"></div>
   </main>
 </div>
 

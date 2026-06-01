@@ -3,6 +3,7 @@
 // клиента открывает его последний заказ/обращение в нужной вкладке.
 
 import * as api from './api.js';
+import { CONFIG } from './config.js';
 import { escapeHtml, customerName, formatTime, formatFullDate, exportToCsv } from './utils.js';
 
 let customers = [];                // массив объектов customers
@@ -289,4 +290,139 @@ function exportCustomers() {
   ];
   const date = new Date().toISOString().slice(0, 10);
   exportToCsv(`customers-${date}.csv`, rows, columns);
+}
+
+// ============ ПРОФИЛЬ КЛИЕНТА (#13) ============
+
+export async function openCustomerProfile(tgId) {
+  const old = document.getElementById('custProfileModal');
+  if (old) old.remove();
+  const modal = document.createElement('div');
+  modal.id = 'custProfileModal';
+  modal.className = 'qp-modal';
+  modal.innerHTML = `
+    <div class="qp-card profile-card">
+      <div class="profile-loading">Загрузка профиля…</div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+
+  let data;
+  try {
+    data = await api.loadCustomerProfile(tgId);
+  } catch (e) {
+    modal.querySelector('.qp-card').innerHTML = '<div class="sh-empty">Не удалось загрузить</div>';
+    return;
+  }
+  if (!data.customer) {
+    modal.querySelector('.qp-card').innerHTML = '<div class="sh-empty">Клиент не найден</div>';
+    return;
+  }
+  const c = data.customer;
+  const name = customerName(c, c.tg_id);
+  const initials = (name.match(/[a-zA-Zа-яА-Я0-9]/g) || []).slice(0, 2).join('').toUpperCase() || '?';
+  const totalSpent = Number(c.purchases_total) || 0;
+  const totalByn = Number(c.purchases_total_byn) || 0;
+  const ordersTotal = data.orders.length;
+  const ordersActive = data.orders.filter(o => o.status !== 'completed' && o.status !== 'cancelled').length;
+  const ordersCompleted = data.orders.filter(o => o.status === 'completed').length;
+  const tgLink = c.username
+    ? `<a class="cust-tg-link" href="https://t.me/${escapeHtml(c.username)}" target="_blank" rel="noopener">@${escapeHtml(c.username)} →</a>`
+    : '<span class="cust-tg-none">нет username</span>';
+  const statusLabels = {
+    new: '🆕', in_progress: '✋', awaiting_payment: '💳', paid: '✅',
+    purchasing: '🛒', shipping: '🚚', ready: '📦', completed: '🎉', cancelled: '❌',
+    closed: '✓',
+  };
+
+  modal.querySelector('.qp-card').innerHTML = `
+    <div class="profile-head">
+      <div class="cust-avatar profile-avatar">${c.photo_url ? `<img src="${escapeHtml(c.photo_url)}" alt="">` : escapeHtml(initials)}</div>
+      <div class="profile-info">
+        <div class="profile-name">${escapeHtml(name)}</div>
+        <div class="profile-meta">${tgLink} · <button class="copy-id" data-id="${c.tg_id}">${c.tg_id} 📋</button></div>
+        <div class="profile-meta">Зарегистрирован: ${escapeHtml(formatFullDate(c.created_at) || '—')}</div>
+      </div>
+      <button class="btn-light profile-close" id="profileClose">Закрыть</button>
+    </div>
+
+    <div class="profile-stats">
+      <div><span class="cust-stat-label">Заказов всего</span><span class="cust-stat-val">${ordersTotal}</span></div>
+      <div><span class="cust-stat-label">Завершённых</span><span class="cust-stat-val">${ordersCompleted}</span></div>
+      <div><span class="cust-stat-label">Активных</span><span class="cust-stat-val">${ordersActive}</span></div>
+      <div><span class="cust-stat-label">Выкуплено</span><span class="cust-stat-val">$${totalSpent.toFixed(0)}${totalByn ? ` · ${totalByn.toFixed(0)} BYN` : ''}</span></div>
+    </div>
+
+    <div class="profile-section">
+      <div class="profile-section-title">📌 Постоянная заметка</div>
+      <textarea id="profileNote" rows="3" placeholder="Например: «всегда платит на 3-й день», «любит примерять перед оплатой»">${escapeHtml(c.manager_note || '')}</textarea>
+      <button class="btn-light" id="profileNoteSave">Сохранить заметку</button>
+    </div>
+
+    <div class="profile-section">
+      <div class="profile-section-title">История заказов (${data.orders.length})</div>
+      <div class="profile-orders">
+        ${data.orders.length ? data.orders.slice(0, 50).map(o => `
+          <div class="profile-order-row" data-order-id="${o.id}">
+            <span class="po-status">${statusLabels[o.status] || ''}</span>
+            <span class="po-id">№${o.id}</span>
+            <span class="po-sum">$${o.total_usd}</span>
+            <span class="po-date">${escapeHtml(formatFullDate(o.created_at) || '')}</span>
+          </div>
+        `).join('') : '<div class="sh-empty">Заказов нет</div>'}
+      </div>
+    </div>
+
+    <div class="profile-section">
+      <div class="profile-section-title">Обращения (${data.inquiries.length})</div>
+      <div class="profile-orders">
+        ${data.inquiries.length ? data.inquiries.slice(0, 50).map(q => `
+          <div class="profile-order-row" data-inquiry-id="${q.id}">
+            <span class="po-status">${statusLabels[q.status] || ''}</span>
+            <span class="po-id">№${q.number || ''}</span>
+            <span class="po-sum">${q.type === 'product_question' ? '❓ товар' : '🔎 подбор'}</span>
+            <span class="po-date">${escapeHtml(formatFullDate(q.created_at) || '')}</span>
+          </div>
+        `).join('') : '<div class="sh-empty">Обращений нет</div>'}
+      </div>
+    </div>
+  `;
+
+  document.getElementById('profileClose').onclick = () => modal.remove();
+  // Сохранение заметки
+  document.getElementById('profileNoteSave').onclick = async () => {
+    const val = document.getElementById('profileNote').value;
+    try {
+      // Менеджер для audit — пытаемся достать из localStorage авторизации
+      const mgr = (function(){ try { return JSON.parse(localStorage.getItem(CONFIG.AUTH_KEY) || '{}').username || ''; } catch (_) { return ''; } })();
+      await api.setCustomerNote(c.tg_id, val, mgr);
+      c.manager_note = val;
+    } catch (e) { console.error(e); }
+  };
+  // Копирование ID
+  modal.querySelectorAll('.copy-id').forEach(b => {
+    b.onclick = async (e) => {
+      e.stopPropagation();
+      try {
+        await navigator.clipboard.writeText(b.getAttribute('data-id'));
+        const orig = b.innerHTML;
+        b.innerHTML = 'скопировано ✓';
+        setTimeout(() => { b.innerHTML = orig; }, 1500);
+      } catch (_) {}
+    };
+  });
+  // Клик по строке заказа/обращения — открыть его в разделе Заказы
+  modal.querySelectorAll('.profile-order-row').forEach(row => {
+    row.onclick = () => {
+      const oid = row.getAttribute('data-order-id');
+      const iid = row.getAttribute('data-inquiry-id');
+      modal.remove();
+      window.dispatchEvent(new CustomEvent('switch-section', { detail: { section: 'orders' } }));
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('open-item', {
+          detail: oid ? { tab: 'orders', id: oid } : { tab: 'inquiries', id: iid }
+        }));
+      }, 50);
+    };
+  });
 }

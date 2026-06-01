@@ -5,6 +5,7 @@ import * as api from './api.js';
 import * as catalog from './catalog.js';
 import * as orders from './orders.js';
 import * as customers from './customers.js';
+import * as analytics from './analytics.js';
 
 let currentManager = null;
 let currentSection = 'orders';
@@ -110,13 +111,16 @@ function switchSection(section) {
   document.getElementById('sectionCatalog').style.display = section === 'catalog' ? '' : 'none';
   const secCust = document.getElementById('sectionCustomers');
   if (secCust) secCust.style.display = section === 'customers' ? '' : 'none';
-  // Сайдбар скрываем на разделе Клиенты — он работает на полную ширину
+  const secAn = document.getElementById('sectionAnalytics');
+  if (secAn) secAn.style.display = section === 'analytics' ? '' : 'none';
+  // Сайдбар скрываем на полноэкранных разделах
   const sidebar = document.querySelector('.sidebar');
-  if (sidebar) sidebar.classList.toggle('compact', section === 'customers');
+  if (sidebar) sidebar.classList.toggle('compact', section === 'customers' || section === 'analytics');
 
   if (section === 'orders') orders.loadOrdersSection();
   if (section === 'catalog') { orders.stopConvo(); catalog.loadCatalog(); }
   if (section === 'customers') { orders.stopConvo(); customers.loadCustomersSection(); }
+  if (section === 'analytics') { orders.stopConvo(); analytics.loadAnalyticsSection(); }
 }
 
 // ============ ИНИЦИАЛИЗАЦИЯ ============
@@ -135,12 +139,18 @@ function init() {
   if (tplBtn) tplBtn.onclick = () => orders.openTemplatesEditor();
   const auditBtn = document.getElementById('auditBtn');
   if (auditBtn) auditBtn.onclick = () => orders.openAuditLog();
+  const themeBtn = document.getElementById('themeBtn');
+  if (themeBtn) themeBtn.onclick = toggleTheme;
+  applyTheme(localStorage.getItem('lizard_theme') || 'light');
 
   // Переход «Клиенты → конкретный заказ/обращение» через события из customers.js
   window.addEventListener('switch-section', (e) => switchSection(e.detail.section));
   window.addEventListener('open-item', (e) => {
     const { tab, id } = e.detail;
     orders.openItemFromOutside(tab, id);
+  });
+  window.addEventListener('open-customer-profile', (e) => {
+    customers.openCustomerProfile(e.detail.tg);
   });
 
   const saved = loadAuth();
@@ -153,3 +163,16 @@ function init() {
 }
 
 init();
+
+// ============ ТЁМНАЯ ТЕМА (#15) ============
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('lizard_theme', theme);
+  const btn = document.getElementById('themeBtn');
+  if (btn) btn.textContent = theme === 'dark' ? '☀️' : '🌙';
+}
+function toggleTheme() {
+  const cur = document.documentElement.getAttribute('data-theme') || 'light';
+  applyTheme(cur === 'dark' ? 'light' : 'dark');
+}

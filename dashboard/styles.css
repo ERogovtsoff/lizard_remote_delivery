@@ -16,6 +16,50 @@
   --sidebar-w: 340px;
 }
 
+/* Тёмная тема (#15). Активируется через [data-theme="dark"] на <html>. */
+[data-theme="dark"] {
+  --accent: #00d4d6;
+  --accent-dark: #4de1e3;
+  --accent-soft: #173838;
+  --bg: #0f1419;
+  --surface: #1a2026;
+  --border: #2a323c;
+  --text: #e6ebf0;
+  --text-secondary: #97a3af;
+  --text-muted: #6b7884;
+  --danger: #ff6258;
+  --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
+}
+[data-theme="dark"] body { color: var(--text); background: var(--bg); }
+[data-theme="dark"] .status-gray   { background: #2a323c; color: #b8c3cc; }
+[data-theme="dark"] .status-blue   { background: #1a3550; color: #88c0ff; }
+[data-theme="dark"] .status-orange { background: #4a3010; color: #ffb866; }
+[data-theme="dark"] .status-green  { background: #1a3a1a; color: #88e088; }
+[data-theme="dark"] .status-purple { background: #2e1f4a; color: #b89bff; }
+[data-theme="dark"] .status-cyan   { background: #143842; color: #80d4e8; }
+[data-theme="dark"] .status-teal   { background: #143838; color: #80d8d4; }
+[data-theme="dark"] .status-done   { background: #1a3520; color: #88e088; }
+[data-theme="dark"] .status-red    { background: #4a1818; color: #ff9088; }
+[data-theme="dark"] .order-row.has-unread { background: #3a2d18; border-left-color: #ff9f3a; }
+[data-theme="dark"] .cust-card.has-unread { background: #3a2d18; }
+[data-theme="dark"] .cust-tag.returning   { background: #3a2f0d; color: #ffd870; }
+[data-theme="dark"] .cust-tag.new         { background: #1a3550; color: #88c0ff; }
+[data-theme="dark"] .cust-tag.vip         { background: #3a2d0d; color: #ffce5e; }
+[data-theme="dark"] .cust-tag.active      { background: #4a3010; color: #ffb866; }
+[data-theme="dark"] .cust-tag.unread      { background: #4a1818; color: #ff9088; }
+[data-theme="dark"] .cust-tag.cart        { background: #2e1f4a; color: #b89bff; }
+[data-theme="dark"] .paid-badge           { background: #1a3a1a; color: #88e088; }
+[data-theme="dark"] .cancel-reason        { background: #3a1818; color: #ff9088; }
+[data-theme="dark"] .next-step            { background: var(--accent-soft); color: var(--accent-dark); }
+[data-theme="dark"] .cust-note-block, [data-theme="dark"] .cust-perm-note { background: #3a3014; border-color: #5a4a1a; color: #ffd870; }
+[data-theme="dark"] .cust-note-text { color: #f0d480; }
+[data-theme="dark"] .cust-note-label, [data-theme="dark"] .cust-note-edit { color: #ffd870; }
+[data-theme="dark"] input, [data-theme="dark"] textarea, [data-theme="dark"] select {
+  background: var(--surface); color: var(--text); border-color: var(--border);
+}
+[data-theme="dark"] .login-form input { background: var(--surface); color: var(--text); }
+[data-theme="dark"] .toast { background: #2a323c; color: var(--text); }
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {
@@ -1780,4 +1824,153 @@ button.di-price:hover { border-color: var(--accent); background: var(--accent-so
 .audit-details {
   margin-top: 3px;
   font-size: 12px; color: var(--text-secondary);
+}
+
+/* ====================== Аналитика (#4) ====================== */
+.section-analytics { padding: 24px 28px; overflow-y: auto; }
+.an-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 20px;
+}
+.an-header h2 { margin: 0; font-size: 22px; }
+.an-controls label { font-size: 13px; color: var(--text-secondary); display: inline-flex; gap: 8px; align-items: center; }
+.an-controls select {
+  border: 1.5px solid var(--border); border-radius: 8px;
+  padding: 6px 10px; font-size: 13px; font-family: inherit; background: var(--surface);
+}
+.an-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+  margin-bottom: 24px;
+}
+.an-tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+}
+.an-tile-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px; }
+.an-tile-value { font-size: 22px; font-weight: 700; margin-top: 4px; color: var(--accent-dark); }
+.an-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.an-block {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+}
+.an-block-title { font-size: 13px; font-weight: 600; margin-bottom: 12px; color: var(--text-secondary); }
+.an-bars {
+  display: flex; gap: 2px; align-items: flex-end;
+  height: 180px;
+  padding-bottom: 24px;
+  position: relative;
+}
+.an-bar-col { flex: 1; display: flex; flex-direction: column; align-items: stretch; height: 100%; position: relative; }
+.an-bar {
+  background: var(--accent);
+  border-radius: 3px 3px 0 0;
+  margin-top: auto;
+  min-height: 1px;
+  position: relative;
+  transition: opacity 0.15s;
+}
+.an-bar:hover { opacity: 0.85; }
+.an-bar-num {
+  position: absolute; top: -16px; left: 50%; transform: translateX(-50%);
+  font-size: 10px; color: var(--text-secondary);
+}
+.an-bar-label {
+  font-size: 10px; color: var(--text-muted);
+  text-align: center;
+  position: absolute; bottom: -20px; left: 0; right: 0;
+}
+.an-stage-row {
+  display: flex; gap: 10px; align-items: center;
+  padding: 6px 0; border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.an-stage-row:last-child { border-bottom: none; }
+.an-stage-label { flex: 1; }
+.an-stage-count { color: var(--text-muted); font-size: 12px; }
+.an-stage-time { font-weight: 600; color: var(--accent-dark); }
+.an-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.an-table th, .an-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.an-table th { font-weight: 600; color: var(--text-secondary); font-size: 12px; }
+
+@media (max-width: 760px) {
+  .section-analytics { padding: 16px; }
+  .an-row { grid-template-columns: 1fr; }
+}
+
+/* ====================== Drag & drop в канбане (#11) ====================== */
+.order-row[draggable="true"] { cursor: grab; }
+.order-row[draggable="true"]:active { cursor: grabbing; }
+.order-row.dragging { opacity: 0.4; }
+.board-col.drag-over { background: var(--accent-soft); outline: 2px dashed var(--accent); }
+
+/* ====================== Профиль клиента (#13) ====================== */
+.profile-card { max-width: 700px; max-height: 90vh; overflow-y: auto; }
+.profile-head {
+  display: flex; gap: 14px; align-items: flex-start;
+  margin-bottom: 18px; padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.profile-avatar { width: 64px; height: 64px; font-size: 22px; }
+.profile-info { flex: 1; min-width: 0; }
+.profile-name { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+.profile-meta { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+.profile-close { align-self: flex-start; }
+.profile-stats {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+  margin-bottom: 18px;
+}
+.profile-stats > div {
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 10px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.profile-section { margin-bottom: 18px; }
+.profile-section-title {
+  font-size: 13px; font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+.profile-section textarea {
+  width: 100%; box-sizing: border-box;
+  border: 1.5px solid var(--border); border-radius: 8px;
+  padding: 8px 12px; font-size: 13px; font-family: inherit;
+  resize: vertical; outline: none; margin-bottom: 6px;
+}
+.profile-orders { display: flex; flex-direction: column; gap: 4px; max-height: 200px; overflow-y: auto; }
+.profile-order-row {
+  display: grid; grid-template-columns: 24px 70px 80px 1fr;
+  gap: 8px; align-items: center;
+  padding: 6px 10px;
+  background: var(--bg);
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.profile-order-row:hover { background: var(--accent-soft); }
+.po-status { text-align: center; }
+.po-id { font-weight: 600; }
+.po-sum { color: var(--accent-dark); }
+.po-date { color: var(--text-muted); font-size: 12px; text-align: right; }
+
+/* Имя клиента как кнопка профиля */
+.open-profile-btn {
+  background: none; border: none;
+  color: var(--accent-dark);
+  font-family: inherit; font-size: inherit;
+  font-weight: 600; cursor: pointer;
+  padding: 0 4px;
+  text-decoration: underline;
+  text-decoration-color: rgba(0,0,0,0.15);
+}
+.open-profile-btn:hover { color: var(--accent); }
+
+@media (max-width: 760px) {
+  .profile-stats { grid-template-columns: repeat(2, 1fr); }
 }
