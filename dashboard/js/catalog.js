@@ -325,16 +325,21 @@ async function saveDraft() {
 }
 
 async function removeDraft() {
-  if (!confirm('Удалить товар безвозвратно?')) return;
+  if (!confirm('Удалить товар?\n\nЕсли товар уже был в заказах, он не удалится физически, а скроется из каталога — иначе сломается история заказов. Это безопасно: клиенты в каталоге его больше не увидят.')) return;
   const btn = document.getElementById('e_delete');
   btn.disabled = true;
   try {
-    await api.deleteProduct(draft.id, getManager());
+    const result = await api.deleteProduct(draft.id, getManager());
     closeEditor();           // вернуться к списку (+ снять mobile-detail)
     await loadCatalog();
+    if (result && result.mode === 'archived') {
+      setStatus('Товар был в заказах — скрыт из каталога (но сохранён в истории) ✓');
+    } else {
+      setStatus('Товар удалён ✓');
+    }
   } catch (e) {
     console.error(e);
-    setStatus('Ошибка удаления', true);
+    setStatus('Ошибка удаления: ' + (e.message || ''), true);
     btn.disabled = false;
   }
 }

@@ -368,14 +368,44 @@ export async function saveProduct(product, manager) {
 }
 
 // Удалить один товар по id.
+// Удалить один товар по id.
+// Если на товар уже ссылаются позиции заказов (order_items.product_id с NO ACTION),
+// БД не даст его удалить (409 conflict). В этом случае «мягко» прячем товар:
+// is_active=false. История заказов сохраняется, в каталоге товар исчезает.
+// Возвращает { mode: 'deleted' | 'archived' } — чтобы UI мог показать понятное сообщение.
 export async function deleteProduct(id, manager) {
+  // 1) Проверим заранее: есть ли позиции заказов с этим товаром
+  let hasOrderItems = false;
+  try {
+    const items = await get('order_items', { select: 'id', product_id: `eq.${encodeURIComponent(id)}`, limit: '1' });
+    hasOrderItems = (items && items.length > 0);
+  } catch (_) { /* если запрос упал — попробуем delete и обработаем 409 */ }
+
+  if (!hasOrderItems) {
+    // Чистое удаление возможно
+    const res = await fetchRetry(`${BASE}/products?id=eq.${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+    });
+    if (res.ok) {
+      logAudit({ action: 'product_delete', entity_type: 'product', entity_id: id, manager });
+      return { mode: 'deleted' };
+    }
+    // 409 (или другие) — пойдём по soft-пути ниже
+    if (res.status !== 409) {
+      throw new Error(`deleteProduct failed: ${res.status}`);
+    }
+  }
+
+  // Soft-delete: прячем товар (is_active=false), история сохраняется.
   const res = await fetchRetry(`${BASE}/products?id=eq.${encodeURIComponent(id)}`, {
-    method: 'DELETE',
+    method: 'PATCH',
     headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ is_active: false }),
   });
-  if (!res.ok) throw new Error(`deleteProduct failed: ${res.status}`);
-  logAudit({ action: 'product_delete', entity_type: 'product', entity_id: id, manager });
-  return true;
+  if (!res.ok) throw new Error(`deleteProduct (soft) failed: ${res.status}`);
+  logAudit({ action: 'product_archive', entity_type: 'product', entity_id: id, manager, details: { reason: 'has order_items' } });
+  return { mode: 'archived' };
 }
 
 // Быстрое переключение видимости (скрыть/показать).
