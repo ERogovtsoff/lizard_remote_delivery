@@ -49,7 +49,7 @@ export const router = {
     showBackButton(showBack, () => {
       // Логика «Назад» по странице
       if (name === 'detail') router.navigate(detailSource || 'home');
-      else if (['history', 'settings', 'admin'].includes(name)) router.navigate('profile');
+      else if (['history', 'settings'].includes(name)) router.navigate('profile');
       else if (name === 'favorites' || name === 'cart') router.navigate('home');
     });
 

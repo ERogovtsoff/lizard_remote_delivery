@@ -35,7 +35,6 @@ import { renderDetail } from './views/detail.js';
 import { renderProfile } from './views/profile.js';
 import { renderHistory } from './views/history.js';
 import { renderSettings } from './views/settings.js';
-import { renderAdmin } from './views/admin.js';
 
 let _prevCartCount = 0;
 let _prevFavCount = 0;
@@ -239,7 +238,6 @@ async function bootstrap() {
   registerView('profile',    renderProfile);
   registerView('history',    renderHistory);
   registerView('settings',   renderSettings);
-  registerView('admin',      renderAdmin);
 
   // Синхронизаторы favorites/cart с БД
   setFavoritesSyncer(({ action, productId, size }) => {

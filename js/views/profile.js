@@ -90,28 +90,10 @@ export async function renderProfile() {
         </div>
       </div>
       <div id="faqContainer" class="faq-container"></div>
-      ${isAdmin() ? `
-      <div class="settings-row clickable" id="rowAdmin">
-        <div class="settings-row-content">
-          <div class="settings-row-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-          </div>
-          <div>
-            <div class="settings-row-label">${escapeHtml(t('adminPanelOpen'))}</div>
-            <div class="settings-row-sub">${escapeHtml(t('adminPanelSub'))}</div>
-          </div>
-        </div>
-        <div class="chevron">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-        </div>
-      </div>
-      ` : ''}
     </div>
   `;
   document.getElementById('rowHistory').onclick = () => router.navigate('history');
   document.getElementById('rowSettings').onclick = () => router.navigate('settings');
-  const adminRow = document.getElementById('rowAdmin');
-  if (adminRow) adminRow.onclick = () => router.navigate('admin');
 
   // «Как это работает» — раскрывающийся FAQ
   const howRow = document.getElementById('rowHowItWorks');
