@@ -8,7 +8,7 @@ import { escapeHtml, formatPrice } from '../utils.js';
 import { state } from '../state.js';
 import { api } from '../api/index.js';
 import { router } from '../router.js';
-import { isAdmin, getUser } from '../tg.js';
+import { getUser } from '../tg.js';
 
 export async function renderProfile() {
   // Имя, username и фото — сразу из Telegram (синхронно, без сети).

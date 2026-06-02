@@ -1,25 +1,26 @@
 """
 Telegram-бот «Магазин одежды + заказ из Китая».
-Архитектура: бот-посредник между клиентами и менеджером.
+Архитектура: бот — приёмник сообщений клиентов и нотификатор для менеджеров.
+Вся менеджерская работа происходит в админ-панели; бот в эту работу не вмешивается.
 
 Стек: Python 3.10+, aiogram 3.x, httpx.
 
 Что делает бот:
-1. Команда /start без параметров — показывает приветствие (магазин открывается штатной кнопкой «Открыть»).
-2. Команда /start request — клиент пришёл из апки оформить общий запрос на подбор.
-   Бот пишет клиенту приветствие и ждёт сообщения, чтобы переслать менеджеру.
-3. Команда /start ask_<product_id> — клиент пришёл уточнить размеры конкретного товара.
-   Бот читает товар из Supabase, шлёт клиенту контекст («вы интересуетесь товаром X»)
-   и параллельно уведомляет менеджера.
-4. Команда /start order_<order_id> — клиент только что оформил заказ в апке.
-   Бот читает заказ из Supabase, шлёт клиенту резюме заказа и уведомляет менеджера.
-5. Все обычные сообщения от клиента (текст, фото, документы) пересылаются менеджеру
-   с заголовком «От @username» — это reply-target.
-6. Когда менеджер делает reply на сообщение в своём чате с ботом, бот находит
-   соответствующего клиента по message_id и пересылает ему ответ.
+1. /start без параметров — приветствие клиенту, либо тихая регистрация менеджера/суперадмина.
+2. /start request, /start request_<category>, /start ask_<product_id>, /start order_<order_id>
+   — клиент пришёл из апки. Бот сохраняет соответствующее обращение/заказ в БД, шлёт
+   клиенту приветствие, дежурным менеджерам — короткое уведомление со ссылкой на админку.
+3. /start duty — тихая регистрация chat_id менеджера (вызывается через deep-link
+   из админки, когда менеджер встаёт на дежурство; без подсказок и приветствий).
+4. Любое сообщение от клиента: сохраняется в БД, дежурным шлётся короткое уведомление
+   «новое сообщение от клиента» (с rate-limit 5 мин на клиента).
+5. Outbox-воркер: забирает ответы менеджеров, которые они пишут в админке, и
+   отправляет их клиентам.
+6. Брошенные корзины: раз в сутки шлёт мягкое напоминание клиентам, у которых
+   корзина не тронута >24ч.
 
-Менеджер один. У него один чат с ботом — все клиенты в одном потоке. Контекст конкретного
-клиента понятен по заголовку входящего сообщения, ответ адресуется через reply.
+Никаких карточек, кнопок-статусов, reply-routing и ручного создания заказа в боте
+больше нет — всё в админке (см. dashboard/).
 
 Установка:
     pip install aiogram httpx
@@ -27,17 +28,18 @@ Telegram-бот «Магазин одежды + заказ из Китая».
 Запуск:
     export BOT_TOKEN="123:ABC..."
     export WEBAPP_URL="https://your.site/index.html"
-    export MANAGER_USERNAME="rogovtsoff"      # без @
+    export SUPERADMIN_USERNAME="rogovtsoff"      # без @
+    export DASHBOARD_URL="https://your.site/dashboard/"
     export SUPABASE_URL="https://xxx.supabase.co"
     export SUPABASE_ANON_KEY="eyJ..."
     python bot.py
 
-Менеджер должен один раз отправить /start боту — бот запомнит его chat_id.
+Управление менеджерами и дежурствами — в админке (раздел «👥 Менеджеры», кнопка
+«На дежурстве» в подвале сайдбара).
 """
 
 import asyncio
 import html
-import json
 import logging
 import os
 import re
@@ -50,7 +52,7 @@ from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramForbiddenError
-from aiogram.filters import Command, CommandStart, CommandObject
+from aiogram.filters import CommandStart, CommandObject
 from aiogram.types import (
     Message,
     ReplyKeyboardRemove,
@@ -235,17 +237,6 @@ async def supabase_post(path: str, body: dict) -> Optional[dict]:
     except Exception:
         return None
 
-
-async def supabase_delete(path: str, params: dict) -> bool:
-    """DELETE к Supabase REST API. Возвращает True при успехе."""
-    r = await _supabase_request("DELETE", path, params=params,
-                                headers_extra={"Prefer": "return=minimal"})
-    if r is None:
-        return False
-    if r.status_code >= 400:
-        log.error("Supabase DELETE %s failed: %s %s", path, r.status_code, r.text[:200])
-        return False
-    return True
 
 
 # ===================== СООБЩЕНИЯ (для dashboard) =====================
@@ -621,8 +612,6 @@ def fmt_price(amount: float, currency: str) -> str:
     return f"${s}" if currency == "USD" else f"{s} BYN"
 
 
-# Часовой пояс Беларуси (UTC+3, без перехода на летнее время с 2011)
-BELARUS_TZ = timezone(timedelta(hours=3))
 
 
 def _parse_ts(ts: str) -> Optional[datetime]:
@@ -640,56 +629,6 @@ def _parse_ts(ts: str) -> Optional[datetime]:
         return None
 
 
-def fmt_dt(ts: str) -> str:
-    """Точное время в поясе Беларуси: '20.05 в 14:30'."""
-    dt = _parse_ts(ts)
-    if not dt:
-        return "—"
-    local = dt.astimezone(BELARUS_TZ)
-    return local.strftime("%d.%m в %H:%M")
-
-
-def fmt_ago(ts: str) -> str:
-    """Относительное время: 'только что', '5 мин назад', '3 ч назад', '2 дня назад'."""
-    dt = _parse_ts(ts)
-    if not dt:
-        return ""
-    now = datetime.now(timezone.utc)
-    sec = (now - dt).total_seconds()
-    if sec < 0:
-        sec = 0
-    if sec < 60:
-        return "только что"
-    mins = int(sec // 60)
-    if mins < 60:
-        return f"{mins} мин назад"
-    hours = int(sec // 3600)
-    if hours < 24:
-        return f"{hours} ч назад"
-    days = int(sec // 86400)
-    if days < 30:
-        # склонение «день/дня/дней»
-        d = days % 10
-        dd = days % 100
-        if d == 1 and dd != 11:
-            word = "день"
-        elif d in (2, 3, 4) and dd not in (12, 13, 14):
-            word = "дня"
-        else:
-            word = "дней"
-        return f"{days} {word} назад"
-    months = int(days // 30)
-    return f"{months} мес назад"
-
-
-def fmt_created_line(ts: str) -> str:
-    """Строка 'Создан' с точным временем и относительным."""
-    return f"🕐 Создан: {fmt_dt(ts)} ({fmt_ago(ts)})"
-
-
-def fmt_activity_line(ts: str) -> str:
-    """Строка 'Активность' (последнее обновление)."""
-    return f"⏱ Активность: {fmt_ago(ts)}"
 
 
 def now_iso() -> str:
@@ -722,15 +661,6 @@ async def notify_managers_brief(bot: Bot, kind: str, *, link_path: str = "") -> 
         except Exception as e:
             log.warning("notify_managers_brief failed for %s: %s", chat, e)
 
-
-async def notify_duty_plain(bot: Bot, text: str) -> None:
-    """Простое уведомление всем дежурным менеджерам (без routing-привязки)."""
-    for chat in await get_duty_chat_ids():
-        try:
-            await retry_network(lambda: bot.send_message(chat, text),
-                                what="notify_duty_plain")
-        except Exception as e:
-            log.warning("notify_duty_plain failed for %s: %s", chat, e)
 
 
 # ===================== СТАТУСЫ ЗАКАЗОВ =========================
@@ -850,21 +780,6 @@ async def send_welcome(message: Message) -> None:
 
 # ===================== HANDLERS DEEP-LINK ======================
 
-async def customer_label(customer_tg_id: int) -> str:
-    """Подпись клиента по tg_id (для карточек, где нет объекта message)."""
-    rows = await supabase_get("customers", {
-        "tg_id": f"eq.{customer_tg_id}", "select": "first_name,last_name,username", "limit": "1"
-    })
-    if not rows:
-        return f"<a href=\"tg://user?id={customer_tg_id}\">клиент</a>"
-    c = rows[0]
-    name = " ".join(filter(None, [c.get("first_name"), c.get("last_name")])).strip()
-    if c.get("username"):
-        return f"@{c['username']}" + (f" ({html.escape(name)})" if name else "")
-    if name:
-        return f"<a href=\"tg://user?id={customer_tg_id}\">{html.escape(name)}</a>"
-    return f"<a href=\"tg://user?id={customer_tg_id}\">клиент</a>"
-
 
 async def handle_start_request(message: Message, bot: Bot, preset: str = None) -> None:
     """Клиент пришёл написать общий запрос на подбор товара.
@@ -885,13 +800,8 @@ async def handle_start_request(message: Message, bot: Bot, preset: str = None) -
             "У вас уже есть открытая заявка 🙌 Менеджер скоро свяжется — "
             "можно дописать детали прямо сюда."
         )
-        num = existing.get("number")
-        num_str = f"№{num}" if num else ""
-        await notify_duty_plain(
-            bot,
-            f"⚠️ Клиент {await customer_label(message.from_user.id)} повторно обратился "
-            f"(запрос {num_str}). Стоит ответить быстрее."
-        )
+        # Тихое уведомление менеджерам — без имени и без подробностей.
+        await notify_managers_brief(bot, "new_message")
         await supabase_patch("inquiries", {"id": f"eq.{existing['id']}"}, {"updated_at": now_iso()})
         return
 
@@ -941,13 +851,8 @@ async def handle_start_ask(message: Message, bot: Bot, product_id: str) -> None:
             f"Вы уже спрашивали про «<b>{html.escape(name)}</b>» 🙌 "
             f"Менеджер скоро ответит — можно дописать детали сюда."
         )
-        num = existing.get("number")
-        num_str = f"№{num}" if num else ""
-        await notify_duty_plain(
-            bot,
-            f"⚠️ Клиент {await customer_label(message.from_user.id)} повторно спрашивает "
-            f"про «{html.escape(name)}» (обращение {num_str}). Стоит ответить быстрее."
-        )
+        # Тихое уведомление менеджерам — без имени, без названия товара, без номера.
+        await notify_managers_brief(bot, "new_message")
         await supabase_patch("inquiries", {"id": f"eq.{existing['id']}"}, {"updated_at": now_iso()})
         return
 

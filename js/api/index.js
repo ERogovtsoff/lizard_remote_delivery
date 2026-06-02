@@ -10,7 +10,6 @@
 //   loadHistory()                         -> HistoryItem[]
 //   addOrder(order)                       -> HistoryItem
 //   loadCustomer()                        -> Customer | null
-//   loadManagers()                        -> [{tg_id, username, is_on_duty}]
 //   upsertCustomer(patch)                 -> Customer
 //   loadFavorites()                       -> Array<{productId, size}>
 //   addFavorite(productId, size)          -> void

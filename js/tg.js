@@ -40,29 +40,6 @@ export function getUserLanguage() {
   return tg?.initDataUnsafe?.user?.language_code || navigator.language || 'en';
 }
 
-// Список менеджеров из БД, загружается при старте апки (setManagers).
-// isAdmin проверяет: суперадмин из config ИЛИ менеджер из этого списка.
-let _managers = [];
-export function setManagers(list) {
-  _managers = Array.isArray(list) ? list : [];
-}
-
-export function isAdmin() {
-  const user = getUser();
-  const u = (user?.username || '').toLowerCase();
-  const id = user?.id;
-
-  // Суперадмин / захардкоженные админы из config
-  if (u && CONFIG.ADMIN_USERNAMES.some(a => a.toLowerCase() === u)) return true;
-
-  // Менеджеры из БД (по tg_id или username)
-  for (const m of _managers) {
-    if (m.tg_id && id && Number(m.tg_id) === Number(id)) return true;
-    if (m.username && u && String(m.username).toLowerCase() === u) return true;
-  }
-  return false;
-}
-
 export function haptic(kind = 'light') {
   try {
     if (!tg?.HapticFeedback) return;

@@ -13,7 +13,7 @@
 //     refreshGrid() сработает через подписку на каталог (он гарантированно отрабатывает
 //     после первой загрузки данных).
 
-import { initTelegram, onThemeChanged, onViewportChanged, tg, getUser, setManagers } from './tg.js';
+import { initTelegram, onThemeChanged, onViewportChanged, tg, getUser } from './tg.js';
 import { CONFIG } from './config.js';
 import { applyTheme } from './theme.js';
 import { setLang, applyI18N, t } from './i18n.js';
@@ -287,15 +287,6 @@ async function bootstrap() {
     const photo = getUser()?.photo_url;
     if (photo) { const im = new Image(); im.src = photo; }
   } catch (_) {}
-
-  // Загружаем список менеджеров из БД для проверки доступа к админке.
-  // Делаем в фоне; если пользователь окажется менеджером — кнопка «Управление
-  // каталогом» в профиле появится после перерисовки.
-  api.loadManagers().then(list => {
-    setManagers(list);
-    // Если открыт профиль — перерисуем, чтобы показать админ-пункт
-    if (router.current() === 'profile') router.navigate('profile');
-  }).catch(() => {});
 
   document.getElementById('headerLogo').onclick = () => router.navigate('home');
   document.getElementById('favBtn').onclick = () => router.navigate('favorites');
