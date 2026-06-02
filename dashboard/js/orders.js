@@ -39,6 +39,10 @@ let unreadOrders = new Set();  // id заказов с непрочитанны�
 let unreadInquiries = new Set(); // id обращений с непрочитанными
 let onlyMine = false;          // фильтр «только мои» (назначенные мне)
 let listView = 'list';         // list | board (канбан)
+// Сработавшие напоминания (#1): ключи 'o:<order_id>' / 'i:<inquiry_id>'.
+// Подгружается параллельно со списками; обновляется в refreshList.
+let firedReminderKeys = new Set();
+let knownFiredReminders = new Set(); // для определения «новых сработавших» (звук/toast)
 
 // Активен ли заказ/обращение (можно ли писать клиенту)
 function isOrderActive(status) { return status !== 'completed' && status !== 'cancelled'; }
@@ -81,6 +85,48 @@ async function loadAndRenderHistory(context) {
     }).join('');
   } catch (e) {
     box.innerHTML = '<div class="sh-empty">Не удалось загрузить историю</div>';
+  }
+}
+
+// Загружает и рисует список напоминаний в блок #remindersList (#1).
+async function loadAndRenderReminders(context) {
+  const box = document.getElementById('remindersList');
+  if (!box) return;
+  try {
+    const rows = await api.loadRemindersFor(context);
+    if (!rows || !rows.length) {
+      box.innerHTML = '<div class="sh-empty">Активных напоминаний нет</div>';
+      return;
+    }
+    const now = Date.now();
+    box.innerHTML = rows.map(r => {
+      const t = new Date(r.fire_at).getTime();
+      const fired = t <= now;
+      const when = `${escapeHtml(formatFullDate(r.fire_at))} ${escapeHtml(formatTime(r.fire_at))}`;
+      const note = r.note ? `<div class="rem-note">${escapeHtml(r.note)}</div>` : '';
+      const who = r.manager ? `@${escapeHtml(r.manager)}` : '—';
+      return `<div class="rem-row ${fired ? 'rem-fired' : ''}">
+        <div class="rem-main">
+          <div class="rem-time">${fired ? '⏰ ' : '🔔 '}${when}</div>
+          ${note}
+          <div class="rem-meta">поставил ${who}</div>
+        </div>
+        <button class="rem-dismiss" data-id="${r.id}" title="Закрыть напоминание">✓</button>
+      </div>`;
+    }).join('');
+    box.querySelectorAll('.rem-dismiss').forEach(btn => {
+      btn.onclick = async () => {
+        btn.disabled = true;
+        try {
+          await api.dismissReminder(btn.getAttribute('data-id'), managerUsername);
+          await loadAndRenderReminders(context);
+          await refreshFiredReminders();
+          renderOrdersList();
+        } catch (e) { console.error(e); btn.disabled = false; }
+      };
+    });
+  } catch (e) {
+    box.innerHTML = '<div class="sh-empty">Не удалось загрузить</div>';
   }
 }
 
@@ -223,14 +269,18 @@ function orderRowHtml(it) {
   const unread = unreadOrders.has(String(it.id)) ? '<span class="unread-dot" title="Есть непрочитанное сообщение"></span>' : '';
   const age = isOrderActive(it.status) ? `<span class="row-age">⏱ ${timeAgo(it.status_changed_at || it.updated_at)}</span>` : '';
   const assign = it.assigned_to ? `<span class="row-assign">👤 ${escapeHtml(it.assigned_to)}</span>` : '';
+  // Закреплён (#9) и сработавшее напоминание (#1) — визуальные индикаторы
+  const pin = it.pinned ? '<span class="row-pin" title="Закреплён">📌</span>' : '';
+  const fired = firedReminderKeys.has(`o:${it.id}`) ? '<span class="row-fired" title="Сработало напоминание">⏰</span>' : '';
   // В канбане статус-пилюля не нужна (есть заголовок колонки)
   const statusLine = listView === 'board'
     ? `<div class="order-row-status">${age} ${assign}</div>`
     : `<div class="order-row-status"><span class="status-pill status-${st.color || 'gray'}">${escapeHtml(st.label)}</span> ${age} ${assign}</div>`;
   const dragAttrs = listView === 'board' && isOrderActive(it.status) ? ' draggable="true"' : '';
-  return `<div class="order-row${active}${unread ? ' has-unread' : ''}" data-id="${it.id}"${dragAttrs}>
+  const classes = `order-row${active}${unread ? ' has-unread' : ''}${it.pinned ? ' is-pinned' : ''}${firedReminderKeys.has(`o:${it.id}`) ? ' has-fired-reminder' : ''}`;
+  return `<div class="${classes}" data-id="${it.id}"${dragAttrs}>
     <div class="order-row-top">
-      <span class="order-row-id">${unread}Заказ №${it.id}</span>
+      <span class="order-row-id">${pin}${fired}${unread}Заказ №${it.id}</span>
       <span class="order-row-sum">${escapeHtml(sumLabel)}</span>
     </div>
     <div class="order-row-name">${escapeHtml(name)}</div>
@@ -308,7 +358,27 @@ function applyListFilters(items) {
   } else {
     items.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   }
+  // Поверх любой сортировки — закреплённые (#9) и со сработавшими напоминаниями (#1)
+  // должны быть в самом верху. Сначала пины, потом fired-напоминания, потом остальное.
+  items.sort((a, b) => {
+    const aPin = a.pinned ? 1 : 0;
+    const bPin = b.pinned ? 1 : 0;
+    if (aPin !== bPin) return bPin - aPin;
+    const aFired = hasFiredReminder(a) ? 1 : 0;
+    const bFired = hasFiredReminder(b) ? 1 : 0;
+    return bFired - aFired;
+  });
   return items;
+}
+
+// Есть ли у item активное «сработавшее» напоминание?
+// Тип определяется по наличию поля number (есть у inquiries).
+function hasFiredReminder(item) {
+  // orders: id — bigint, inquiries: id — uuid (всегда строка с дефисами).
+  // Безопасно различаем по полю total_usd (есть только у orders).
+  const isOrder = item.total_usd !== undefined || item.is_paid !== undefined;
+  const key = isOrder ? `o:${item.id}` : `i:${item.id}`;
+  return firedReminderKeys.has(key);
 }
 
 export function initOrders(mgrUsername) {
@@ -335,6 +405,7 @@ export async function loadOrdersSection() {
     // Первичная инициализация набора известных ID (без звука при первой загрузке)
     initKnownIds();
     await loadUnread();
+    await refreshFiredReminders(); // #1: подгружаем сработавшие напоминания
   } catch (e) {
     console.error('loadOrdersSection failed:', e);
   }
@@ -370,10 +441,36 @@ export async function refreshList() {
     ]);
     detectNew();        // проверяем, появилось ли что-то новое → звук + индикатор
     await loadUnread(); // обновляем индикаторы «ждёт ответа»
+    await refreshFiredReminders(); // #1: проверяем «сработавшие» напоминания
     renderOrdersList();
     updateNavBadges();
   } catch (e) {
     console.error('refreshList failed:', e);
+  }
+}
+
+// Подгружает напоминания, которые УЖЕ должны были сработать (fire_at <= сейчас).
+// При появлении новых — звук + toast, чтобы менеджер не пропустил.
+async function refreshFiredReminders() {
+  try {
+    const list = await api.loadFiredReminders(managerUsername);
+    const newKeys = new Set();
+    for (const r of list || []) {
+      const key = r.order_id ? `o:${r.order_id}` : `i:${r.inquiry_id}`;
+      newKeys.add(key);
+    }
+    // Считаем «новыми» те ключи, которых не было в прошлом наборе.
+    let newCount = 0;
+    newKeys.forEach(k => { if (!knownFiredReminders.has(k)) newCount++; });
+    firedReminderKeys = newKeys;
+    if (newCount > 0 && knownFiredReminders.size > 0) {
+      // Не пиликаем на самой первой загрузке (when knownFiredReminders ещё пустой).
+      try { playBeep(); } catch (_) {}
+      showToast(newCount === 1 ? '⏰ Сработало напоминание' : `⏰ Сработало ${newCount} напоминаний`);
+    }
+    knownFiredReminders = newKeys;
+  } catch (e) {
+    console.warn('refreshFiredReminders failed:', e);
   }
 }
 
@@ -537,9 +634,12 @@ function renderOrdersList() {
       const st = INQUIRY_STATUS[it.status] || { label: it.status };
       const typeLabel = it.type === 'product_question' ? 'Вопрос о товаре' : 'Запрос на подбор';
       const unread = unreadInquiries.has(String(it.id)) ? '<span class="unread-dot" title="Есть непрочитанное сообщение"></span>' : '';
-      return `<div class="order-row${active}${unread ? ' has-unread' : ''}" data-id="${it.id}">
+      const pin = it.pinned ? '<span class="row-pin" title="Закреплён">📌</span>' : '';
+      const fired = firedReminderKeys.has(`i:${it.id}`) ? '<span class="row-fired" title="Сработало напоминание">⏰</span>' : '';
+      const classes = `order-row${active}${unread ? ' has-unread' : ''}${it.pinned ? ' is-pinned' : ''}${firedReminderKeys.has(`i:${it.id}`) ? ' has-fired-reminder' : ''}`;
+      return `<div class="${classes}" data-id="${it.id}">
         <div class="order-row-top">
-          <span class="order-row-id">${unread}Обращение №${it.number || ''}</span>
+          <span class="order-row-id">${pin}${fired}${unread}Обращение №${it.number || ''}</span>
         </div>
         <div class="order-row-name">${escapeHtml(name)}</div>
         <div class="order-row-status">${escapeHtml(typeLabel)} · ${escapeHtml(st.label)}</div>
@@ -706,6 +806,9 @@ function renderOrderDetail(id) {
           : `<button class="btn-take" id="takeOrderBtn">✋ Взять в работу</button>`}
         <span class="status-age" title="Время в текущем статусе">⏱ в статусе ${timeAgo(o.status_changed_at || o.updated_at)}</span>
         ${o.is_paid ? '<span class="paid-badge">💳 оплачен</span>' : ''}
+        <button class="btn-mini btn-pin ${o.pinned ? 'pinned-on' : ''}" id="pinBtn" title="Закрепить вверху списка">📌 ${o.pinned ? 'закреплён' : 'закрепить'}</button>
+        <button class="btn-mini" id="remindBtn" title="Поставить напоминание">⏰ напомнить</button>
+        ${o.assigned_to ? `<button class="btn-mini" id="transferBtn" title="Передать другому менеджеру">↪ передать</button>` : ''}
       </div>
       ${st.next ? `<div class="next-step">➡️ <b>Дальше:</b> ${escapeHtml(st.next)}</div>` : ''}
       <details class="detail-collapse">
@@ -763,6 +866,10 @@ function renderOrderDetail(id) {
         </div>
         ${o.cancel_reason ? `<div class="detail-section"><div class="cancel-reason">❌ Причина отмены: ${escapeHtml(o.cancel_reason)}</div></div>` : ''}
         <div class="detail-section">
+          <div class="detail-section-title">Напоминания</div>
+          <div class="reminders-list" id="remindersList">загрузка…</div>
+        </div>
+        <div class="detail-section">
           <div class="detail-section-title">История статусов</div>
           <div class="status-history" id="statusHistory">загрузка…</div>
         </div>
@@ -794,6 +901,29 @@ function renderOrderDetail(id) {
       renderOrdersList();
     } catch (e) { console.error(e); setDetailMsg('Ошибка назначения', true); takeBtn.disabled = false; }
   };
+
+  // Закрепить (#9)
+  const pinBtn = document.getElementById('pinBtn');
+  if (pinBtn) pinBtn.onclick = async () => {
+    pinBtn.disabled = true;
+    try {
+      const newPinned = !o.pinned;
+      await api.setPinned({ order_id: o.id }, newPinned, managerUsername);
+      o.pinned = newPinned;
+      const inArr = orders.find(x => String(x.id) === String(o.id));
+      if (inArr) inArr.pinned = newPinned;
+      renderOrderDetail(o.id);
+      renderOrdersList();
+    } catch (e) { console.error(e); setDetailMsg('Ошибка закрепления', true); pinBtn.disabled = false; }
+  };
+
+  // Напоминание (#1)
+  const remindBtn = document.getElementById('remindBtn');
+  if (remindBtn) remindBtn.onclick = () => openReminderModal({ order_id: o.id });
+
+  // Передать другому менеджеру (#13)
+  const transferBtn = document.getElementById('transferBtn');
+  if (transferBtn) transferBtn.onclick = () => openTransferModal({ order_id: o.id }, o.assigned_to);
 
   // Отметка оплаты (#4)
   const paidChk = document.getElementById('orderPaid');
@@ -850,6 +980,8 @@ function renderOrderDetail(id) {
 
   // История статусов (#3)
   loadAndRenderHistory({ order_id: o.id });
+  // Напоминания (#1)
+  loadAndRenderReminders({ order_id: o.id });
 
   // Кнопки быстрого статуса
   box.querySelectorAll('[data-status]').forEach(btn => {
@@ -1074,6 +1206,9 @@ function renderInquiryDetail(id) {
           ? `<span class="assign-badge">👤 ${escapeHtml(q.assigned_to)}</span>`
           : `<button class="btn-take" id="takeInqBtn">✋ Взять в работу</button>`}
         <span class="status-age" title="Время в текущем статусе">⏱ в статусе ${timeAgo(q.status_changed_at || q.updated_at)}</span>
+        <button class="btn-mini btn-pin ${q.pinned ? 'pinned-on' : ''}" id="pinBtn" title="Закрепить вверху списка">📌 ${q.pinned ? 'закреплён' : 'закрепить'}</button>
+        <button class="btn-mini" id="remindBtn" title="Поставить напоминание">⏰ напомнить</button>
+        ${q.assigned_to ? `<button class="btn-mini" id="transferBtn" title="Передать другому менеджеру">↪ передать</button>` : ''}
       </div>
       <details class="detail-collapse">
         <summary>Детали обращения и оформление заказа</summary>
@@ -1102,6 +1237,10 @@ function renderInquiryDetail(id) {
           </div>
         </div>
         ${q.cancel_reason ? `<div class="detail-section"><div class="cancel-reason">❌ Причина: ${escapeHtml(q.cancel_reason)}</div></div>` : ''}
+        <div class="detail-section">
+          <div class="detail-section-title">Напоминания</div>
+          <div class="reminders-list" id="remindersList">загрузка…</div>
+        </div>
         <div class="detail-section">
           <div class="detail-section-title">История статусов</div>
           <div class="status-history" id="statusHistory">загрузка…</div>
@@ -1140,8 +1279,33 @@ function renderInquiryDetail(id) {
     } catch (e) { console.error(e); setDetailMsg('Ошибка назначения', true); takeBtn.disabled = false; }
   };
 
+  // Закрепить (#9)
+  const pinBtn = document.getElementById('pinBtn');
+  if (pinBtn) pinBtn.onclick = async () => {
+    pinBtn.disabled = true;
+    try {
+      const newPinned = !q.pinned;
+      await api.setPinned({ inquiry_id: q.id }, newPinned, managerUsername);
+      q.pinned = newPinned;
+      const inArr = inquiries.find(x => String(x.id) === String(q.id));
+      if (inArr) inArr.pinned = newPinned;
+      renderInquiryDetail(q.id);
+      renderOrdersList();
+    } catch (e) { console.error(e); setDetailMsg('Ошибка закрепления', true); pinBtn.disabled = false; }
+  };
+
+  // Напоминание (#1)
+  const remindBtn = document.getElementById('remindBtn');
+  if (remindBtn) remindBtn.onclick = () => openReminderModal({ inquiry_id: q.id });
+
+  // Передать другому менеджеру (#13)
+  const transferBtn = document.getElementById('transferBtn');
+  if (transferBtn) transferBtn.onclick = () => openTransferModal({ inquiry_id: q.id }, q.assigned_to);
+
   // История статусов (#3)
   loadAndRenderHistory({ inquiry_id: q.id });
+  // Напоминания (#1)
+  loadAndRenderReminders({ inquiry_id: q.id });
 
   setupConvo({ inquiry_id: q.id }, q.customer_tg_id, isInquiryActive(q.status));
 }
@@ -2170,4 +2334,158 @@ export async function openAuditLog() {
   } catch (e) {
     document.getElementById('auditList').innerHTML = '<div class="sh-empty">Не удалось загрузить</div>';
   }
+}
+
+// ============ НАПОМИНАНИЯ (#1) и ПЕРЕДАЧА (#13) ============
+
+// Модалка для постановки напоминания. Быстрые пресеты + произвольная дата.
+function openReminderModal(context) {
+  const old = document.getElementById('remindModal');
+  if (old) old.remove();
+  const modal = document.createElement('div');
+  modal.id = 'remindModal';
+  modal.className = 'qp-modal';
+  modal.innerHTML = `
+    <div class="qp-card remind-card">
+      <div class="qp-head">⏰ Поставить напоминание</div>
+      <p class="req-hint">В назначенное время заказ всплывёт в списке — со звуком и подсветкой.</p>
+      <div class="remind-presets">
+        <button class="btn-light" data-min="180">Через 3 часа</button>
+        <button class="btn-light" data-min="1440">Завтра</button>
+        <button class="btn-light" data-min="2880">Послезавтра</button>
+        <button class="btn-light" data-min="10080">Через неделю</button>
+      </div>
+      <div class="remind-custom">
+        <label>Своя дата/время:
+          <input type="datetime-local" id="remindCustom">
+        </label>
+      </div>
+      <div class="remind-note">
+        <label>Заметка (необязательно):
+          <textarea id="remindNote" rows="2" placeholder="Например: «дождаться оплаты», «уточнить размер»"></textarea>
+        </label>
+      </div>
+      <div class="qp-actions">
+        <button class="btn-light" id="remindCancel">Отмена</button>
+        <button class="btn-primary" id="remindSave">Поставить</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  document.getElementById('remindCancel').onclick = () => modal.remove();
+
+  let chosenMinutes = null;
+  modal.querySelectorAll('.remind-presets button').forEach(btn => {
+    btn.onclick = () => {
+      chosenMinutes = Number(btn.getAttribute('data-min'));
+      modal.querySelectorAll('.remind-presets button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      // Подставим в кастомное поле — менеджеру наглядно
+      const d = new Date(Date.now() + chosenMinutes * 60000);
+      d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+      document.getElementById('remindCustom').value = d.toISOString().slice(0, 16);
+    };
+  });
+
+  document.getElementById('remindSave').onclick = async () => {
+    const custom = document.getElementById('remindCustom').value;
+    const note = document.getElementById('remindNote').value.trim();
+    let fireAt;
+    if (custom) {
+      fireAt = new Date(custom).toISOString();
+    } else if (chosenMinutes) {
+      fireAt = new Date(Date.now() + chosenMinutes * 60000).toISOString();
+    } else {
+      alert('Выберите пресет или укажите дату');
+      return;
+    }
+    if (new Date(fireAt).getTime() <= Date.now()) {
+      if (!confirm('Время уже прошло. Напоминание сработает сразу. Продолжить?')) return;
+    }
+    try {
+      await api.addReminder(context, fireAt, note, managerUsername);
+      modal.remove();
+      setDetailMsg('⏰ Напоминание поставлено ✓');
+      // Обновим набор сработавших — может статься, что fire_at = past
+      await refreshFiredReminders();
+      renderOrdersList();
+    } catch (e) {
+      console.error(e);
+      alert('Ошибка: ' + (e.message || ''));
+    }
+  };
+}
+
+// Модалка для передачи заказа другому менеджеру.
+function openTransferModal(context, currentAssignee) {
+  const old = document.getElementById('transferModal');
+  if (old) old.remove();
+  const modal = document.createElement('div');
+  modal.id = 'transferModal';
+  modal.className = 'qp-modal';
+  modal.innerHTML = `
+    <div class="qp-card transfer-card">
+      <div class="qp-head">↪ Передать заказ</div>
+      <p class="req-hint">
+        Сейчас ответственный: <b>@${escapeHtml(currentAssignee || '—')}</b><br>
+        Выберите, кому передать. У получателя в админке этот заказ окажется в «моих».
+      </p>
+      <div id="transferList" class="transfer-list">Загрузка…</div>
+      <div class="qp-actions">
+        <button class="btn-light" id="transferCancel">Отмена</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  document.getElementById('transferCancel').onclick = () => modal.remove();
+
+  (async () => {
+    try {
+      const list = await api.loadManagers();
+      const box = document.getElementById('transferList');
+      const candidates = (list || []).filter(m => m.username && m.username !== currentAssignee);
+      if (!candidates.length) {
+        box.innerHTML = '<div class="sh-empty">Нет других менеджеров для передачи.</div>';
+        return;
+      }
+      box.innerHTML = candidates.map(m => {
+        const hasChat = m.chat_id ? '🟢' : '⚠️';
+        const dutyStr = m.is_on_duty ? 'на дежурстве' : 'не на дежурстве';
+        return `<button class="transfer-row" data-uname="${escapeHtml(m.username)}">
+          <span class="tr-name">@${escapeHtml(m.username)}</span>
+          <span class="tr-meta">${hasChat} ${dutyStr}</span>
+        </button>`;
+      }).join('');
+      box.querySelectorAll('.transfer-row').forEach(btn => {
+        btn.onclick = async () => {
+          const to = btn.getAttribute('data-uname');
+          if (!confirm(`Передать заказ менеджеру @${to}?`)) return;
+          btn.disabled = true;
+          try {
+            await api.transferAssignment(context, managerUsername, to);
+            // Обновим локальные данные
+            if (context.order_id) {
+              const o = orders.find(x => String(x.id) === String(context.order_id));
+              if (o) o.assigned_to = to;
+              renderOrderDetail(context.order_id);
+            } else if (context.inquiry_id) {
+              const q = inquiries.find(x => String(x.id) === String(context.inquiry_id));
+              if (q) q.assigned_to = to;
+              renderInquiryDetail(context.inquiry_id);
+            }
+            renderOrdersList();
+            modal.remove();
+            setDetailMsg(`↪ Передан @${to} ✓`);
+          } catch (e) {
+            console.error(e);
+            alert('Ошибка: ' + (e.message || ''));
+            btn.disabled = false;
+          }
+        };
+      });
+    } catch (e) {
+      console.error(e);
+      document.getElementById('transferList').innerHTML = '<div class="sh-empty">Не удалось загрузить</div>';
+    }
+  })();
 }

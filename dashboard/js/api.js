@@ -851,6 +851,132 @@ export async function setOrderNote(orderId, note) {
   return true;
 }
 
+// ===== Закрепление заказа/обращения (#9) =====
+// Закреплённые сортируются вверху, чтобы менеджер их не упускал.
+export async function setPinned(context, pinned, manager) {
+  const table = context.order_id != null ? 'orders' : 'inquiries';
+  const id = context.order_id != null ? context.order_id : context.inquiry_id;
+  const res = await fetchRetry(`${BASE}/${table}?id=eq.${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ pinned: !!pinned }),
+  });
+  if (!res.ok) throw new Error(`setPinned failed: ${res.status}`);
+  logAudit({
+    action: pinned ? 'pin' : 'unpin',
+    entity_type: context.order_id != null ? 'order' : 'inquiry',
+    entity_id: String(id), manager,
+  });
+  return true;
+}
+
+// ===== Передача заказа/обращения другому менеджеру (#13) =====
+// От assignManager отличается тем, что фиксирует «передачу» как событие
+// в audit-логе (не просто назначение, а смена ответственного).
+export async function transferAssignment(context, fromUsername, toUsername) {
+  const table = context.order_id != null ? 'orders' : 'inquiries';
+  const id = context.order_id != null ? context.order_id : context.inquiry_id;
+  const res = await fetchRetry(`${BASE}/${table}?id=eq.${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+    body: JSON.stringify({
+      assigned_to: toUsername,
+      updated_at: new Date().toISOString(),
+    }),
+  });
+  if (!res.ok) throw new Error(`transferAssignment failed: ${res.status}`);
+  logAudit({
+    action: 'transfer',
+    entity_type: context.order_id != null ? 'order' : 'inquiry',
+    entity_id: String(id), manager: fromUsername,
+    details: { from: fromUsername, to: toUsername },
+  });
+  return true;
+}
+
+// ===== Напоминания (#1) =====
+
+// Создать напоминание для заказа/обращения.
+// fireAt — ISO-таймстемп, когда напомнить. note — необязательная заметка.
+export async function addReminder(context, fireAt, note, manager) {
+  const row = {
+    order_id: context.order_id || null,
+    inquiry_id: context.inquiry_id || null,
+    fire_at: fireAt,
+    note: note || null,
+    manager: manager || null,
+  };
+  const res = await fetchRetry(`${BASE}/reminders`, {
+    method: 'POST',
+    headers: { ...HEADERS, 'Prefer': 'return=representation' },
+    body: JSON.stringify(row),
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`addReminder failed: ${res.status} ${t.slice(0, 200)}`);
+  }
+  const created = await res.json();
+  logAudit({
+    action: 'reminder_set',
+    entity_type: context.order_id != null ? 'order' : 'inquiry',
+    entity_id: String(context.order_id || context.inquiry_id),
+    manager, details: { fire_at: fireAt, note },
+  });
+  return created[0] || created;
+}
+
+// Список активных напоминаний (для текущего менеджера и для всех).
+// Активные = ещё не отменённые. Если manager задан — фильтрует по нему,
+// иначе возвращает все (для суперадмина или сводных уведомлений).
+export async function loadActiveReminders(manager) {
+  const params = {
+    select: '*',
+    order: 'fire_at.asc',
+    dismissed_at: 'is.null',
+  };
+  if (manager) params.manager = `eq.${manager}`;
+  try { return await get('reminders', params); } catch (_) { return []; }
+}
+
+// Список напоминаний, которые УЖЕ должны были сработать (fire_at <= сейчас),
+// но ещё не отменены. По ним показываем подсветку и алерт в админке.
+export async function loadFiredReminders(manager) {
+  const nowIso = new Date().toISOString();
+  const params = {
+    select: '*',
+    order: 'fire_at.asc',
+    dismissed_at: 'is.null',
+    fire_at: `lte.${nowIso}`,
+  };
+  if (manager) params.manager = `eq.${manager}`;
+  try { return await get('reminders', params); } catch (_) { return []; }
+}
+
+// Закрыть напоминание (менеджер отреагировал).
+export async function dismissReminder(reminderId, manager) {
+  const res = await fetchRetry(`${BASE}/reminders?id=eq.${encodeURIComponent(reminderId)}`, {
+    method: 'PATCH',
+    headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ dismissed_at: new Date().toISOString() }),
+  });
+  if (!res.ok) throw new Error(`dismissReminder failed: ${res.status}`);
+  logAudit({ action: 'reminder_dismiss', entity_type: 'reminder', entity_id: String(reminderId), manager });
+  return true;
+}
+
+// Список напоминаний для конкретного заказа/обращения (для показа в карточке).
+export async function loadRemindersFor(context) {
+  const params = {
+    select: '*',
+    order: 'fire_at.asc',
+    dismissed_at: 'is.null',
+  };
+  if (context.order_id) params.order_id = `eq.${context.order_id}`;
+  else if (context.inquiry_id) params.inquiry_id = `eq.${context.inquiry_id}`;
+  else return [];
+  try { return await get('reminders', params); } catch (_) { return []; }
+}
+
 // Создать заказ из обращения. items = [{product_id, size, qty, price_usd, price_byn}].
 // Возвращает созданный заказ { id, ... }.
 export async function createOrder(customerTgId, items, currency, inquiryId, status = 'in_progress') {
