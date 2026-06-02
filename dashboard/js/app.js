@@ -77,6 +77,7 @@ function showApp() {
   orders.initOrders(currentManager.username);
   setupSectionTabs();
   setupDutyToggle();
+  setupMobileShell();
   // Кнопка управления менеджерами — только для суперадмина
   const mgrBtn = document.getElementById('managersBtn');
   if (mgrBtn) mgrBtn.style.display = currentManager.is_superadmin ? '' : 'none';
@@ -98,7 +99,7 @@ function showApp() {
 }
 
 function setupSectionTabs() {
-  document.querySelectorAll('.nav-tab').forEach(tab => {
+  document.querySelectorAll('.nav-tab, .mobile-nav-tab').forEach(tab => {
     tab.onclick = () => switchSection(tab.getAttribute('data-section'));
   });
 }
@@ -108,7 +109,10 @@ function switchSection(section) {
   currentSection = section;
   // При смене раздела всегда показываем список (снимаем мобильный режим деталей)
   document.body.classList.remove('mobile-detail');
-  document.querySelectorAll('.nav-tab').forEach(t =>
+  // Закрываем drawer, если был открыт
+  closeMobileDrawer();
+  // Синхронизируем active-state на десктопных И мобильных табах
+  document.querySelectorAll('.nav-tab, .mobile-nav-tab').forEach(t =>
     t.classList.toggle('active', t.getAttribute('data-section') === section));
 
   document.getElementById('ordersSide').style.display = section === 'orders' ? '' : 'none';
@@ -127,6 +131,81 @@ function switchSection(section) {
   if (section === 'catalog') { orders.stopConvo(); catalog.loadCatalog(); }
   if (section === 'customers') { orders.stopConvo(); customers.loadCustomersSection(); }
   if (section === 'analytics') { orders.stopConvo(); analytics.loadAnalyticsSection(); }
+}
+
+// ============ МОБИЛЬНЫЙ DRAWER + ВЕРХНИЕ КНОПКИ ============
+
+function setupMobileShell() {
+  const drawer = document.getElementById('mobileDrawer');
+  const openBtn = document.getElementById('mobileMenuBtn');
+  const closeBtn = document.getElementById('mobileDrawerClose');
+  const backdrop = document.getElementById('mobileDrawerBackdrop');
+  const searchBtn = document.getElementById('mobileSearchBtn');
+
+  if (openBtn) openBtn.onclick = openMobileDrawer;
+  if (closeBtn) closeBtn.onclick = closeMobileDrawer;
+  if (backdrop) backdrop.onclick = closeMobileDrawer;
+  if (searchBtn) searchBtn.onclick = () => search.openGlobalSearch();
+
+  // Делегирование действий внутри drawer
+  if (drawer) {
+    drawer.querySelectorAll('[data-action]').forEach(btn => {
+      btn.onclick = () => handleDrawerAction(btn.getAttribute('data-action'));
+    });
+  }
+}
+
+function openMobileDrawer() {
+  // Перед открытием синхронизируем имя менеджера и состояние кнопки темы
+  const nameSpan = document.getElementById('managerNameMobile');
+  if (nameSpan && currentManager) {
+    nameSpan.textContent = '@' + currentManager.username + (currentManager.is_superadmin ? ' · админ' : '');
+  }
+  syncDrawerThemeButton();
+  // Видимость пункта «Менеджеры» только для суперадмина
+  const mgrBtn = document.getElementById('drawerManagers');
+  if (mgrBtn) mgrBtn.style.display = (currentManager && currentManager.is_superadmin) ? '' : 'none';
+  // Состояние дежурства — переиспользуем кнопку из подвала, синхронизируем зеркало
+  syncMobileDutyBtn();
+  document.getElementById('mobileDrawer').classList.add('open');
+  document.body.classList.add('drawer-open');
+}
+
+function closeMobileDrawer() {
+  const d = document.getElementById('mobileDrawer');
+  if (d) d.classList.remove('open');
+  document.body.classList.remove('drawer-open');
+}
+
+function handleDrawerAction(action) {
+  closeMobileDrawer();
+  switch (action) {
+    case 'requisites': orders.openRequisitesModal(); break;
+    case 'templates':  orders.openTemplatesEditor(); break;
+    case 'managers':   openManagersModal(); break;
+    case 'audit':      orders.openAuditLog(); break;
+    case 'theme':      toggleTheme(); break;
+    case 'logout':     logout(); break;
+  }
+}
+
+function syncDrawerThemeButton() {
+  const cur = document.documentElement.getAttribute('data-theme') || 'light';
+  const ic = document.getElementById('drawerThemeIc');
+  const lbl = document.getElementById('drawerThemeLbl');
+  if (ic) ic.textContent = cur === 'dark' ? '☀️' : '🌙';
+  if (lbl) lbl.textContent = cur === 'dark' ? 'Светлая тема' : 'Тёмная тема';
+}
+
+function syncMobileDutyBtn() {
+  // Мобильная кнопка дежурства — копия состояния десктопной, но отдельный обработчик
+  const desktopBtn = document.getElementById('dutyBtn');
+  const mobileBtn = document.getElementById('dutyBtnMobile');
+  if (!desktopBtn || !mobileBtn) return;
+  mobileBtn.textContent = desktopBtn.textContent;
+  mobileBtn.className = desktopBtn.className.replace('duty-toggle', 'duty-toggle');
+  // Прокидываем клик: при клике на мобиле — кликаем на десктопную (она содержит логику)
+  mobileBtn.onclick = () => desktopBtn.click();
 }
 
 // ============ ИНИЦИАЛИЗАЦИЯ ============
@@ -309,6 +388,8 @@ function applyDutyView(btn, status) {
     btn.title = 'Уведомления в Telegram отключены. Клик — встать на дежурство.';
     btn.classList.add('duty-off');
   }
+  // Зеркало для мобильной кнопки в drawer (если есть)
+  syncMobileDutyBtn();
 }
 
 // ============ УПРАВЛЕНИЕ МЕНЕДЖЕРАМИ ============

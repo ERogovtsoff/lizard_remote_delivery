@@ -47,12 +47,6 @@ function renderCustomersSection() {
   const sec = document.getElementById('sectionCustomers');
   const items = applyCustomerFilters(customers);
   const html = `
-    <div class="mobile-section-nav">
-      <button data-section="orders">Заказы</button>
-      <button data-section="customers" class="active">Клиенты</button>
-      <button data-section="analytics">Аналитика</button>
-      <button data-section="catalog">Каталог</button>
-    </div>
     <div class="cust-header">
       <h2>Клиенты <span class="cust-total">${customers.length}</span></h2>
       <div class="cust-actions">
@@ -91,13 +85,6 @@ function renderCustomersSection() {
   };
   document.getElementById('custFilter').onchange = (e) => { filter = e.target.value; renderCustomersSection(); };
   document.getElementById('custSort').onchange = (e) => { sortBy = e.target.value; renderCustomersSection(); };
-
-  // Мобильная навигация между разделами
-  sec.querySelectorAll('.mobile-section-nav button').forEach(btn => {
-    btn.onclick = () => {
-      window.dispatchEvent(new CustomEvent('switch-section', { detail: { section: btn.getAttribute('data-section') } }));
-    };
-  });
 
   const exportBtn = document.getElementById('exportCustomersBtn');
   if (exportBtn) exportBtn.onclick = () => exportCustomers();

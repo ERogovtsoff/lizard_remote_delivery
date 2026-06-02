@@ -53,12 +53,6 @@ function renderAnalytics() {
   const stageStats = computeStageStats(ordersInPeriod);
 
   sec.innerHTML = `
-    <div class="mobile-section-nav">
-      <button data-section="orders">Заказы</button>
-      <button data-section="customers">Клиенты</button>
-      <button data-section="analytics" class="active">Аналитика</button>
-      <button data-section="catalog">Каталог</button>
-    </div>
     <div class="an-header">
       <h2>Аналитика</h2>
       <div class="an-controls">
@@ -133,13 +127,6 @@ function renderAnalytics() {
     periodDays = Number(e.target.value);
     renderAnalytics();
   };
-
-  // Мобильная навигация
-  sec.querySelectorAll('.mobile-section-nav button').forEach(btn => {
-    btn.onclick = () => {
-      window.dispatchEvent(new CustomEvent('switch-section', { detail: { section: btn.getAttribute('data-section') } }));
-    };
-  });
 }
 
 function renderDailyChart(orders) {

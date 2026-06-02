@@ -2443,3 +2443,418 @@ img.di-thumb:hover { box-shadow: 0 0 0 2px var(--accent); }
 @media (max-width: 760px) {
   .remind-presets { grid-template-columns: 1fr; }
 }
+
+/* ====================================================================
+   МОБИЛЬНАЯ АДАПТАЦИЯ — единый блок (план 1+2+3+4+5).
+   Перекрывает все ранее добавленные media-правила, если они конфликтуют.
+   ==================================================================== */
+
+/* Мобильный хедер и drawer — скрыты на десктопе */
+.mobile-topbar { display: none; }
+.mobile-drawer { display: none; }
+
+@media (max-width: 760px) {
+
+  /* ---------- 1) Мобильный хедер ---------- */
+  .mobile-topbar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 52px;
+    flex-shrink: 0;
+    padding: 0 8px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+  .mobile-menu-btn,
+  .mobile-search-btn {
+    width: 40px; height: 40px;
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: var(--text);
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .mobile-menu-btn:active,
+  .mobile-search-btn:active { background: var(--bg); }
+  .mobile-nav-tabs {
+    flex: 1;
+    display: flex;
+    gap: 2px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .mobile-nav-tabs::-webkit-scrollbar { display: none; }
+  .mobile-nav-tab {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    padding: 8px 12px;
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+    color: var(--text-secondary);
+    border-radius: 8px;
+    border-bottom: 2px solid transparent;
+  }
+  .mobile-nav-tab.active {
+    color: var(--accent-dark);
+    border-bottom-color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  /* ---------- 2) Drawer (выезжающее меню) ---------- */
+  .mobile-drawer {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    pointer-events: none;
+  }
+  .mobile-drawer-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+  }
+  .mobile-drawer-panel {
+    position: absolute;
+    top: 0; left: 0; bottom: 0;
+    width: 280px;
+    max-width: 85vw;
+    background: var(--surface);
+    box-shadow: 2px 0 16px rgba(0, 0, 0, 0.15);
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    display: flex;
+    flex-direction: column;
+    pointer-events: auto;
+  }
+  .mobile-drawer.open {
+    pointer-events: auto;
+  }
+  .mobile-drawer.open .mobile-drawer-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .mobile-drawer.open .mobile-drawer-panel {
+    transform: translateX(0);
+  }
+  .mobile-drawer-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .mobile-drawer-head .brand {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--accent-dark);
+    letter-spacing: 1px;
+  }
+  .mobile-drawer-close {
+    width: 36px; height: 36px;
+    background: var(--bg);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--text-secondary);
+  }
+  .mobile-drawer-user {
+    padding: 12px 20px 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .mobile-drawer-user .manager-name { font-size: 13px; }
+  .mobile-drawer-panel .duty-toggle {
+    margin: 12px 20px;
+  }
+  .mobile-drawer-menu {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 12px 24px;
+  }
+  .drawer-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 12px;
+    background: none;
+    border: none;
+    border-radius: 10px;
+    font-family: inherit;
+    font-size: 15px;
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+  }
+  .drawer-item:active { background: var(--bg); }
+  .drawer-ic {
+    width: 24px;
+    font-size: 18px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+  .drawer-item-danger { color: var(--danger); }
+
+  body.drawer-open { overflow: hidden; }
+
+  /* Скрываем десктопный подвал и хедер сайдбара на мобиле,
+     потому что всё это переехало в drawer и mobile-topbar */
+  .sidebar-foot { display: none; }
+  .sidebar-head .nav-tabs,
+  .sidebar-head .brand,
+  .sidebar-head .global-search-btn { display: none; }
+  .sidebar-head { padding: 0; border-bottom: none; }
+
+  /* Каталог: верхние контролы (Поиск + Добавить) должны быть видны на мобиле */
+  .catalog-side {
+    padding: 10px 12px;
+  }
+
+  /* ---------- 3) Унифицированные модалки ---------- */
+  /* Любая модалка (qp-modal) на мобиле — полноэкранная, со sticky-заголовком */
+  .qp-modal {
+    padding: 0;
+    align-items: stretch;
+  }
+  .qp-card {
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    max-height: 100%;
+    border-radius: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .qp-head {
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+    margin: 0;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    z-index: 2;
+    font-size: 17px;
+  }
+  /* Внутреннее содержимое модалки скроллится */
+  .qp-card > *:not(.qp-head):not(.qp-actions) {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+  .qp-card > .req-hint:first-of-type { padding-top: 14px; }
+  /* Footer-кнопки прибиваем к низу */
+  .qp-actions {
+    position: sticky;
+    bottom: 0;
+    background: var(--surface);
+    margin: auto 0 0;
+    padding: 12px 20px;
+    border-top: 1px solid var(--border);
+    z-index: 2;
+  }
+  .qp-actions button {
+    flex: 1;
+    min-height: 44px;
+  }
+
+  /* Поиск — на всю высоту */
+  .search-modal { padding: 0; align-items: stretch; }
+  .search-box {
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    max-height: 100%;
+    border-radius: 0;
+  }
+  #searchInput {
+    border-radius: 0;
+    font-size: 16px;
+    padding: 18px 50px 18px 20px;
+  }
+  .search-close { top: 16px; right: 12px; }
+
+  /* Профиль клиента */
+  .profile-card { max-height: 100%; }
+  .profile-head { padding: 16px 0; margin-bottom: 12px; }
+  .profile-avatar { width: 56px; height: 56px; font-size: 20px; }
+  .profile-stats {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  /* Шаблоны: вертикально, увеличенные тач-цели */
+  .tpl-edit-row {
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    background: var(--bg);
+    border-radius: 10px;
+    margin-bottom: 10px;
+    position: relative;
+  }
+  .tpl-title { width: 100%; box-sizing: border-box; min-height: 40px; font-size: 14px; }
+  .tpl-text { width: 100%; box-sizing: border-box; min-height: 80px; font-size: 14px; }
+  .tpl-del {
+    position: absolute;
+    top: 6px; right: 6px;
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: var(--surface);
+  }
+
+  /* Журнал действий */
+  .audit-card .audit-list { max-height: none; }
+  .audit-row { padding: 12px; }
+
+  /* Менеджеры */
+  .mgr-row { padding: 12px; flex-wrap: wrap; }
+  .mgr-row-main { width: 100%; }
+  .mgr-duty-btn {
+    flex: 1;
+    min-height: 40px;
+    font-size: 13px;
+  }
+  .mgr-del-btn { min-width: 40px; min-height: 40px; }
+  .mgrs-add-row { flex-direction: column; align-items: stretch; }
+  .mgrs-or { display: none; }
+  .mgrs-add-row input { flex-basis: 100%; min-height: 44px; font-size: 15px; }
+  .mgrs-add-row .btn-primary { min-height: 44px; }
+
+  /* Реквизиты */
+  .qp-label input,
+  .qp-label textarea {
+    min-height: 44px;
+    font-size: 15px;
+  }
+
+  /* Напоминания */
+  .remind-presets {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .remind-presets button { min-height: 44px; }
+  .remind-custom input,
+  .remind-note textarea {
+    min-height: 44px;
+    font-size: 15px;
+  }
+
+  /* Передача заказа */
+  .transfer-row { padding: 14px; min-height: 56px; }
+
+  /* ---------- 4) Карточка заказа/обращения ---------- */
+  .detail-top {
+    padding: 12px 16px 8px;
+    background: var(--surface);
+    position: sticky;
+    top: 52px;     /* высота mobile-topbar */
+    z-index: 10;
+    border-bottom: 1px solid var(--border);
+  }
+  .detail-head-compact {
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .detail-head-compact h2 { font-size: 16px; }
+  .detail-head-sum { font-size: 13px; }
+  .detail-assign-row {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .detail-assign-row .btn-mini {
+    flex: 1;
+    min-width: auto;
+    min-height: 36px;
+    font-size: 12px;
+    padding: 6px 8px;
+  }
+  .detail-assign-row .btn-take {
+    flex-basis: 100%;
+    min-height: 40px;
+  }
+  .detail-assign-row .assign-badge { font-size: 12px; }
+  .detail-assign-row .status-age { font-size: 11px; flex-basis: 100%; }
+  .detail-assign-row .paid-badge { font-size: 11px; }
+
+  .next-step {
+    margin: 8px 16px 0;
+    font-size: 13px;
+    padding: 8px 12px;
+  }
+
+  .status-actions {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+  }
+  .status-actions::-webkit-scrollbar { display: none; }
+  .status-actions button {
+    flex-shrink: 0;
+    min-height: 40px;
+    font-size: 13px;
+  }
+  .btn-create-order { min-height: 44px; }
+
+  /* ---------- 5) Тач-цели и формы ---------- */
+  /* Кнопки управления количеством/ценой в позициях заказа */
+  .di-qty-btn { min-width: 36px; min-height: 36px; font-size: 18px; }
+  .di-price { min-height: 32px; padding: 4px 10px; }
+  .di-del { min-width: 36px; min-height: 36px; font-size: 14px; }
+
+  /* Кнопки сайдбара/карточки клиента */
+  .open-profile-btn,
+  .copy-id { min-height: 32px; padding: 4px 10px; }
+  .cust-card { padding: 14px; }
+  .cust-card .cust-avatar { width: 48px; height: 48px; }
+
+  /* Карточка клиентов: grid в 1 колонку */
+  .cust-grid { grid-template-columns: 1fr !important; }
+
+  /* Аналитика: одна колонка */
+  .an-row { grid-template-columns: 1fr; }
+  .an-tiles { grid-template-columns: repeat(2, 1fr); }
+  .an-tile { padding: 10px; }
+  .an-tile-value { font-size: 18px; }
+
+  /* Сводки/фильтры */
+  .list-summary, .cust-summary {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .list-summary::-webkit-scrollbar,
+  .cust-summary::-webkit-scrollbar { display: none; }
+
+  /* Composer (чат): крупнее тач */
+  .convo-composer button { min-width: 40px; min-height: 40px; }
+  #convoInput { min-height: 44px; font-size: 15px; }
+  #convoSend { min-height: 44px; min-width: 48px; }
+
+  /* Скрываем десктопные «Реквизиты» в подвале — они в drawer */
+  /* (но кнопки реквизитов из composer должны оставаться) */
+
+  /* Лайтбокс — поверх mobile-topbar (sticky z-index: 50) */
+  .lightbox { z-index: 3000; }
+}

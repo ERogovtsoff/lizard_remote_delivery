@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>LIZARD · Панель управления</title>
 <link rel="preconnect" href="https://nhnbprmyqqpwcofkaasi.supabase.co" crossorigin />
-<link rel="stylesheet" href="styles.css?v=24" />
+<link rel="stylesheet" href="styles.css?v=25" />
 </head>
 <body>
 
@@ -27,6 +27,43 @@
 
 <!-- ОСНОВНОЕ ПРИЛОЖЕНИЕ -->
 <div id="app" class="app" style="display:none">
+
+  <!-- МОБИЛЬНЫЙ ХЕДЕР: одна шапка с навигацией для всех разделов.
+       Виден только на ≤760px. На десктопе скрыт через CSS. -->
+  <header class="mobile-topbar">
+    <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Меню">☰</button>
+    <div class="mobile-nav-tabs">
+      <button class="mobile-nav-tab active" data-section="orders">Заказы</button>
+      <button class="mobile-nav-tab" data-section="customers">Клиенты</button>
+      <button class="mobile-nav-tab" data-section="analytics">Аналитика</button>
+      <button class="mobile-nav-tab" data-section="catalog">Каталог</button>
+    </div>
+    <button class="mobile-search-btn" id="mobileSearchBtn" aria-label="Поиск">🔍</button>
+  </header>
+
+  <!-- DRAWER: выезжающее меню для мобилки. Скрыто на десктопе. -->
+  <div class="mobile-drawer" id="mobileDrawer">
+    <div class="mobile-drawer-backdrop" id="mobileDrawerBackdrop"></div>
+    <aside class="mobile-drawer-panel">
+      <div class="mobile-drawer-head">
+        <div class="brand">LIZARD</div>
+        <button class="mobile-drawer-close" id="mobileDrawerClose" aria-label="Закрыть">✕</button>
+      </div>
+      <div class="mobile-drawer-user">
+        <span class="manager-name" id="managerNameMobile"></span>
+      </div>
+      <button class="duty-toggle" id="dutyBtnMobile" title="Дежурство">⚪ Загрузка…</button>
+      <div class="mobile-drawer-menu">
+        <button class="drawer-item" data-action="requisites"><span class="drawer-ic">💳</span><span>Реквизиты</span></button>
+        <button class="drawer-item" data-action="templates"><span class="drawer-ic">📝</span><span>Шаблоны</span></button>
+        <button class="drawer-item" data-action="managers" id="drawerManagers" style="display:none"><span class="drawer-ic">👥</span><span>Менеджеры</span></button>
+        <button class="drawer-item" data-action="audit"><span class="drawer-ic">📋</span><span>Журнал действий</span></button>
+        <button class="drawer-item" data-action="theme"><span class="drawer-ic" id="drawerThemeIc">🌙</span><span id="drawerThemeLbl">Тёмная тема</span></button>
+        <button class="drawer-item drawer-item-danger" data-action="logout"><span class="drawer-ic">🚪</span><span>Выйти</span></button>
+      </div>
+    </aside>
+  </div>
+
   <!-- Боковая панель -->
   <aside class="sidebar">
     <div class="sidebar-head">
