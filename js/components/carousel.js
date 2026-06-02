@@ -7,7 +7,7 @@
 //     отпружинивает в исходное)
 //
 // onSlideClick(index): открыть лайтбокс при тапе на слайд
-import { escapeAttr, imageHtml } from '../utils.js';
+import { imageHtml } from '../utils.js';
 
 const SWIPE_THRESHOLD_RATIO = 0.2;   // палец прошёл > 20% ширины — листаем
 const RUBBER_BAND_RATIO = 0.25;      // на границе следуем только 25% движения пальца
