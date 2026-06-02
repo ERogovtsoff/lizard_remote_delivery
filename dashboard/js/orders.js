@@ -156,7 +156,7 @@ function getPaymentRequisites() {
 function setPaymentRequisites(text) {
   try { localStorage.setItem(REQUISITES_KEY, text); } catch (_) {}
 }
-function openRequisitesModal() {
+export function openRequisitesModal() {
   const old = document.getElementById('reqModal');
   if (old) old.remove();
   const modal = document.createElement('div');
@@ -1953,7 +1953,7 @@ function fillTemplate(text) {
 }
 
 // Открывает панель выбора шаблона рядом с полем ответа (или модалку при отсутствии открытого чата).
-export function openTemplatesPicker() {
+function openTemplatesPicker() {
   const input = document.getElementById('convoInput');
   if (!input) {
     // Нет открытого чата — просто открываем редактор шаблонов
@@ -2028,7 +2028,7 @@ export function openTemplatesEditor() {
 }
 
 // Экспорт для кнопки реквизитов в подвале панели.
-export function showRequisitesModal() { openRequisitesModal(); }
+// (showRequisitesModal убран — теперь openRequisitesModal экспортируется напрямую)
 
 // Экспорт текущего отфильтрованного списка (заказы или обращения) в CSV (#16).
 function exportCurrentList() {

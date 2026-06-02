@@ -6,7 +6,6 @@
 //
 // Контракт:
 //   loadProducts()                        -> Product[]
-//   saveProducts(products)                -> void
 //   loadHistory()                         -> HistoryItem[]
 //   addOrder(order)                       -> HistoryItem
 //   loadCustomer()                        -> Customer | null

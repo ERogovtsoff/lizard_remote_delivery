@@ -5,7 +5,6 @@ export function escapeHtml(s) {
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]
   ));
 }
-export const escapeAttr = escapeHtml;
 
 export function formatPrice(price, currency, lang) {
   const locale = lang === 'ru' ? 'ru-RU' : 'en-US';
@@ -90,9 +89,9 @@ export function imageHtml(src, opts = {}) {
   const { className = '', alt = '', eager = false } = opts;
   const cls = ('product-img loading ' + className).trim();
   const loading = eager ? 'eager' : 'lazy';
-  const safeSrc = escapeAttr(src || '');
+  const safeSrc = escapeHtml(src || '');
   // onerror: помечаем контейнер как сломанный, прячем сам img
-  return `<img src="${safeSrc}" alt="${escapeAttr(alt)}" `
+  return `<img src="${safeSrc}" alt="${escapeHtml(alt)}" `
     + `class="${cls}" loading="${loading}" decoding="async" `
     + `onload="this.classList.remove('loading')" `
     + `onerror="this.classList.remove('loading');this.classList.add('img-broken')">`;

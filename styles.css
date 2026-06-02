@@ -1041,143 +1041,6 @@ img { display: block; max-width: 100%; }
 .modal-actions { display: flex; flex-direction: column; gap: 8px; }
 .modal-actions .primary-btn, .modal-actions .secondary-btn, .modal-actions .danger-btn { margin-top: 0; }
 
-/* ========== Admin ========== */
-.admin-section { background: var(--bg-secondary); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
-.admin-section h3 { margin: 0 0 12px; font-size: 15px; font-weight: 600; color: var(--brown); }
-.admin-tabs {
-  display: flex; gap: 6px; margin-bottom: 16px;
-  background: var(--bg-secondary); padding: 4px; border-radius: var(--radius);
-}
-.admin-tab {
-  flex: 1; background: none; border: none; padding: 8px;
-  border-radius: var(--radius-sm); color: var(--text-secondary);
-  font-size: 13px; font-weight: 500;
-}
-.admin-tab.active { background: var(--bg); color: var(--text); box-shadow: 0 1px 2px rgba(92,58,30,0.06); }
-.form-row { margin-bottom: 12px; }
-.form-row label { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 6px; font-weight: 500; }
-.form-row input, .form-row textarea {
-  width: 100%; padding: 10px 12px;
-  border: 1px solid var(--border); border-radius: var(--radius-sm);
-  background: var(--bg); color: var(--text); outline: none;
-}
-.form-row textarea { min-height: 70px; resize: vertical; }
-.form-row input:focus, .form-row textarea:focus { border-color: var(--accent); }
-.form-row-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.admin-product-row {
-  display: flex; gap: 10px; align-items: center;
-  padding: 10px; background: var(--bg);
-  border-radius: var(--radius-sm); margin-bottom: 8px;
-}
-.admin-product-row img {
-  width: 44px; height: 44px; border-radius: var(--radius-sm);
-  object-fit: cover; background: var(--bg-tertiary); flex-shrink: 0;
-}
-.admin-product-info { flex: 1; min-width: 0; }
-.admin-product-name { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.admin-product-price { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
-.admin-product-id {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
-  color: var(--accent);
-  margin-top: 3px;
-  cursor: pointer;
-  display: inline-block;
-  user-select: all;
-}
-.admin-product-id:active { opacity: 0.6; }
-.admin-editor-id {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-  color: var(--accent);
-  background: var(--accent-soft);
-  padding: 4px 10px;
-  border-radius: 6px;
-  display: inline-block;
-  margin-bottom: 12px;
-  cursor: pointer;
-  user-select: all;
-}
-.admin-editor-id:active { opacity: 0.6; }
-.admin-product-actions { display: flex; gap: 4px; }
-.admin-icon-btn {
-  background: var(--bg-secondary); border: none;
-  width: 32px; height: 32px; border-radius: 50%; color: var(--text);
-  display: flex; align-items: center; justify-content: center; padding: 0;
-}
-.admin-icon-btn svg { width: 16px; height: 16px; }
-.admin-icon-btn.danger { color: var(--danger); }
-
-.image-editor { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
-.image-editor-item {
-  display: flex; gap: 8px; align-items: center;
-  background: var(--bg);
-  padding: 6px 8px 6px 6px;
-  border-radius: var(--radius-sm);
-}
-.image-editor-thumb {
-  width: 44px; height: 44px; border-radius: var(--radius-sm);
-  object-fit: cover; background: var(--bg-tertiary); flex-shrink: 0;
-}
-.image-editor-item input {
-  flex: 1; min-width: 0;
-  padding: 6px 10px;
-  border: 1px solid var(--border); border-radius: var(--radius-sm);
-  background: var(--bg); color: var(--text); outline: none;
-  font-size: 13px;
-}
-.image-editor-remove {
-  flex-shrink: 0;
-  background: none; border: none; color: var(--danger);
-  width: 30px; height: 30px; padding: 0;
-  display: flex; align-items: center; justify-content: center;
-}
-.image-editor-remove svg { width: 16px; height: 16px; }
-.image-editor-add {
-  background: none;
-  border: 1px dashed var(--border);
-  color: var(--text-secondary);
-  padding: 10px; border-radius: var(--radius-sm);
-  font-size: 13px;
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-}
-.image-editor-add svg { width: 14px; height: 14px; }
-.admin-form-actions { display: flex; gap: 8px; margin-top: 16px; }
-.admin-form-actions .primary-btn, .admin-form-actions .secondary-btn { margin-top: 0; }
-
-/* ========== Admin: видимость товара ========== */
-.admin-product-row.inactive { opacity: 0.6; }
-.admin-hidden-badge {
-  display: inline-block;
-  font-size: 10px; font-weight: 600;
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-  padding: 1px 6px; border-radius: 4px;
-  margin-left: 6px; vertical-align: middle;
-  text-transform: uppercase; letter-spacing: 0.3px;
-}
-.admin-active-toggle {
-  background: var(--bg);
-  padding: 12px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-}
-.admin-checkbox {
-  display: flex; align-items: center; gap: 10px;
-  cursor: pointer;
-  font-size: 14px; font-weight: 500;
-}
-.admin-checkbox input[type="checkbox"] {
-  width: 18px; height: 18px;
-  accent-color: var(--accent);
-  cursor: pointer;
-  margin: 0;
-}
-.admin-checkbox-hint {
-  font-size: 12px; color: var(--text-secondary);
-  margin-top: 6px; margin-left: 28px;
-}
-
 /* ========== Skeleton loader ========== */
 @keyframes skeleton-pulse {
   0%, 100% { opacity: 0.7; }
@@ -1294,8 +1157,7 @@ img { display: block; max-width: 100%; }
 /* Контейнер картинки показывает серый фон, пока img грузится/прозрачен */
 .product-card-slide,
 .carousel-slide,
-.cart-item,
-.admin-product-item {
+.cart-item {
   background-color: var(--bg-secondary);
 }
 /* Битая ссылка: прячем сломанную иконку, показываем «нет фото» */
@@ -1411,14 +1273,6 @@ img { display: block; max-width: 100%; }
   opacity: 0.6;
   pointer-events: none;
   cursor: default;
-}
-
-/* Пустой результат поиска в админке */
-.admin-empty {
-  text-align: center;
-  color: var(--text-secondary);
-  padding: 24px 0;
-  font-size: 14px;
 }
 
 /* Кнопка «Заказать снова» в истории */

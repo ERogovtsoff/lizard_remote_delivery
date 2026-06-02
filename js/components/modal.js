@@ -28,7 +28,3 @@ export function showConfirm({ icon = '⚠️', title, text, yes, no, danger = fa
 
   modal.classList.add('show');
 }
-
-export function closeModal() {
-  document.getElementById('modal')?.classList.remove('show');
-}

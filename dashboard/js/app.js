@@ -140,7 +140,7 @@ function init() {
   });
   document.getElementById('logoutBtn').onclick = logout;
   const reqBtn = document.getElementById('requisitesBtn');
-  if (reqBtn) reqBtn.onclick = () => orders.showRequisitesModal();
+  if (reqBtn) reqBtn.onclick = () => orders.openRequisitesModal();
   const tplBtn = document.getElementById('templatesBtn');
   if (tplBtn) tplBtn.onclick = () => orders.openTemplatesEditor();
   const auditBtn = document.getElementById('auditBtn');
@@ -371,10 +371,10 @@ async function openManagersModal() {
       const dutyLabel = m.is_on_duty ? '🟢 на дежурстве' : '⚪ не дежурит';
       const key = m.username ? `username=${m.username}` : `tg_id=${m.tg_id}`;
       return `
-        <div class="mgr-row" data-key="${escapeAttr(key)}">
+        <div class="mgr-row" data-key="${escapeHtml(key)}">
           <div class="mgr-row-main">
             <div class="mgr-who">${escapeHtml(who)}</div>
-            <div class="mgr-meta" title="${escapeAttr(chatHint)}">${hasChat} ${escapeHtml(chatHint)}</div>
+            <div class="mgr-meta" title="${escapeHtml(chatHint)}">${hasChat} ${escapeHtml(chatHint)}</div>
           </div>
           <button class="mgr-duty-btn ${dutyClass}" data-act="duty">${escapeHtml(dutyLabel)}</button>
           <button class="mgr-del-btn" data-act="del" title="Удалить">✕</button>
@@ -424,6 +424,3 @@ async function openManagersModal() {
 
   await refreshList();
 }
-
-// Утилиты для модалки менеджеров (escapeHtml импортирован из utils)
-function escapeAttr(s) { return escapeHtml(s); }

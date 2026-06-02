@@ -19,12 +19,6 @@ export function customerName(customer, fallbackId) {
   return 'ID ' + fallbackId;
 }
 
-// Инициал для аватара
-export function initial(name) {
-  const s = (name || '?').replace(/^@/, '');
-  return s.charAt(0).toUpperCase();
-}
-
 // Время сообщения: сегодня — «14:30», иначе — «22 мая».
 export function formatTime(iso) {
   if (!iso) return '';
@@ -42,17 +36,6 @@ export function formatFullDate(iso) {
   if (!iso) return '';
   const d = new Date(iso);
   return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
-}
-
-// Краткое превью последнего сообщения для списка чатов
-export function previewText(msg) {
-  if (!msg) return '';
-  if (msg.text) return msg.text;
-  const typeLabels = {
-    photo: '📷 Фото', document: '📎 Документ', video: '🎬 Видео',
-    voice: '🎤 Голосовое', video_note: '⭕ Кружок', audio: '🎵 Аудио',
-  };
-  return typeLabels[msg.attachment_type] || '📎 Вложение';
 }
 
 // Генерация ID для нового товара (как в приложении: префикс + случайная часть).

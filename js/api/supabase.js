@@ -196,48 +196,6 @@ export function refreshProducts() {
   refreshFromDb().catch(e => console.warn('[supabase] forced refresh failed:', e));
 }
 
-// Полная синхронизация каталога:
-// 1. Получаем текущие id в БД
-// 2. Делаем upsert переданных
-// 3. Удаляем те id, которые есть в БД но отсутствуют в переданных
-// После — обновляем кэш свежими данными из БД (чтобы updated_at был актуальным).
-export async function saveProducts(products) {
-  try {
-    const sb = await getClient();
-    const rows = products.map(productToRow);
-    const newIds = rows.map(r => r.id);
-
-    const { data: existing, error: e1 } = await sb.from('products').select('id');
-    if (e1) {
-      console.error('[supabase] saveProducts: read ids error:', e1.message);
-      throw e1;
-    }
-    const existingIds = (existing || []).map(r => r.id);
-
-    if (rows.length > 0) {
-      const { error: e2 } = await sb.from('products').upsert(rows, { onConflict: 'id' });
-      if (e2) {
-        console.error('[supabase] saveProducts: upsert error:', e2.message);
-        throw e2;
-      }
-    }
-
-    const toDelete = existingIds.filter(id => !newIds.includes(id));
-    if (toDelete.length > 0) {
-      const { error: e3 } = await sb.from('products').delete().in('id', toDelete);
-      if (e3) {
-        console.error('[supabase] saveProducts: delete error:', e3.message);
-      }
-    }
-
-    // Сразу обновим кэш свежими данными
-    productsCache.invalidate();
-    await refreshFromDb();
-  } catch (e) {
-    console.error('[supabase] saveProducts exception:', e);
-    throw e;
-  }
-}
 
 // ============================== КЛИЕНТ ==============================
 
