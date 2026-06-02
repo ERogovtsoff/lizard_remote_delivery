@@ -47,7 +47,7 @@ export async function checkManager(username) {
   }
   // Ищем в таблице managers по username (без учёта регистра)
   const rows = await get('managers', {
-    select: 'tg_id,username,is_on_duty',
+    select: 'tg_id,username,is_on_duty,chat_id',
     username: `ilike.${clean}`,
     limit: '1',
   });
@@ -55,6 +55,47 @@ export async function checkManager(username) {
     return { username: clean, is_superadmin: false, ...rows[0] };
   }
   return false;
+}
+
+// Подгружает актуальный статус дежурства менеджера (для отображения переключателя).
+// Возвращает { is_on_duty: bool, chat_id: int|null } или null, если запись не найдена.
+// Для суперадмина — отдельная логика: его «дежурство» по сути всегда включено
+// (он всегда получает уведомления, если сделал /start боту).
+export async function loadMyDutyStatus(username) {
+  const clean = (username || '').replace(/^@/, '').trim().toLowerCase();
+  if (!clean) return null;
+  if (clean === CONFIG.SUPERADMIN_USERNAME.toLowerCase()) {
+    // Суперадмин: показываем его текущий chat_id из manager_chat.txt? Нет —
+    // в БД его нет. Просто вернём «всегда онлайн».
+    return { is_on_duty: true, chat_id: null, is_superadmin: true };
+  }
+  const rows = await get('managers', {
+    select: 'is_on_duty,chat_id',
+    username: `ilike.${clean}`,
+    limit: '1',
+  });
+  if (rows && rows.length > 0) return rows[0];
+  return null;
+}
+
+// Переключает дежурство менеджера. Возвращает новое значение или null при ошибке.
+// Только для не-суперадмина (суперадмин всегда «онлайн»).
+export async function setMyDutyStatus(username, isOnDuty) {
+  const clean = (username || '').replace(/^@/, '').trim().toLowerCase();
+  if (!clean) return null;
+  if (clean === CONFIG.SUPERADMIN_USERNAME.toLowerCase()) return isOnDuty;
+  const res = await fetchRetry(`${BASE}/managers?username=ilike.${encodeURIComponent(clean)}`, {
+    method: 'PATCH',
+    headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ is_on_duty: !!isOnDuty }),
+  });
+  if (!res.ok) throw new Error(`setMyDutyStatus failed: ${res.status}`);
+  logAudit({
+    action: isOnDuty ? 'duty_on' : 'duty_off',
+    entity_type: 'manager', entity_id: clean,
+    manager: clean,
+  });
+  return !!isOnDuty;
 }
 
 // Список чатов: группируем сообщения по клиенту.

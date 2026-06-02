@@ -75,6 +75,7 @@ function showApp() {
   catalog.setupCatalog();
   orders.initOrders(currentManager.username);
   setupSectionTabs();
+  setupDutyToggle();
   currentSection = 'orders';
   // Явно выставляем видимость стартового раздела (на случай повторного входа)
   document.getElementById('ordersSide').style.display = '';
@@ -179,4 +180,70 @@ function applyTheme(theme) {
 function toggleTheme() {
   const cur = document.documentElement.getAttribute('data-theme') || 'light';
   applyTheme(cur === 'dark' ? 'light' : 'dark');
+}
+
+// ============ ДЕЖУРСТВО ============
+// Переключатель «получать уведомления в Telegram-боте». Хранится в managers.is_on_duty,
+// откуда бот фильтрует кому слать notify_managers_brief.
+
+async function setupDutyToggle() {
+  const btn = document.getElementById('dutyBtn');
+  if (!btn) return;
+  if (!currentManager) return;
+  const status = await api.loadMyDutyStatus(currentManager.username).catch(() => null);
+  applyDutyView(btn, status);
+  btn.onclick = async () => {
+    if (status && status.is_superadmin) {
+      alert('Суперадмин всегда получает уведомления — отдельно включать дежурство не нужно.');
+      return;
+    }
+    btn.disabled = true;
+    const desired = !(status && status.is_on_duty);
+    try {
+      const updated = await api.setMyDutyStatus(currentManager.username, desired);
+      if (status) status.is_on_duty = updated;
+      applyDutyView(btn, status);
+    } catch (e) {
+      console.error(e);
+      alert('Не удалось переключить дежурство: ' + (e.message || ''));
+    } finally {
+      btn.disabled = false;
+    }
+  };
+}
+
+function applyDutyView(btn, status) {
+  // Суперадмин: всегда «онлайн», кнопка информационная
+  if (status && status.is_superadmin) {
+    btn.textContent = '🟢 На дежурстве (суперадмин)';
+    btn.classList.add('duty-on');
+    btn.classList.remove('duty-off', 'duty-warn');
+    return;
+  }
+  // Менеджер не нашёлся в БД (странно, но возможно)
+  if (!status) {
+    btn.textContent = '⚠️ Дежурство недоступно';
+    btn.classList.add('duty-warn');
+    btn.classList.remove('duty-on', 'duty-off');
+    return;
+  }
+  // Менеджер без chat_id — уведомления физически не дойдут, надо написать боту /start
+  if (!status.chat_id) {
+    btn.textContent = '⚠️ Напишите /start боту в Telegram';
+    btn.title = 'Чтобы получать уведомления, один раз отправьте /start боту в Telegram, потом обновите страницу';
+    btn.classList.add('duty-warn');
+    btn.classList.remove('duty-on', 'duty-off');
+    return;
+  }
+  if (status.is_on_duty) {
+    btn.textContent = '🟢 На дежурстве';
+    btn.title = 'Уведомления в Telegram включены. Клик — снять с дежурства.';
+    btn.classList.add('duty-on');
+    btn.classList.remove('duty-off', 'duty-warn');
+  } else {
+    btn.textContent = '⚪ Не на дежурстве';
+    btn.title = 'Уведомления в Telegram отключены. Клик — встать на дежурство.';
+    btn.classList.add('duty-off');
+    btn.classList.remove('duty-on', 'duty-warn');
+  }
 }
