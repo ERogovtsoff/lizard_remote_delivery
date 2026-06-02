@@ -98,6 +98,78 @@ export async function setMyDutyStatus(username, isOnDuty) {
   return !!isOnDuty;
 }
 
+// ===== CRUD менеджеров =====
+
+// Загрузить список всех менеджеров (для админ-модалки).
+export async function loadManagers() {
+  return get('managers', { select: '*', order: 'created_at.asc' });
+}
+
+// Добавить менеджера. Принимает { username?, tg_id? } — хотя бы одно поле.
+// addedBy — username того, кто добавляет (для audit и поля added_by).
+export async function addManager({ username, tg_id }, addedBy) {
+  const row = { is_on_duty: true, added_by: (addedBy || '').toLowerCase() };
+  if (username) row.username = username.replace(/^@/, '').toLowerCase().trim();
+  if (tg_id) row.tg_id = Number(tg_id);
+  if (!row.username && !row.tg_id) throw new Error('Нужно указать username или tg_id');
+  const res = await fetchRetry(`${BASE}/managers`, {
+    method: 'POST',
+    headers: { ...HEADERS, 'Prefer': 'return=representation' },
+    body: JSON.stringify(row),
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`addManager failed: ${res.status} ${txt.slice(0, 200)}`);
+  }
+  logAudit({
+    action: 'manager_add', entity_type: 'manager',
+    entity_id: row.username || String(row.tg_id),
+    manager: addedBy, details: { username: row.username, tg_id: row.tg_id },
+  });
+  return true;
+}
+
+// Удалить менеджера по username или tg_id.
+export async function deleteManager({ username, tg_id }, removedBy) {
+  let filter;
+  if (tg_id) filter = `tg_id=eq.${encodeURIComponent(tg_id)}`;
+  else if (username) filter = `username=eq.${encodeURIComponent(username.replace(/^@/, '').toLowerCase())}`;
+  else throw new Error('Нужно указать username или tg_id');
+  const res = await fetchRetry(`${BASE}/managers?${filter}`, {
+    method: 'DELETE',
+    headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+  });
+  if (!res.ok) throw new Error(`deleteManager failed: ${res.status}`);
+  logAudit({
+    action: 'manager_delete', entity_type: 'manager',
+    entity_id: username || String(tg_id),
+    manager: removedBy, details: { username, tg_id },
+  });
+  return true;
+}
+
+// Переключить дежурство любого менеджера (для админа). От setMyDutyStatus
+// отличается тем, что меняет не своё, а указанного менеджера, и доступно
+// только суперадмину.
+export async function setManagerDuty({ username, tg_id }, isOnDuty, byManager) {
+  let filter;
+  if (tg_id) filter = `tg_id=eq.${encodeURIComponent(tg_id)}`;
+  else if (username) filter = `username=eq.${encodeURIComponent(username.replace(/^@/, '').toLowerCase())}`;
+  else throw new Error('Нужно указать username или tg_id');
+  const res = await fetchRetry(`${BASE}/managers?${filter}`, {
+    method: 'PATCH',
+    headers: { ...HEADERS, 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ is_on_duty: !!isOnDuty }),
+  });
+  if (!res.ok) throw new Error(`setManagerDuty failed: ${res.status}`);
+  logAudit({
+    action: isOnDuty ? 'manager_duty_on' : 'manager_duty_off',
+    entity_type: 'manager', entity_id: username || String(tg_id),
+    manager: byManager,
+  });
+  return true;
+}
+
 // Список чатов: группируем сообщения по клиенту.
 // PostgREST не группирует, поэтому берём последние сообщения и группируем на клиенте.
 export async function loadChats() {

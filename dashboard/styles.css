@@ -2228,3 +2228,76 @@ img.di-thumb:hover { box-shadow: 0 0 0 2px var(--accent); }
 }
 [data-theme="dark"] .duty-toggle.duty-on { background: #1a3a1a; color: #88e088; border-color: #2a6a2a; }
 [data-theme="dark"] .duty-toggle.duty-warn { background: #3a3014; color: #ffd870; border-color: #5a4a1a; }
+
+/* ====================== Управление менеджерами ====================== */
+.mgrs-card { max-width: 640px; }
+.mgrs-list {
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 320px; overflow-y: auto;
+  margin-bottom: 16px;
+}
+.mgr-row {
+  display: flex; gap: 10px; align-items: center;
+  padding: 10px 12px;
+  background: var(--bg);
+  border-radius: 8px;
+}
+.mgr-row-main { flex: 1; min-width: 0; }
+.mgr-who { font-weight: 600; font-size: 14px; }
+.mgr-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.mgr-duty-btn {
+  background: none;
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px; font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.mgr-duty-btn.mgr-duty-on {
+  background: #e1f5e1; color: #1e6b1e; border-color: #4caf50;
+}
+.mgr-duty-btn.mgr-duty-off { color: var(--text-secondary); }
+.mgr-duty-btn:hover { opacity: 0.85; }
+.mgr-del-btn {
+  width: 28px; height: 28px;
+  background: none;
+  border: none;
+  color: var(--danger);
+  cursor: pointer;
+  font-size: 14px;
+  border-radius: 6px;
+}
+.mgr-del-btn:hover { background: #fde8e6; }
+
+.mgrs-add {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+  margin-bottom: 12px;
+}
+.mgrs-add-title {
+  font-size: 13px; font-weight: 600;
+  margin-bottom: 8px; color: var(--text-secondary);
+}
+.mgrs-add-row {
+  display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+}
+.mgrs-add-row input {
+  flex: 1; min-width: 120px;
+  border: 1.5px solid var(--border); border-radius: 8px;
+  padding: 7px 10px; font-size: 13px; font-family: inherit; outline: none;
+}
+.mgrs-add-row input:focus { border-color: var(--accent); }
+.mgrs-or { color: var(--text-muted); font-size: 12px; }
+.mgrs-add-hint { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+
+[data-theme="dark"] .mgr-duty-btn.mgr-duty-on { background: #1a3a1a; color: #88e088; border-color: #2a6a2a; }
+[data-theme="dark"] .mgr-del-btn:hover { background: #3a1818; }
+
+@media (max-width: 760px) {
+  .mgrs-add-row { gap: 8px; }
+  .mgrs-add-row input { flex-basis: 100%; }
+  .mgrs-or { display: none; }
+  .mgrs-add-row .btn-primary { flex: 1; }
+}

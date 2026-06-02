@@ -7,6 +7,7 @@ import * as orders from './orders.js';
 import * as customers from './customers.js';
 import * as analytics from './analytics.js';
 import * as search from './search.js';
+import { escapeHtml } from './utils.js';
 
 let currentManager = null;
 let currentSection = 'orders';
@@ -76,6 +77,9 @@ function showApp() {
   orders.initOrders(currentManager.username);
   setupSectionTabs();
   setupDutyToggle();
+  // Кнопка управления менеджерами — только для суперадмина
+  const mgrBtn = document.getElementById('managersBtn');
+  if (mgrBtn) mgrBtn.style.display = currentManager.is_superadmin ? '' : 'none';
   currentSection = 'orders';
   // Явно выставляем видимость стартового раздела (на случай повторного входа)
   document.getElementById('ordersSide').style.display = '';
@@ -141,6 +145,8 @@ function init() {
   if (tplBtn) tplBtn.onclick = () => orders.openTemplatesEditor();
   const auditBtn = document.getElementById('auditBtn');
   if (auditBtn) auditBtn.onclick = () => orders.openAuditLog();
+  const managersBtn = document.getElementById('managersBtn');
+  if (managersBtn) managersBtn.onclick = () => openManagersModal();
   const themeBtn = document.getElementById('themeBtn');
   if (themeBtn) themeBtn.onclick = toggleTheme;
   applyTheme(localStorage.getItem('lizard_theme') || 'light');
@@ -247,3 +253,120 @@ function applyDutyView(btn, status) {
     btn.classList.remove('duty-on', 'duty-warn');
   }
 }
+
+// ============ УПРАВЛЕНИЕ МЕНЕДЖЕРАМИ ============
+// Доступно только суперадмину. CRUD + переключение дежурства любого менеджера.
+
+async function openManagersModal() {
+  if (!currentManager || !currentManager.is_superadmin) {
+    alert('Только суперадмин может управлять менеджерами.');
+    return;
+  }
+  const old = document.getElementById('mgrsModal');
+  if (old) { old.remove(); return; }
+
+  const modal = document.createElement('div');
+  modal.id = 'mgrsModal';
+  modal.className = 'qp-modal';
+  modal.innerHTML = `
+    <div class="qp-card mgrs-card">
+      <div class="qp-head">👥 Менеджеры</div>
+      <p class="req-hint">
+        Менеджеры с дежурством получают уведомления в Telegram-боте. После добавления
+        менеджер должен один раз написать <code>/start</code> боту, чтобы его chat_id
+        зарегистрировался — иначе уведомления физически не дойдут.
+      </p>
+      <div id="mgrsList" class="mgrs-list">Загрузка…</div>
+
+      <div class="mgrs-add">
+        <div class="mgrs-add-title">+ Добавить менеджера</div>
+        <div class="mgrs-add-row">
+          <input type="text" id="newMgrUsername" placeholder="@username (или просто username)">
+          <span class="mgrs-or">или</span>
+          <input type="number" id="newMgrTgId" placeholder="Telegram ID (число)">
+          <button class="btn-primary" id="newMgrAdd">Добавить</button>
+        </div>
+        <div class="mgrs-add-hint">Достаточно указать одно из двух (или оба). Telegram ID удобен, если username скрыт.</div>
+      </div>
+
+      <div class="qp-actions">
+        <button class="btn-light" id="mgrsClose">Закрыть</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  document.getElementById('mgrsClose').onclick = () => modal.remove();
+
+  async function refreshList() {
+    const box = document.getElementById('mgrsList');
+    box.innerHTML = 'Загрузка…';
+    let rows;
+    try { rows = await api.loadManagers(); } catch (e) { console.error(e); box.innerHTML = 'Ошибка загрузки'; return; }
+    if (!rows || !rows.length) {
+      box.innerHTML = '<div class="sh-empty">Менеджеров пока нет. Добавьте первого.</div>';
+      return;
+    }
+    box.innerHTML = rows.map(m => {
+      const who = m.username ? `@${m.username}` : (m.tg_id ? `id ${m.tg_id}` : '—');
+      const hasChat = m.chat_id ? '🟢' : '⚠️';
+      const chatHint = m.chat_id ? 'готов получать уведомления' : 'не писал /start боту — уведомления не дойдут';
+      const dutyClass = m.is_on_duty ? 'mgr-duty-on' : 'mgr-duty-off';
+      const dutyLabel = m.is_on_duty ? '🟢 на дежурстве' : '⚪ не дежурит';
+      const key = m.username ? `username=${m.username}` : `tg_id=${m.tg_id}`;
+      return `
+        <div class="mgr-row" data-key="${escapeAttr(key)}">
+          <div class="mgr-row-main">
+            <div class="mgr-who">${escapeHtml(who)}</div>
+            <div class="mgr-meta" title="${escapeAttr(chatHint)}">${hasChat} ${escapeHtml(chatHint)}</div>
+          </div>
+          <button class="mgr-duty-btn ${dutyClass}" data-act="duty">${escapeHtml(dutyLabel)}</button>
+          <button class="mgr-del-btn" data-act="del" title="Удалить">✕</button>
+        </div>
+      `;
+    }).join('');
+
+    box.querySelectorAll('.mgr-row').forEach(row => {
+      const key = row.getAttribute('data-key');
+      const m = parseMgrKey(key, rows);
+      row.querySelector('[data-act="duty"]').onclick = async () => {
+        try {
+          await api.setManagerDuty(m, !m.is_on_duty, currentManager.username);
+          await refreshList();
+        } catch (e) { console.error(e); alert('Ошибка переключения дежурства: ' + e.message); }
+      };
+      row.querySelector('[data-act="del"]').onclick = async () => {
+        const who = m.username ? `@${m.username}` : `id ${m.tg_id}`;
+        if (!confirm(`Удалить менеджера ${who}?\nЗаказы, назначенные на него, останутся без исполнителя.`)) return;
+        try {
+          await api.deleteManager(m, currentManager.username);
+          await refreshList();
+        } catch (e) { console.error(e); alert('Ошибка удаления: ' + e.message); }
+      };
+    });
+  }
+
+  function parseMgrKey(key, rows) {
+    const [k, v] = key.split('=');
+    return rows.find(m => String(m[k]) === v) || (k === 'tg_id' ? { tg_id: Number(v) } : { username: v });
+  }
+
+  document.getElementById('newMgrAdd').onclick = async () => {
+    const username = (document.getElementById('newMgrUsername').value || '').trim();
+    const tgIdStr = (document.getElementById('newMgrTgId').value || '').trim();
+    if (!username && !tgIdStr) { alert('Укажите username или Telegram ID'); return; }
+    try {
+      await api.addManager({
+        username: username || undefined,
+        tg_id: tgIdStr ? Number(tgIdStr) : undefined,
+      }, currentManager.username);
+      document.getElementById('newMgrUsername').value = '';
+      document.getElementById('newMgrTgId').value = '';
+      await refreshList();
+    } catch (e) { console.error(e); alert('Не удалось добавить: ' + e.message); }
+  };
+
+  await refreshList();
+}
+
+// Утилиты для модалки менеджеров (escapeHtml импортирован из utils)
+function escapeAttr(s) { return escapeHtml(s); }
