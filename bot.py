@@ -771,11 +771,25 @@ INQUIRY_TRANSITIONS = {
 async def cmd_start_deeplink(message: Message, command: CommandObject, bot: Bot) -> None:
     """
     /start <param> — клиент пришёл из апки с конкретным контекстом.
-    Поддерживаем: request, ask_<product_id>, order_<order_id>.
+    Поддерживаем: request, ask_<product_id>, order_<order_id>, duty (для менеджера).
     """
     param = (command.args or "").strip()
     user = message.from_user
     if not user:
+        return
+
+    # Тихая регистрация менеджера для уведомлений (нажал «На дежурстве» в админке).
+    # Никаких подсказок, ни лишних сообщений — просто сохранили chat_id.
+    if param == "duty":
+        if is_superadmin(user):
+            set_superadmin_chat_id(message.chat.id)
+        elif await is_manager(user):
+            await update_manager_chat(user)
+        # Тихое короткое подтверждение, без инструкций
+        try:
+            await message.answer("✓")
+        except Exception:
+            pass
         return
 
     if param == "request":
@@ -802,27 +816,21 @@ async def cmd_start(message: Message) -> None:
     if is_superadmin(user):
         set_superadmin_chat_id(message.chat.id)
         await message.answer(
-            "✅ Вы вошли как <b>суперадмин</b>.\n"
-            "Новые заказы и обращения приходят дежурным менеджерам "
-            "(или сюда, если дежурных нет).\n\n"
-            "Управление менеджерами:\n"
-            "• /managers — список\n"
-            "• /addmanager @username или id — добавить\n"
-            "• /delmanager @username или id — удалить\n"
-            "• /duty @username — поставить/снять с дежурства\n"
-            "• /active — активные заказы и обращения",
+            "✅ Вы вошли как <b>суперадмин</b>.\n\n"
+            "Все управление — в админ-панели:\n"
+            f"{DASHBOARD_URL}\n\n"
+            "Сюда приходят уведомления о новых заказах, обращениях и сообщениях клиентов.",
         )
         return
 
     if await is_manager(user):
         await update_manager_chat(user)
         await message.answer(
-            "✅ Вы вошли как <b>менеджер</b>.\n"
-            "Новые заказы и обращения будут приходить сюда, когда вы на дежурстве.\n\n"
-            "• /online — встать на дежурство\n"
-            "• /offline — снять дежурство\n"
-            "• /active — активные заказы и обращения\n"
-            "Чтобы ответить клиенту — делайте <b>reply</b> на его сообщение.",
+            "✅ Вы вошли как <b>менеджер</b>.\n\n"
+            "Все управление — в админ-панели:\n"
+            f"{DASHBOARD_URL}\n\n"
+            "Сюда будут приходить уведомления о новых заказах и сообщениях клиентов, "
+            "когда вы на дежурстве (включается в админ-панели).",
         )
         return
     await send_welcome(message)

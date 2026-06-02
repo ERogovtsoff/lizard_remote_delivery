@@ -192,6 +192,11 @@ function toggleTheme() {
 // Переключатель «получать уведомления в Telegram-боте». Хранится в managers.is_on_duty,
 // откуда бот фильтрует кому слать notify_managers_brief.
 
+// Состояние ожидания регистрации chat_id после открытия Telegram.
+// Если true — фоновая задача опрашивает БД каждые 3 сек, ждёт chat_id.
+let _dutyWaitingForChatId = false;
+let _dutyPollTimer = null;
+
 async function setupDutyToggle() {
   const btn = document.getElementById('dutyBtn');
   if (!btn) return;
@@ -199,15 +204,27 @@ async function setupDutyToggle() {
   const status = await api.loadMyDutyStatus(currentManager.username).catch(() => null);
   applyDutyView(btn, status);
   btn.onclick = async () => {
-    if (status && status.is_superadmin) {
+    if (!status) {
+      alert('Дежурство недоступно: менеджер не найден в базе.');
+      return;
+    }
+    if (status.is_superadmin) {
       alert('Суперадмин всегда получает уведомления — отдельно включать дежурство не нужно.');
       return;
     }
     btn.disabled = true;
-    const desired = !(status && status.is_on_duty);
+    const desired = !status.is_on_duty;
     try {
+      // Если хотим встать на дежурство, а chat_id нет — нужно сначала зарегистрировать
+      // chat_id, иначе уведомления физически не дойдут. Открываем Telegram через
+      // deep-link, дальше Telegram сам пришлёт /start duty боту, бот сохранит chat_id.
+      if (desired && !status.chat_id) {
+        await openTelegramForDutyRegistration(btn, status);
+        return;
+      }
+      // Обычное переключение — chat_id уже есть или мы хотим выключить дежурство.
       const updated = await api.setMyDutyStatus(currentManager.username, desired);
-      if (status) status.is_on_duty = updated;
+      status.is_on_duty = updated;
       applyDutyView(btn, status);
     } catch (e) {
       console.error(e);
@@ -218,39 +235,79 @@ async function setupDutyToggle() {
   };
 }
 
+// Открывает Telegram-бот через deep-link для тихой регистрации chat_id.
+// Параллельно запускает опрос, ждёт появления chat_id у текущего менеджера
+// и автоматически включает дежурство, как только он появится.
+async function openTelegramForDutyRegistration(btn, status) {
+  const url = `https://t.me/${CONFIG.BOT_USERNAME}?start=duty`;
+  // Открываем в новой вкладке/окне; если у пользователя установлен Telegram Desktop —
+  // он откроет приложение. На мобильном — приложение Telegram.
+  window.open(url, '_blank', 'noopener');
+
+  _dutyWaitingForChatId = true;
+  applyDutyView(btn, status); // покажет состояние «ожидание»
+
+  if (_dutyPollTimer) clearInterval(_dutyPollTimer);
+  let attempts = 0;
+  _dutyPollTimer = setInterval(async () => {
+    attempts++;
+    // Ограничим: до 5 минут (100 попыток × 3 сек). Если за это время не зашёл — отменяем.
+    if (attempts > 100) {
+      clearInterval(_dutyPollTimer);
+      _dutyPollTimer = null;
+      _dutyWaitingForChatId = false;
+      applyDutyView(btn, status);
+      return;
+    }
+    try {
+      const fresh = await api.loadMyDutyStatus(currentManager.username);
+      if (fresh && fresh.chat_id) {
+        // chat_id появился — выключаем ожидание, включаем дежурство, обновляем UI
+        clearInterval(_dutyPollTimer);
+        _dutyPollTimer = null;
+        _dutyWaitingForChatId = false;
+        try {
+          await api.setMyDutyStatus(currentManager.username, true);
+          status.chat_id = fresh.chat_id;
+          status.is_on_duty = true;
+        } catch (e) {
+          console.error(e);
+        }
+        applyDutyView(btn, status);
+      }
+    } catch (_) { /* ignore — повторим через интервал */ }
+  }, 3000);
+}
+
 function applyDutyView(btn, status) {
+  btn.classList.remove('duty-on', 'duty-off', 'duty-warn');
   // Суперадмин: всегда «онлайн», кнопка информационная
   if (status && status.is_superadmin) {
     btn.textContent = '🟢 На дежурстве (суперадмин)';
     btn.classList.add('duty-on');
-    btn.classList.remove('duty-off', 'duty-warn');
     return;
   }
   // Менеджер не нашёлся в БД (странно, но возможно)
   if (!status) {
     btn.textContent = '⚠️ Дежурство недоступно';
     btn.classList.add('duty-warn');
-    btn.classList.remove('duty-on', 'duty-off');
     return;
   }
-  // Менеджер без chat_id — уведомления физически не дойдут, надо написать боту /start
-  if (!status.chat_id) {
-    btn.textContent = '⚠️ Напишите /start боту в Telegram';
-    btn.title = 'Чтобы получать уведомления, один раз отправьте /start боту в Telegram, потом обновите страницу';
+  // Ожидание регистрации (открыт Telegram, ждём `/start duty`)
+  if (_dutyWaitingForChatId) {
+    btn.textContent = '⏳ Откройте Telegram и нажмите «Запустить»…';
+    btn.title = 'Ожидаем подключения. Как только откроете бота — дежурство включится автоматически.';
     btn.classList.add('duty-warn');
-    btn.classList.remove('duty-on', 'duty-off');
     return;
   }
   if (status.is_on_duty) {
     btn.textContent = '🟢 На дежурстве';
     btn.title = 'Уведомления в Telegram включены. Клик — снять с дежурства.';
     btn.classList.add('duty-on');
-    btn.classList.remove('duty-off', 'duty-warn');
   } else {
     btn.textContent = '⚪ Не на дежурстве';
     btn.title = 'Уведомления в Telegram отключены. Клик — встать на дежурство.';
     btn.classList.add('duty-off');
-    btn.classList.remove('duty-on', 'duty-warn');
   }
 }
 
@@ -273,8 +330,8 @@ async function openManagersModal() {
       <div class="qp-head">👥 Менеджеры</div>
       <p class="req-hint">
         Менеджеры с дежурством получают уведомления в Telegram-боте. После добавления
-        менеджер должен один раз написать <code>/start</code> боту, чтобы его chat_id
-        зарегистрировался — иначе уведомления физически не дойдут.
+        менеджер должен войти в админ-панель и встать на дежурство — Telegram откроется
+        автоматически, и подключение завершится за один клик.
       </p>
       <div id="mgrsList" class="mgrs-list">Загрузка…</div>
 
@@ -309,7 +366,7 @@ async function openManagersModal() {
     box.innerHTML = rows.map(m => {
       const who = m.username ? `@${m.username}` : (m.tg_id ? `id ${m.tg_id}` : '—');
       const hasChat = m.chat_id ? '🟢' : '⚠️';
-      const chatHint = m.chat_id ? 'готов получать уведомления' : 'не писал /start боту — уведомления не дойдут';
+      const chatHint = m.chat_id ? 'готов получать уведомления' : 'ещё не подключился — попросите его открыть админ-панель и встать на дежурство';
       const dutyClass = m.is_on_duty ? 'mgr-duty-on' : 'mgr-duty-off';
       const dutyLabel = m.is_on_duty ? '🟢 на дежурстве' : '⚪ не дежурит';
       const key = m.username ? `username=${m.username}` : `tg_id=${m.tg_id}`;

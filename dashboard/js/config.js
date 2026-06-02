@@ -7,6 +7,9 @@ export const CONFIG = {
   // Суперадмин — всегда имеет доступ (не обязан быть в таблице managers).
   SUPERADMIN_USERNAME: 'rogovtsoff',
 
+  // Username бота (без @) — для авто-открытия Telegram при включении дежурства.
+  BOT_USERNAME: 'lizard_remote_delivery_bot',
+
   // Ключ localStorage для запоминания вошедшего менеджера
   AUTH_KEY: 'lizard_dashboard_auth',
 
