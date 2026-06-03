@@ -254,16 +254,46 @@ export async function loadCustomerAggregates() {
 
 // Какие клиенты имеют хотя бы одно непрочитанное входящее сообщение.
 // Возвращает Set<tg_id>.
+// Возвращает Set из tg_id клиентов, которые «ждут ответа».
+// «Ждёт ответа» = у клиента есть АКТИВНЫЙ заказ или обращение,
+// в котором крайнее сообщение от клиента (read_at IS NULL у входящего).
+// Не учитываются:
+//   - закрытые заказы (status: completed/cancelled)
+//   - закрытые обращения (status: closed)
+//   - сообщения без контекста (order_id IS NULL AND inquiry_id IS NULL)
 export async function loadUnreadCustomers() {
   try {
-    const rows = await get('messages', {
-      select: 'customer_tg_id',
-      direction: 'eq.in',
-      read_at: 'is.null',
-      limit: '5000',
-    });
+    // 1) Контексты с непрочитанными входящими
+    const ctxs = await loadUnreadContexts();
+    if (ctxs.orderIds.size === 0 && ctxs.inquiryIds.size === 0) return new Set();
+
+    // 2) Параллельно: активные заказы и активные обращения с customer_tg_id
+    const ACTIVE_ORDER_STATUSES = ['new', 'in_progress', 'awaiting_payment', 'paid', 'purchasing', 'shipping', 'ready'];
+    const ACTIVE_INQUIRY_STATUSES = ['new', 'in_progress'];
+
+    const [orderRows, inquiryRows] = await Promise.all([
+      ctxs.orderIds.size > 0
+        ? get('orders', {
+            select: 'id,customer_tg_id,status',
+            id: `in.(${Array.from(ctxs.orderIds).join(',')})`,
+            status: `in.(${ACTIVE_ORDER_STATUSES.join(',')})`,
+            limit: '5000',
+          }).catch(() => [])
+        : Promise.resolve([]),
+      ctxs.inquiryIds.size > 0
+        ? get('inquiries', {
+            select: 'id,customer_tg_id,status',
+            id: `in.(${Array.from(ctxs.inquiryIds).join(',')})`,
+            status: `in.(${ACTIVE_INQUIRY_STATUSES.join(',')})`,
+            limit: '5000',
+          }).catch(() => [])
+        : Promise.resolve([]),
+    ]);
+
+    // 3) Собираем tg_id клиентов из активных контекстов
     const set = new Set();
-    (rows || []).forEach(m => set.add(m.customer_tg_id));
+    (orderRows || []).forEach(o => set.add(o.customer_tg_id));
+    (inquiryRows || []).forEach(q => set.add(q.customer_tg_id));
     return set;
   } catch (e) {
     console.warn('loadUnreadCustomers failed:', e);

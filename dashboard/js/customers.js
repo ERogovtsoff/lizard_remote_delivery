@@ -16,6 +16,9 @@ let filter = 'all';                // all | active | returning | newcomers | unr
 
 // VIP-порог в USD (можно поменять). Клиент выкупил суммарно больше — получает значок ⭐.
 const VIP_THRESHOLD_USD = 200;
+// «Новый» = зарегистрирован за последние N дней И ещё не делал покупок.
+// Без этого ограничения клиент годами оставался бы «новым».
+const NEWCOMER_WINDOW_DAYS = 7;
 
 export async function loadCustomersSection() {
   const sec = document.getElementById('sectionCustomers');
@@ -23,17 +26,16 @@ export async function loadCustomersSection() {
   sec.innerHTML = '<div class="cust-loading">Загрузка клиентов…</div>';
 
   try {
-    const [list, aggs, last, unread] = await Promise.all([
+    const [list, aggs, last] = await Promise.all([
       api.loadAllCustomers().catch(() => []),
       api.loadCustomerAggregates().catch(() => new Map()),
       api.loadLastIncomingMessages().catch(() => new Map()),
-      api.loadUnreadContexts().catch(() => ({ orderIds: new Set(), inquiryIds: new Set() })),
     ]);
     customers = list || [];
     aggregates = aggs;
     lastIncoming = last;
-    // unread знаем по контекстам — выведем в tg_id через известные нам orders/inquiries.
-    // Но проще: загрузим непрочитанные сообщения и возьмём customer_tg_id напрямую.
+    // «Ждёт ответа»: клиенты, у которых есть АКТИВНЫЙ заказ/обращение,
+    // где крайнее сообщение от клиента (внутри loadUnreadCustomers).
     unreadCustomers = await api.loadUnreadCustomers().catch(() => new Set());
   } catch (e) {
     console.error('loadCustomersSection failed:', e);
@@ -60,7 +62,8 @@ function renderCustomersSection() {
         <option value="all" ${filter === 'all' ? 'selected' : ''}>Все</option>
         <option value="active" ${filter === 'active' ? 'selected' : ''}>С активными заказами</option>
         <option value="returning" ${filter === 'returning' ? 'selected' : ''}>Постоянные</option>
-        <option value="newcomers" ${filter === 'newcomers' ? 'selected' : ''}>Новые (нет покупок)</option>
+        <option value="newcomers" ${filter === 'newcomers' ? 'selected' : ''}>Без покупок</option>
+        <option value="recent" ${filter === 'recent' ? 'selected' : ''}>Новые за неделю</option>
         <option value="unread" ${filter === 'unread' ? 'selected' : ''}>С непрочитанными</option>
       </select>
       <select id="custSort" class="list-filter">
@@ -128,6 +131,15 @@ function applyCustomerFilters(list) {
     items = items.filter(c => Number(c.purchases_total) > 0 || ((aggregates.get(c.tg_id) || {}).ordersTotal || 0) > 0);
   } else if (filter === 'newcomers') {
     items = items.filter(c => !Number(c.purchases_total) && !((aggregates.get(c.tg_id) || {}).ordersTotal || 0));
+  } else if (filter === 'recent') {
+    // Зарегистрированы за последние NEWCOMER_WINDOW_DAYS дней И не покупали
+    const cutoff = Date.now() - NEWCOMER_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+    items = items.filter(c => {
+      if (!c.created_at) return false;
+      const reg = new Date(c.created_at).getTime();
+      const hasPurchases = Number(c.purchases_total) > 0 || ((aggregates.get(c.tg_id) || {}).ordersTotal || 0) > 0;
+      return reg >= cutoff && !hasPurchases;
+    });
   } else if (filter === 'unread') {
     items = items.filter(c => unreadCustomers.has(c.tg_id));
   }
@@ -171,7 +183,11 @@ function renderCustomerCard(c) {
   const spentByn = Number(c.purchases_total_byn) || 0;
   const isVip = spent >= VIP_THRESHOLD_USD;
   const isReturning = spent > 0 || agg.ordersTotal > 0;
-  const isNewcomer = !isReturning;
+  // «Новый» = зарегистрирован недавно И ещё не покупал. Старые клиенты без
+  // покупок больше не считаются «новыми» (это были бы «спящие», не новые).
+  const regAt = c.created_at ? new Date(c.created_at).getTime() : 0;
+  const isRecentlyRegistered = regAt && (Date.now() - regAt) <= NEWCOMER_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  const isNewcomer = !isReturning && isRecentlyRegistered;
   const hasUnread = unreadCustomers.has(c.tg_id);
   const lastTs = lastActivityTs(c);
   const tags = [];
