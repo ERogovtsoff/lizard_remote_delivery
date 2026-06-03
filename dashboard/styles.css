@@ -275,8 +275,13 @@ html, body {
   border-top: 1px solid var(--border);
   padding: 12px 18px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+}
+.sidebar-foot .manager-name {
+  display: block;
+  text-align: center;
 }
 .manager-name {
   font-size: 13px;
@@ -779,6 +784,7 @@ html, body {
 .msg-bot .msg-bubble {
   background: #fff7e6;
   border: 1px dashed #f0d090;
+  color: #6b4f00;
 }
 
 /* ====================== Раздел «Заказы» ====================== */
@@ -940,7 +946,7 @@ html, body {
 }
 .cmsg-in .cmsg-bubble { background: var(--surface); border-bottom-left-radius: 4px; }
 .cmsg-out .cmsg-bubble { background: var(--accent-soft); border-bottom-right-radius: 4px; }
-.cmsg-bot .cmsg-bubble { background: #fff7e6; border: 1px dashed #f0d090; }
+.cmsg-bot .cmsg-bubble { background: #fff7e6; border: 1px dashed #f0d090; color: #6b4f00; }
 .cmsg-text { white-space: pre-wrap; }
 .cmsg-meta { font-size: 11px; color: var(--text-muted); margin-top: 3px; text-align: right; }
 .cmsg-photo { max-width: 200px; max-height: 200px; border-radius: 8px; display: block; margin-bottom: 4px; }
@@ -2195,8 +2201,8 @@ img.di-thumb:hover { box-shadow: 0 0 0 2px var(--accent); }
 .duty-toggle {
   display: block;
   width: 100%;
+  box-sizing: border-box;
   padding: 8px 12px;
-  margin-bottom: 8px;
   background: var(--surface);
   border: 1.5px solid var(--border);
   border-radius: 8px;
@@ -2206,6 +2212,12 @@ img.di-thumb:hover { box-shadow: 0 0 0 2px var(--accent); }
   cursor: pointer;
   text-align: center;
   transition: background 0.15s, border-color 0.15s;
+  /* Защита от переполнения: длинный текст вроде «На дежурстве (суперадмин)»
+     не должен вылезать за границу сайдбара */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 .duty-toggle:hover { background: var(--bg); }
 .duty-toggle.duty-on {
@@ -2857,4 +2869,48 @@ img.di-thumb:hover { box-shadow: 0 0 0 2px var(--accent); }
 
   /* Лайтбокс — поверх mobile-topbar (sticky z-index: 50) */
   .lightbox { z-index: 3000; }
+
+/* ====================================================================
+   ТЁМНАЯ ТЕМА — финальные исправления контраста.
+   Перекрывает захардкоженные светлые фоны и hover-эффекты, чтобы
+   в темной теме не было «светлых пятен» и нечитаемого текста.
+   ==================================================================== */
+
+/* Сообщения от бота: тёмный янтарный фон + светлый янтарный текст */
+[data-theme="dark"] .cmsg-bot .cmsg-bubble,
+[data-theme="dark"] .msg-bot .msg-bubble {
+  background: #3a3014;
+  border-color: #5a4a1a;
+  color: #ffd870;
 }
+
+/* Badge'и: гармонично выглядят в тёмной теме */
+[data-theme="dark"] .paid-badge           { background: #1a3a1a; color: #88e088; }
+[data-theme="dark"] .cancel-reason        { background: #3a1818; color: #ff9088; }
+[data-theme="dark"] .cust-presence.online { background: #1a3a1a; color: #88e088; }
+[data-theme="dark"] .cust-presence.recent { background: #3a3014; color: #ffd870; }
+
+/* Hover-эффекты: были светлые «вспышки» — заменяем на тёмные */
+[data-theme="dark"] .chat-item:hover,
+[data-theme="dark"] .cat-row:hover,
+[data-theme="dark"] .order-row:hover { background: var(--bg); }
+
+[data-theme="dark"] .new-order-btn:hover,
+[data-theme="dark"] .cust-tg-link:hover,
+[data-theme="dark"] .btn-take:hover  { background: var(--accent-soft); color: var(--accent); }
+
+/* Удаление-кнопки на hover: было #fde8e6, теперь тёмно-красный */
+[data-theme="dark"] .img-del:hover,
+[data-theme="dark"] .size-del:hover,
+[data-theme="dark"] .btn-danger:hover,
+[data-theme="dark"] .oi-del:hover,
+[data-theme="dark"] .di-del:hover,
+[data-theme="dark"] .tpl-del:hover,
+[data-theme="dark"] .mgr-del-btn:hover,
+[data-theme="dark"] .rem-dismiss:hover { background: #3a1818; }
+
+/* Duty-toggle on:hover — был #d2efd2 светло-зелёный */
+[data-theme="dark"] .duty-toggle.duty-on:hover { background: #244a24; }
+
+/* Заметка клиента с тёплым фоном (на светлом фоне был #6b4f00 тёмно-янтарный) */
+[data-theme="dark"] .cust-note-text { color: #ffd870; }
