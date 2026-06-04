@@ -221,7 +221,7 @@ function updateFavBtn(prod) {
 function shareProduct(prod, p) {
   haptic('light');
   const botUser = (CONFIG.BOT_USERNAME || '').replace(/^@/, '');
-  if (!botUser || botUser === 'your_shop_bot') {
+  if (!botUser || botUser === 'lizard_remote_delivery_bot') {
     // Бот не настроен — копируем хотя бы название (на крайний случай)
     showToast(t('shareNotConfigured'), 4000);
     return;
