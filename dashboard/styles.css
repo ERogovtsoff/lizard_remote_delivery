@@ -2914,3 +2914,104 @@ img.di-thumb:hover { box-shadow: 0 0 0 2px var(--accent); }
 
 /* Заметка клиента с тёплым фоном (на светлом фоне был #6b4f00 тёмно-янтарный) */
 [data-theme="dark"] .cust-note-text { color: #ffd870; }
+
+/* ====================== Мониторинг состояния сервисов ====================== */
+
+/* Индикатор в мобильном хедере */
+.health-indicator {
+  width: 40px; height: 40px;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.health-indicator:active { background: var(--bg); }
+.health-indicator.health-alarm,
+.foot-btn.health-alarm {
+  animation: health-pulse 1.5s ease-in-out infinite;
+}
+@keyframes health-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.5; }
+}
+
+/* Модалка состояния */
+.health-card { max-width: 640px; }
+.health-list {
+  display: flex; flex-direction: column; gap: 8px;
+  margin-bottom: 16px;
+}
+.health-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 16px;
+  background: var(--bg);
+  border-radius: 10px;
+  border-left: 4px solid var(--border);
+}
+.health-row.health-ok      { border-left-color: #4caf50; }
+.health-row.health-down    { border-left-color: var(--danger); }
+.health-row.health-unknown { border-left-color: var(--text-muted); }
+
+.health-row-main { flex: 1; min-width: 0; }
+.health-row-name {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text);
+}
+.health-row-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+.health-error {
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: #fde8e6;
+  color: var(--danger);
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  word-break: break-all;
+}
+.health-row-meta {
+  text-align: right;
+  flex-shrink: 0;
+}
+.health-row-status {
+  font-weight: 600;
+  font-size: 13px;
+}
+.health-row.health-ok      .health-row-status { color: #2a7a2a; }
+.health-row.health-down    .health-row-status { color: var(--danger); }
+.health-row.health-unknown .health-row-status { color: var(--text-muted); }
+.health-row-detail {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* Темная тема: только error-плашка нуждается в коррекции */
+[data-theme="dark"] .health-error { background: #3a1818; color: #ff9088; }
+[data-theme="dark"] .health-row.health-ok      .health-row-status { color: #88e088; }
+
+@media (max-width: 760px) {
+  .health-row {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .health-row-meta {
+    text-align: left;
+    width: 100%;
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
+  }
+}

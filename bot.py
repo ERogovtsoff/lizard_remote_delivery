@@ -1182,6 +1182,110 @@ async def outbox_worker(bot: Bot) -> None:
         await asyncio.sleep(INTERVALS[idx])
 
 
+# ============================ HEALTH MONITORING ============================
+#
+# Бот раз в 30 сек пишет heartbeat в БД (доказывает что он жив). Админка
+# в браузере менеджеров видит свежесть last_seen и судит о состоянии бота.
+#
+# Отдельный воркер раз в 90 сек проверяет таблицу health_status: если статус
+# какого-то компонента сменился с 'ok' на 'down' (или обратно) — рассылает
+# короткое уведомление дежурным менеджерам. С дедупликацией: не чаще раза
+# в HEALTH_ALERT_COOLDOWN_SEC на один компонент.
+
+HEARTBEAT_INTERVAL_SEC = 30
+HEALTH_ALERT_INTERVAL_SEC = 90
+HEALTH_ALERT_COOLDOWN_SEC = 15 * 60   # не больше 1 алерта на компонент в 15 минут
+# Какое состояние мы помним между итерациями (чтобы засечь СМЕНУ состояния)
+_health_known_state: dict = {}        # component -> 'ok' | 'down'
+
+
+async def heartbeat_worker(bot: Bot) -> None:
+    """Раз в HEARTBEAT_INTERVAL_SEC обновляет bot_heartbeat.last_seen = now()."""
+    while True:
+        try:
+            await supabase_patch("bot_heartbeat", {"id": "eq.1"}, {"last_seen": now_iso()})
+        except Exception as e:
+            log.warning("heartbeat_worker failed: %s", e)
+        await asyncio.sleep(HEARTBEAT_INTERVAL_SEC)
+
+
+def _health_label(component: str) -> str:
+    return {
+        "db":      "База данных",
+        "storage": "Файловое хранилище",
+        "bot":     "Telegram-бот",
+        "app":     "Клиентское приложение",
+    }.get(component, component)
+
+
+async def health_alert_worker(bot: Bot) -> None:
+    """
+    Раз в HEALTH_ALERT_INTERVAL_SEC читает health_status. Если статус изменился
+    с прошлой итерации (ok→down или down→ok) — шлёт алерт дежурным.
+    Алерт по одному компоненту не чаще HEALTH_ALERT_COOLDOWN_SEC.
+    """
+    global _health_known_state
+    # Первая итерация — инициализация: запоминаем что есть, но не алертим.
+    is_first = True
+    while True:
+        try:
+            rows = await supabase_get("health_status", {
+                "select": "component,status,error_message,last_alert_at",
+            })
+            new_state = {r["component"]: r["status"] for r in (rows or [])}
+
+            if is_first:
+                _health_known_state = new_state
+                is_first = False
+            else:
+                # Сравниваем со старым состоянием — алертим только при смене
+                for r in (rows or []):
+                    comp = r["component"]
+                    new_status = r["status"]
+                    old_status = _health_known_state.get(comp)
+                    if old_status is None or new_status == old_status:
+                        continue
+                    if new_status == "unknown":
+                        # Игнорируем переход в 'unknown' — это не сбой, а просто
+                        # таймаут проверки на клиенте (например, менеджер закрыл вкладку)
+                        continue
+                    # Проверим cooldown: last_alert_at недавно?
+                    last_alert = _parse_ts(r.get("last_alert_at")) if r.get("last_alert_at") else None
+                    if last_alert is not None:
+                        age = (datetime.now(timezone.utc) - last_alert).total_seconds()
+                        if age < HEALTH_ALERT_COOLDOWN_SEC:
+                            continue
+                    # Формируем текст и шлём
+                    label = _health_label(comp)
+                    if new_status == "down":
+                        text = (
+                            f"⚠️ <b>Проблема с сервисом</b>\n\n"
+                            f"Компонент: <b>{label}</b>\n"
+                            f"Статус: ❌ недоступен"
+                        )
+                        if r.get("error_message"):
+                            text += f"\n\n<i>{html.escape(r['error_message'][:200])}</i>"
+                        text += "\n\nЕсли проблема не уйдёт сама — проверь работу сервиса вручную."
+                    elif new_status == "ok":
+                        text = f"✅ Компонент восстановлен: <b>{label}</b>"
+                    else:
+                        continue
+                    # Шлём дежурным и фиксируем last_alert_at
+                    chats = await get_duty_chat_ids()
+                    for chat in chats:
+                        try:
+                            await retry_network(lambda: bot.send_message(chat, text), what="health_alert")
+                        except Exception as e:
+                            log.warning("health alert send to %s failed: %s", chat, e)
+                    await supabase_patch("health_status", {"component": f"eq.{comp}"},
+                                         {"last_alert_at": now_iso()})
+
+                _health_known_state = new_state
+        except Exception as e:
+            log.warning("health_alert_worker iteration failed: %s", e)
+        await asyncio.sleep(HEALTH_ALERT_INTERVAL_SEC)
+
+
 async def main() -> None:
     if not BOT_TOKEN:
         raise RuntimeError("BOT_TOKEN не задан")
@@ -1210,6 +1314,10 @@ async def main() -> None:
     asyncio.create_task(abandoned_cart_worker(bot))
     # Фоновый процесс отправки ответов из dashboard
     asyncio.create_task(outbox_worker(bot))
+    # Heartbeat — доказательство «бот жив» для мониторинга в админке
+    asyncio.create_task(heartbeat_worker(bot))
+    # Воркер алертов: смотрит health_status и шлёт уведомления при сбоях
+    asyncio.create_task(health_alert_worker(bot))
 
     try:
         await dp.start_polling(bot)

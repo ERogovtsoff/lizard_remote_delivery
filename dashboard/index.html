@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>LIZARD · Панель управления</title>
 <link rel="preconnect" href="https://nhnbprmyqqpwcofkaasi.supabase.co" crossorigin />
-<link rel="stylesheet" href="styles.css?v=26" />
+<link rel="stylesheet" href="styles.css?v=27" />
 </head>
 <body>
 
@@ -39,6 +39,9 @@
       <button class="mobile-nav-tab" data-section="catalog">Каталог</button>
     </div>
     <button class="mobile-search-btn" id="mobileSearchBtn" aria-label="Поиск">🔍</button>
+    <button class="health-indicator" id="healthIndicator" aria-label="Состояние сервисов" title="Состояние сервисов">
+      <span class="health-dot" id="healthDot">⚪</span>
+    </button>
   </header>
 
   <!-- DRAWER: выезжающее меню для мобилки. Скрыто на десктопе. -->
@@ -58,6 +61,7 @@
         <button class="drawer-item" data-action="templates"><span class="drawer-ic">📝</span><span>Шаблоны</span></button>
         <button class="drawer-item" data-action="managers" id="drawerManagers" style="display:none"><span class="drawer-ic">👥</span><span>Менеджеры</span></button>
         <button class="drawer-item" data-action="audit"><span class="drawer-ic">📋</span><span>Журнал действий</span></button>
+        <button class="drawer-item" data-action="health"><span class="drawer-ic" id="drawerHealthIc">⚪</span><span>Состояние сервисов</span></button>
         <button class="drawer-item" data-action="theme"><span class="drawer-ic" id="drawerThemeIc">🌙</span><span id="drawerThemeLbl">Тёмная тема</span></button>
         <button class="drawer-item drawer-item-danger" data-action="logout"><span class="drawer-ic">🚪</span><span>Выйти</span></button>
       </div>
@@ -92,6 +96,7 @@
         <button class="foot-btn" id="templatesBtn" title="Шаблоны ответов">📝 Шаблоны</button>
         <button class="foot-btn" id="managersBtn" title="Управление менеджерами" style="display:none">👥 Менеджеры</button>
         <button class="foot-btn" id="auditBtn" title="Журнал действий">📋 Журнал</button>
+        <button class="foot-btn" id="healthBtn" title="Состояние сервисов"><span id="healthBtnDot">⚪</span> Сервисы</button>
         <button class="foot-btn" id="themeBtn" title="Переключить тему">🌙</button>
         <button class="logout-btn" id="logoutBtn" title="Выйти">Выйти</button>
       </div>

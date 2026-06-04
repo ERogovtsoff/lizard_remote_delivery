@@ -7,6 +7,7 @@ import * as orders from './orders.js';
 import * as customers from './customers.js';
 import * as analytics from './analytics.js';
 import * as search from './search.js';
+import * as health from './health.js';
 import { escapeHtml } from './utils.js';
 
 let currentManager = null;
@@ -78,6 +79,7 @@ function showApp() {
   setupSectionTabs();
   setupDutyToggle();
   setupMobileShell();
+  setupHealthMonitor();
   // Кнопка управления менеджерами — только для суперадмина
   const mgrBtn = document.getElementById('managersBtn');
   if (mgrBtn) mgrBtn.style.display = currentManager.is_superadmin ? '' : 'none';
@@ -184,6 +186,7 @@ function handleDrawerAction(action) {
     case 'templates':  orders.openTemplatesEditor(); break;
     case 'managers':   openManagersModal(); break;
     case 'audit':      orders.openAuditLog(); break;
+    case 'health':     openHealthModal(); break;
     case 'theme':      toggleTheme(); break;
     case 'logout':     logout(); break;
   }
@@ -504,4 +507,116 @@ async function openManagersModal() {
   };
 
   await refreshList();
+}
+// ============ МОНИТОРИНГ СОСТОЯНИЯ СЕРВИСОВ ============
+
+function setupHealthMonitor() {
+  // Запускаем периодический опрос
+  health.startHealthMonitor();
+  // Подписываемся на изменения состояния — обновляем иконки
+  health.onStatusChange(updateHealthIcons);
+  // Привязываем кнопки (мобильную и десктопную)
+  const mobileBtn = document.getElementById('healthIndicator');
+  if (mobileBtn) mobileBtn.onclick = openHealthModal;
+  const desktopBtn = document.getElementById('healthBtn');
+  if (desktopBtn) desktopBtn.onclick = openHealthModal;
+}
+
+function updateHealthIcons() {
+  const overall = health.getOverallStatus();
+  const icon = overall === 'ok' ? '🟢' : overall === 'down' ? '🔴' : '🟡';
+  const dotMobile = document.getElementById('healthDot');
+  if (dotMobile) dotMobile.textContent = icon;
+  const dotDesktop = document.getElementById('healthBtnDot');
+  if (dotDesktop) dotDesktop.textContent = icon;
+  const dotDrawer = document.getElementById('drawerHealthIc');
+  if (dotDrawer) dotDrawer.textContent = icon;
+  // Если хотя бы один компонент упал — добавим пульсацию иконке
+  const mobileBtn = document.getElementById('healthIndicator');
+  const desktopBtn = document.getElementById('healthBtn');
+  for (const btn of [mobileBtn, desktopBtn]) {
+    if (!btn) continue;
+    btn.classList.toggle('health-alarm', overall === 'down');
+  }
+}
+
+const HEALTH_LABELS = {
+  db:      { icon: '🗄️', name: 'База данных',           hint: 'Supabase PostgreSQL — где хранятся заказы, клиенты, обращения' },
+  storage: { icon: '📁', name: 'Файловое хранилище',     hint: 'Supabase Storage — куда сохраняются фото и документы' },
+  bot:     { icon: '🤖', name: 'Telegram-бот',           hint: 'Бот, через которого клиенты пишут менеджерам' },
+  app:     { icon: '📱', name: 'Клиентское приложение',  hint: 'Mini App, в котором клиенты делают заказы' },
+};
+
+function openHealthModal() {
+  const old = document.getElementById('healthModal');
+  if (old) { old.remove(); return; }
+
+  const modal = document.createElement('div');
+  modal.id = 'healthModal';
+  modal.className = 'qp-modal';
+  modal.innerHTML = `
+    <div class="qp-card health-card">
+      <div class="qp-head">📡 Состояние сервисов</div>
+      <p class="req-hint">
+        Проверка идёт автоматически раз в минуту. Если что-то отвалится — дежурным менеджерам прилетит уведомление в Telegram.
+      </p>
+      <div id="healthList" class="health-list"></div>
+      <div class="qp-actions">
+        <button class="btn-light" id="healthRefresh">🔄 Проверить сейчас</button>
+        <button class="btn-primary" id="healthClose">Закрыть</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  document.getElementById('healthClose').onclick = () => modal.remove();
+
+  const refreshBtn = document.getElementById('healthRefresh');
+  refreshBtn.onclick = async () => {
+    refreshBtn.disabled = true;
+    refreshBtn.textContent = '⏳ Проверяем…';
+    try {
+      await health.forceCheck();
+    } finally {
+      refreshBtn.disabled = false;
+      refreshBtn.textContent = '🔄 Проверить сейчас';
+    }
+  };
+
+  // Подписка на обновления, пока модалка открыта
+  const unsubscribe = health.onStatusChange(renderHealthList);
+  // Снимаем подписку при закрытии модалки
+  const origRemove = modal.remove.bind(modal);
+  modal.remove = () => { unsubscribe(); origRemove(); };
+
+  renderHealthList(health.getState());
+}
+
+function renderHealthList(state) {
+  const box = document.getElementById('healthList');
+  if (!box) return;
+  const order = ['db', 'storage', 'bot', 'app'];
+  box.innerHTML = order.map(c => {
+    const info = HEALTH_LABELS[c];
+    const s = state[c];
+    const icon = s.status === 'ok' ? '🟢' : s.status === 'down' ? '🔴' : '⚪';
+    const label = s.status === 'ok' ? 'Работает' : s.status === 'down' ? 'Недоступен' : 'Проверяется…';
+    const cls = s.status === 'ok' ? 'health-ok' : s.status === 'down' ? 'health-down' : 'health-unknown';
+    const latency = s.latency_ms != null ? `${s.latency_ms} мс` : '—';
+    const checked = s.checked_at
+      ? new Date(s.checked_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      : '—';
+    const error = s.error ? `<div class="health-error">${escapeHtml(s.error)}</div>` : '';
+    return `
+      <div class="health-row ${cls}">
+        <div class="health-row-main">
+          <div class="health-row-name">${info.icon} ${info.name}</div>
+          <div class="health-row-hint">${info.hint}</div>
+          ${error}
+        </div>
+        <div class="health-row-meta">
+          <div class="health-row-status">${icon} ${label}</div>
+          <div class="health-row-detail">⏱ ${latency} · ${checked}</div>
+        </div>
+      </div>`;
+  }).join('');
 }
