@@ -514,8 +514,11 @@ async def get_duty_chat_ids() -> list:
 
 
 async def update_manager_chat(user) -> None:
-    """Когда менеджер пишет боту — сохраняем его chat_id и tg_id в таблице."""
-    if user is None or is_superadmin(user):
+    """Когда менеджер пишет боту — сохраняем его chat_id и tg_id в таблице.
+    Раньше суперадмин пропускался (его chat_id уезжает в manager_chat.txt),
+    но если он добавлен и в таблицу managers — полезно заполнить и там,
+    чтобы get_duty_chat_ids не выдавал warning «без chat_id»."""
+    if user is None:
         return
     uname = (user.username or "").lower()
     # Ищем запись по tg_id или username
@@ -681,6 +684,8 @@ async def cmd_start_deeplink(message: Message, command: CommandObject, bot: Bot)
     if param == "duty":
         if is_superadmin(user):
             set_superadmin_chat_id(message.chat.id)
+            # И в таблицу managers (если он там есть) — чтобы убрать warning
+            await update_manager_chat(user)
         elif await is_manager(user):
             await update_manager_chat(user)
         # Тихое короткое подтверждение, без инструкций
@@ -713,6 +718,9 @@ async def cmd_start(message: Message) -> None:
 
     if is_superadmin(user):
         set_superadmin_chat_id(message.chat.id)
+        # Если суперадмин также есть в таблице managers — заполним там chat_id,
+        # чтобы get_duty_chat_ids не выдавал warning.
+        await update_manager_chat(user)
         await message.answer(
             "✅ Вы вошли как <b>суперадмин</b>.\n\n"
             "Все управление — в админ-панели:\n"
@@ -1238,16 +1246,26 @@ async def health_alert_worker(bot: Bot) -> None:
                 _health_known_state = new_state
                 is_first = False
             else:
-                # Сравниваем со старым состоянием — алертим только при смене
+                # Сравниваем со старым состоянием — алертим только при значимой смене.
+                # Матрица переходов:
+                #   ok    → down    : алерт «проблема»
+                #   unknown → down  : алерт «проблема» (узнали что плохо)
+                #   down  → ok      : алерт «восстановлен»
+                #   unknown → ok    : МОЛЧИМ (просто узнали что всё норма после старта)
+                #   *     → unknown : МОЛЧИМ (потеря наблюдения, не сбой)
+                #   x     → x       : МОЛЧИМ
                 for r in (rows or []):
                     comp = r["component"]
                     new_status = r["status"]
                     old_status = _health_known_state.get(comp)
                     if old_status is None or new_status == old_status:
                         continue
+                    # Любой переход в unknown — не алертим
                     if new_status == "unknown":
-                        # Игнорируем переход в 'unknown' — это не сбой, а просто
-                        # таймаут проверки на клиенте (например, менеджер закрыл вкладку)
+                        continue
+                    # Переход unknown → ok — это не «восстановление», а просто
+                    # первое подтверждение работоспособности. Молчим.
+                    if old_status == "unknown" and new_status == "ok":
                         continue
                     # Проверим cooldown: last_alert_at недавно?
                     last_alert = _parse_ts(r.get("last_alert_at")) if r.get("last_alert_at") else None
