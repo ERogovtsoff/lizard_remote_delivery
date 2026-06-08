@@ -3264,3 +3264,56 @@ img.di-thumb:hover { box-shadow: 0 0 0 2px var(--accent); }
   .empty-state { padding: 40px 16px; }
   .empty-icon { font-size: 40px; }
 }
+
+/* Подсказка-баннер в новой карточке обращения */
+.inq-new-hint {
+  margin: 8px 16px 0;
+  padding: 12px 14px;
+  background: #fff8e1;
+  border-left: 3px solid #ffc107;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #6b4f00;
+}
+[data-theme="dark"] .inq-new-hint {
+  background: #3a3014;
+  color: #ffd870;
+  border-left-color: #ffd54f;
+}
+
+/* Блок с двумя крупными кнопками для нового обращения */
+.inq-actions-new {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.inq-actions-new button {
+  flex: 1;
+  min-width: 200px;
+  min-height: 48px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.btn-take-inq {
+  background: var(--success, #4caf50);
+}
+.btn-take-inq:hover { filter: brightness(1.05); }
+
+/* Подсказка для нового обращения — теперь полноценный «гайд» */
+.inq-new-hint {
+  margin-top: 12px;
+  padding: 12px 16px;
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text);
+}
+.inq-new-hint b { color: var(--accent-dark); }
+.inq-new-hint i { color: var(--text-secondary); font-size: 12px; }
+
+@media (max-width: 760px) {
+  .inq-actions-new button { min-width: auto; flex-basis: 100%; }
+}

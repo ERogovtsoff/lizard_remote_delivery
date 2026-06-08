@@ -909,18 +909,27 @@ function renderOrderDetail(id) {
   if (mb) mb.onclick = backToList;
   setupCopyId();
 
-  // Взять в работу (#8)
+  // Взять в работу — назначает текущего менеджера + переводит новый заказ в «В работе».
+  // Раньше только проставлял assigned_to, и менеджеры игнорировали статус.
+  // Теперь одна кнопка делает обе вещи: «принял заказ → клиент уведомлён».
   const takeBtn = document.getElementById('takeOrderBtn');
   if (takeBtn) takeBtn.onclick = async () => {
     takeBtn.disabled = true;
     try {
       await api.assignManager({ order_id: o.id }, managerUsername);
       o.assigned_to = managerUsername;
+      // Если статус «новый» — переводим в «в работе» с автосообщением клиенту
+      if (o.status === 'new') {
+        const clientMsg = 'Взяли ваш заказ в работу 🙌 Скоро вернёмся с деталями.';
+        await api.setOrderStatus(o.id, 'in_progress', clientMsg, o.customer_tg_id, managerUsername, 'new');
+        o.status = 'in_progress';
+        o.status_changed_at = new Date().toISOString();
+      }
       const inArr = orders.find(x => String(x.id) === String(o.id));
-      if (inArr) inArr.assigned_to = managerUsername;
+      if (inArr) { inArr.assigned_to = managerUsername; inArr.status = o.status; }
       renderOrderDetail(o.id);
       renderOrdersList();
-    } catch (e) { console.error(e); setDetailMsg('Ошибка назначения', true); takeBtn.disabled = false; }
+    } catch (e) { console.error(e); setDetailMsg('Ошибка: ' + e.message, true); takeBtn.disabled = false; }
   };
 
   // Закрепить (#9)
@@ -1172,8 +1181,21 @@ async function changeOrderStatus(order, status) {
     order.status = status;
     order.status_changed_at = new Date().toISOString();
     if (cancelReason != null) order.cancel_reason = cancelReason;
+    // Если переходим из «нового» в рабочий статус и заказ ни за кем не закреплён —
+    // автоматически берём его на себя. Это та же логика, что и в обращениях:
+    // менеджеру не нужно вспоминать нажать «✋ Взять».
+    if (oldStatus === 'new' && status !== 'cancelled' && !order.assigned_to) {
+      try {
+        await api.assignManager({ order_id: order.id }, managerUsername);
+        order.assigned_to = managerUsername;
+      } catch (e) { console.warn('auto-assign failed:', e); }
+    }
     const inArr = orders.find(x => String(x.id) === String(order.id));
-    if (inArr) { inArr.status = status; inArr.status_changed_at = order.status_changed_at; }
+    if (inArr) {
+      inArr.status = status;
+      inArr.status_changed_at = order.status_changed_at;
+      if (order.assigned_to) inArr.assigned_to = order.assigned_to;
+    }
     setDetailMsg('Статус обновлён ✓' + (fullMsg ? ' Клиент уведомлён.' : ''));
     renderOrdersList();
     renderOrderDetail(order.id);     // перерисовка покажет новый статус и доступность переписки
@@ -1203,12 +1225,17 @@ function renderInquiryDetail(id) {
     prodLine = `<div><b>Товар:</b> ${escapeHtml(p.name_ru || p.name_en || q.product_id)}</div>`;
   }
 
-  const statusButtons = Object.entries(INQUIRY_STATUS)
-    .filter(([key]) => key !== q.status)
-    .map(([key, s]) => {
-      const cls = key === 'closed' ? 'btn-light' : 'btn-primary';
-      return `<button class="${cls}" data-status="${key}">${escapeHtml(s.label)}</button>`;
-    }).join('');
+  // Какие кнопки показывать — зависит от статуса. Это сделано чтобы менеджер
+  // не путался в трёх «начать работать» (статус-кнопка, «Взять», «Создать заказ»)
+  // и не закрывал «новые» обращения по случайности.
+  let statusButtons = '';
+  if (q.status === 'in_progress') {
+    statusButtons = `<button class="btn-light" data-status="closed">✅ Закрыть</button>`;
+  } else if (q.status === 'closed') {
+    statusButtons = `<button class="btn-light" data-status="in_progress">🔄 Открыть снова</button>`;
+  }
+  // Для status==='new' — пусто: вместо статус-кнопок показываем явные
+  // «Взять в работу» и «Создать заказ» ниже.
 
   box.innerHTML = `
     <div class="detail-top">
@@ -1219,13 +1246,29 @@ function renderInquiryDetail(id) {
         <span class="detail-head-sum">${escapeHtml(typeLabel)}</span>
       </div>
       <div class="detail-quickstatus">
-        <div class="status-actions">${statusButtons}</div>
-        <button class="btn-primary btn-create-order" id="inqCreateOrder">➕ Создать заказ</button>
+        ${q.status === 'new' ? `
+          <div class="inq-actions-new">
+            <button class="btn-primary btn-take-inq" id="takeInqBtnNew">✋ Взять в работу</button>
+            <button class="btn-primary btn-create-order" id="inqCreateOrder">➕ Создать заказ</button>
+          </div>
+        ` : `
+          <div class="status-actions">${statusButtons}</div>
+          ${q.status === 'in_progress' ? `<button class="btn-primary btn-create-order" id="inqCreateOrder">➕ Создать заказ</button>` : ''}
+        `}
       </div>
+      ${q.status === 'new' ? `
+      <div class="inq-new-hint">
+        <b>Что делать с новым обращением:</b><br>
+        <b>«✋ Взять в работу»</b> — если нужно сначала обсудить детали с клиентом. Клиенту уходит «Получили ваше сообщение, скоро ответим», обращение закрепляется за вами.<br>
+        <b>«➕ Создать заказ»</b> — если уже знаете что нужно клиенту. Обращение закроется автоматически, диалог продолжится в заказе.<br>
+        <i>Не закрывайте обращения «как есть» — заказы оформляйте именно отсюда, чтобы сохранить связь обращение↔заказ в журнале и аналитике.</i>
+      </div>` : ''}
       <div class="detail-assign-row">
         ${q.assigned_to
           ? `<span class="assign-badge">👤 ${escapeHtml(q.assigned_to)}</span>`
-          : `<button class="btn-take" id="takeInqBtn">✋ Взять в работу</button>`}
+          : (q.status === 'new'
+              ? ''  /* кнопка «Взять в работу» уже есть выше — не дублируем */
+              : `<button class="btn-take" id="takeInqBtn">✋ Взять в работу</button>`)}
         <span class="status-age" title="Время в текущем статусе">⏱ в статусе ${timeAgo(q.status_changed_at || q.updated_at)}</span>
         <button class="btn-mini btn-pin ${q.pinned ? 'pinned-on' : ''}" id="pinBtn" title="Закрепить вверху списка">📌 ${q.pinned ? 'закреплён' : 'закрепить'}</button>
         <button class="btn-mini" id="remindBtn" title="Поставить напоминание">⏰ напомнить</button>
@@ -1280,25 +1323,41 @@ function renderInquiryDetail(id) {
     btn.onclick = () => changeInquiryStatus(q, btn.getAttribute('data-status'));
   });
 
-  // Создание заказа из обращения
-  document.getElementById('inqCreateOrder').onclick = () => startOrderForm(q);
+  // Создание заказа из обращения. В статусе 'closed' кнопки нет — пропускаем.
+  const createOrderBtn = document.getElementById('inqCreateOrder');
+  if (createOrderBtn) createOrderBtn.onclick = () => startOrderForm(q);
   const mbq = document.getElementById('mobileBack');
   if (mbq) mbq.onclick = backToList;
   setupCopyId();
 
-  // Взять в работу (#8)
-  const takeBtn = document.getElementById('takeInqBtn');
-  if (takeBtn) takeBtn.onclick = async () => {
-    takeBtn.disabled = true;
+  // Взять в работу — теперь делает 3 вещи сразу:
+  //   1. Назначает текущего менеджера ответственным (assigned_to)
+  //   2. Переводит статус в 'in_progress' (если был 'new')
+  //   3. Отправляет клиенту автосообщение «получили ваш запрос»
+  // Раньше кнопка ставила только assigned_to, и менеджеры её игнорировали.
+  // Обработчик общий для двух кнопок: крупной для статуса «новое» (#takeInqBtnNew)
+  // и компактной в строке assign (#takeInqBtn).
+  const takeBtnHandler = async (btn) => {
+    btn.disabled = true;
     try {
       await api.assignManager({ inquiry_id: q.id }, managerUsername);
       q.assigned_to = managerUsername;
+      // Если ещё «новое» — переводим в «в работу» с автосообщением клиенту
+      if (q.status === 'new') {
+        const clientMsg = 'Получили ваше сообщение 🙌 Скоро ответим!';
+        await api.setInquiryStatus(q.id, 'in_progress', clientMsg, q.customer_tg_id, managerUsername, 'new');
+        q.status = 'in_progress';
+      }
       const inArr = inquiries.find(x => String(x.id) === String(q.id));
-      if (inArr) inArr.assigned_to = managerUsername;
+      if (inArr) { inArr.assigned_to = managerUsername; inArr.status = q.status; }
       renderInquiryDetail(q.id);
       renderOrdersList();
-    } catch (e) { console.error(e); setDetailMsg('Ошибка назначения', true); takeBtn.disabled = false; }
+    } catch (e) { console.error(e); setDetailMsg('Ошибка: ' + e.message, true); btn.disabled = false; }
   };
+  const takeBtn = document.getElementById('takeInqBtn');
+  if (takeBtn) takeBtn.onclick = () => takeBtnHandler(takeBtn);
+  const takeBtnNew = document.getElementById('takeInqBtnNew');
+  if (takeBtnNew) takeBtnNew.onclick = () => takeBtnHandler(takeBtnNew);
 
   // Закрепить (#9)
   const pinBtn = document.getElementById('pinBtn');
@@ -1334,6 +1393,15 @@ function renderInquiryDetail(id) {
 async function changeInquiryStatus(q, status) {
   if (statusBusy) return;
   const oldStatus = q.status;
+  // Защита от частой ошибки: закрытие обращения, которое никто не брал в работу.
+  // Спрашиваем подтверждение — может менеджер забыл нажать «Взять в работу».
+  if (oldStatus === 'new' && status === 'closed') {
+    const ok = confirm(
+      'Обращение ещё в статусе «🆕 Новое» — никто его не взял в работу.\n\n' +
+      'Точно закрыть? Если хотите завести заказ — нажмите «➕ Создать заказ» вместо закрытия.'
+    );
+    if (!ok) return;
+  }
   statusBusy = true;
   document.querySelectorAll('.status-actions button').forEach(b => b.disabled = true);
   const notify = document.getElementById('inqNotify')?.checked;
@@ -1743,7 +1811,13 @@ let orderDraft = null;   // { inquiry, items: [{product_id, size, qty}] }
 
 function startOrderForm(inquiry) {
   orderDraft = { inquiry, items: [{ product_id: '', size: '', qty: 1 }] };
-  document.getElementById('inqCreateOrder').style.display = 'none';
+  // Скрываем «Создать заказ» если эта кнопка ещё видна (для new — там вообще
+  // блок крупных кнопок, для in_progress — отдельная кнопка)
+  const createBtn = document.getElementById('inqCreateOrder');
+  if (createBtn) createBtn.style.display = 'none';
+  // Также скроем «Взять в работу» (если открыта форма создания — кнопка не нужна)
+  const takeBtnNew = document.getElementById('takeInqBtnNew');
+  if (takeBtnNew) takeBtnNew.style.display = 'none';
   // Раскрываем свёрнутую секцию деталей, чтобы форма была видна
   const details = document.querySelector('.detail-collapse');
   if (details) details.open = true;
@@ -1758,7 +1832,10 @@ function startOrderForm(inquiry) {
   document.getElementById('cancelOrderForm').onclick = () => {
     orderDraft = null;
     document.getElementById('orderForm').style.display = 'none';
-    document.getElementById('inqCreateOrder').style.display = '';
+    const createBtn2 = document.getElementById('inqCreateOrder');
+    if (createBtn2) createBtn2.style.display = '';
+    const takeBtnNew2 = document.getElementById('takeInqBtnNew');
+    if (takeBtnNew2) takeBtnNew2.style.display = '';
   };
   document.getElementById('saveOrder').onclick = saveOrderDraft;
 }
@@ -1859,6 +1936,13 @@ async function saveOrderDraft() {
   setDetailMsg('Создаём заказ…');
   try {
     const inq = orderDraft.inquiry;
+    // Если у обращения нет ответственного — назначаем текущего менеджера.
+    // Это сохраняет авторство в журнале и статистике, даже если статус
+    // «новое» проскочил без явного «в работе».
+    if (!inq.assigned_to) {
+      await api.assignManager({ inquiry_id: inq.id }, managerUsername);
+      inq.assigned_to = managerUsername;
+    }
     const order = await api.createOrder(inq.customer_tg_id, items, 'USD', inq.id);
     // Закрываем обращение БЕЗ отбивки (диалог продолжается в заказе)
     await api.setInquiryStatus(inq.id, 'closed', null, inq.customer_tg_id, managerUsername);
