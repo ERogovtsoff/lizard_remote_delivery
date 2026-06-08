@@ -8,6 +8,7 @@ import * as customers from './customers.js';
 import * as analytics from './analytics.js';
 import * as search from './search.js';
 import * as health from './health.js';
+import { openHelpModal, maybeShowOnboarding } from './help.js';
 import { escapeHtml } from './utils.js';
 
 let currentManager = null;
@@ -80,6 +81,8 @@ function showApp() {
   setupDutyToggle();
   setupMobileShell();
   setupHealthMonitor();
+  // Показать чек-лист новичка (только если ни разу не видел)
+  setTimeout(() => maybeShowOnboarding(currentManager), 500);
   // Кнопка управления менеджерами — только для суперадмина
   const mgrBtn = document.getElementById('managersBtn');
   if (mgrBtn) mgrBtn.style.display = currentManager.is_superadmin ? '' : 'none';
@@ -187,6 +190,7 @@ function handleDrawerAction(action) {
     case 'managers':   openManagersModal(); break;
     case 'audit':      orders.openAuditLog(); break;
     case 'health':     openHealthModal(); break;
+    case 'help':       openHelpModal(); break;
     case 'theme':      toggleTheme(); break;
     case 'logout':     logout(); break;
   }
@@ -229,6 +233,8 @@ function init() {
   if (auditBtn) auditBtn.onclick = () => orders.openAuditLog();
   const managersBtn = document.getElementById('managersBtn');
   if (managersBtn) managersBtn.onclick = () => openManagersModal();
+  const helpBtn = document.getElementById('helpBtn');
+  if (helpBtn) helpBtn.onclick = () => openHelpModal();
   const themeBtn = document.getElementById('themeBtn');
   if (themeBtn) themeBtn.onclick = toggleTheme;
   applyTheme(localStorage.getItem('lizard_theme') || 'light');

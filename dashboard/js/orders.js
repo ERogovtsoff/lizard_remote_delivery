@@ -136,17 +136,17 @@ function renderSummary() {
     const newInq = inquiries.filter(q => q.status === 'new').length;
     const inWork = inquiries.filter(q => q.status === 'in_progress').length;
     return `<div class="list-summary">
-      <span class="sum-chip">Новых: <b>${newInq}</b></span>
-      <span class="sum-chip">В работе: <b>${inWork}</b></span>
+      <span class="sum-chip">Новых: <b>${newInq}</b> <span class="hb-tip" data-tip="Обращения со статусом «🆕 Новое» — клиент только что написал, ещё никто не взял в работу.">ⓘ</span></span>
+      <span class="sum-chip">В работе: <b>${inWork}</b> <span class="hb-tip" data-tip="Обращения со статусом «✋ В работе» — менеджер начал общение с клиентом.">ⓘ</span></span>
     </div>`;
   }
   const active = orders.filter(o => isOrderActive(o.status));
   const awaitingPay = orders.filter(o => o.status === 'awaiting_payment').length;
   const unpaidSum = active.filter(o => !o.is_paid).reduce((s, o) => s + (Number(o.total_usd) || 0), 0);
   return `<div class="list-summary">
-    <span class="sum-chip">Активных: <b>${active.length}</b></span>
-    <span class="sum-chip">Ждут оплаты: <b>${awaitingPay}</b></span>
-    <span class="sum-chip">В работе: <b>$${unpaidSum.toFixed(0)}</b></span>
+    <span class="sum-chip">Активных: <b>${active.length}</b> <span class="hb-tip" data-tip="Заказы во всех «рабочих» статусах: от «Новый» до «Готов к выдаче». Без отменённых и выданных.">ⓘ</span></span>
+    <span class="sum-chip">Ждут оплаты: <b>${awaitingPay}</b> <span class="hb-tip" data-tip="Заказы со статусом «💳 Ждёт оплаты» — клиенту отправили реквизиты, ждём поступления денег.">ⓘ</span></span>
+    <span class="sum-chip">В работе: <b>$${unpaidSum.toFixed(0)}</b> <span class="hb-tip" data-tip="Сумма ещё не оплаченных активных заказов в USD. Помогает оценить «зависшие в воронке» деньги.">ⓘ</span></span>
   </div>`;
 }
 
@@ -606,10 +606,31 @@ function renderOrdersList() {
     <div class="orders-items">`;
 
   if (!items.length) {
-    const emptyMsg = (searchQuery || statusFilter !== 'active')
-      ? 'Ничего не найдено по фильтрам'
-      : (activeTab === 'orders' ? 'Заказов пока нет' : 'Обращений пока нет');
-    html += `<div class="empty-hint">${emptyMsg}</div>`;
+    let emptyMsg;
+    if (searchQuery || statusFilter !== 'active') {
+      emptyMsg = `
+        <div class="empty-state">
+          <div class="empty-icon">🔍</div>
+          <div class="empty-title">Ничего не найдено</div>
+          <div class="empty-text">Попробуйте сменить фильтры или поиск.</div>
+        </div>`;
+    } else if (activeTab === 'orders') {
+      emptyMsg = `
+        <div class="empty-state">
+          <div class="empty-icon">📦</div>
+          <div class="empty-title">Заказов пока нет</div>
+          <div class="empty-text">Тут будут появляться новые заказы клиентов из приложения.<br>
+          Чтобы получать уведомления — встаньте на дежурство (кнопка слева внизу).</div>
+        </div>`;
+    } else {
+      emptyMsg = `
+        <div class="empty-state">
+          <div class="empty-icon">💬</div>
+          <div class="empty-title">Обращений пока нет</div>
+          <div class="empty-text">Здесь появятся сообщения клиентов: запросы на подбор товара и вопросы о товарах.</div>
+        </div>`;
+    }
+    html += emptyMsg;
   } else if (activeTab === 'orders' && listView === 'board') {
     // Канбан-режим: группировка по статусам (только для активных статусов воронки)
     const boardStatuses = ['new', 'in_progress', 'awaiting_payment', 'paid', 'purchasing', 'shipping', 'ready'];

@@ -74,7 +74,12 @@ function renderCustomersSection() {
       </select>
     </div>
     <div class="cust-grid">
-      ${items.length ? items.map(renderCustomerCard).join('') : '<div class="empty-hint">Ничего не найдено</div>'}
+      ${items.length ? items.map(renderCustomerCard).join('') : `
+        <div class="empty-state">
+          <div class="empty-icon">👥</div>
+          <div class="empty-title">${customers.length ? 'Ничего не найдено' : 'Клиентов пока нет'}</div>
+          <div class="empty-text">${customers.length ? 'Попробуйте сменить фильтр.' : 'Когда клиенты начнут оформлять заказы или писать в чат — они появятся тут.'}</div>
+        </div>`}
     </div>
   `;
   sec.innerHTML = html;
@@ -168,10 +173,10 @@ function renderCustomerSummary() {
   const vip = customers.filter(c => Number(c.purchases_total) >= VIP_THRESHOLD_USD).length;
   const totalSpent = customers.reduce((s, c) => s + (Number(c.purchases_total) || 0), 0);
   return `
-    <span class="sum-chip">Всего: <b>${total}</b></span>
-    <span class="sum-chip">С покупками: <b>${withOrders}</b></span>
-    <span class="sum-chip">VIP (от $${VIP_THRESHOLD_USD}): <b>${vip}</b></span>
-    <span class="sum-chip">Общий оборот: <b>$${totalSpent.toFixed(0)}</b></span>
+    <span class="sum-chip">Всего: <b>${total}</b> <span class="hb-tip" data-tip="Все клиенты, кто хоть раз обращался в чат или регистрировался в приложении.">ⓘ</span></span>
+    <span class="sum-chip">С покупками: <b>${withOrders}</b> <span class="hb-tip" data-tip="Клиенты, у которых был хотя бы один заказ (даже не оплаченный).">ⓘ</span></span>
+    <span class="sum-chip">VIP (от $${VIP_THRESHOLD_USD}): <b>${vip}</b> <span class="hb-tip" data-tip="VIP — клиенты, которые в сумме оплатили на $${VIP_THRESHOLD_USD} и больше.">ⓘ</span></span>
+    <span class="sum-chip">Общий оборот: <b>$${totalSpent.toFixed(0)}</b> <span class="hb-tip" data-tip="Сумма всех оплаченных заказов всех клиентов за всё время.">ⓘ</span></span>
   `;
 }
 

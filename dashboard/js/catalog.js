@@ -40,7 +40,22 @@ function renderList() {
   if (!list) return;
   const filtered = products.filter(p => matches(p, search));
   if (filtered.length === 0) {
-    list.innerHTML = `<div class="empty-hint">${products.length ? 'Ничего не найдено' : 'Товаров пока нет'}</div>`;
+    if (products.length) {
+      list.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">🔍</div>
+          <div class="empty-title">Ничего не найдено</div>
+          <div class="empty-text">Попробуйте другой поисковый запрос.</div>
+        </div>`;
+    } else {
+      list.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">🛍</div>
+          <div class="empty-title">Каталог пуст</div>
+          <div class="empty-text">Это товары в наличии в Беларуси.<br>
+          Добавьте первый товар, нажав «➕ Добавить товар» вверху.</div>
+        </div>`;
+    }
     return;
   }
   list.innerHTML = filtered.map(p => {
