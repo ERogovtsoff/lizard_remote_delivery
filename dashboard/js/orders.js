@@ -812,24 +812,26 @@ function renderOrderDetail(id) {
 
   box.innerHTML = `
     <div class="detail-top">
-      <button class="mobile-back" id="mobileBack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>К списку</button>
-      <div class="detail-head-compact">
-        <h2>Заказ №${o.id}</h2>
+      <div class="detail-head-row">
+        <button class="mobile-back" id="mobileBack" aria-label="К списку"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+        <h2 class="detail-title">Заказ №${o.id}</h2>
+        <span class="detail-subtitle">· $${o.total_usd} / ${o.total_byn} BYN</span>
         <span class="detail-status-badge">${escapeHtml(st.label)}</span>
-        <span class="detail-head-sum">$${o.total_usd} / ${o.total_byn} BYN</span>
       </div>
       <div class="detail-quickstatus">
         <div class="status-actions">${statusButtons}</div>
       </div>
-      <div class="detail-assign-row">
+      <div class="detail-info-row">
         ${o.assigned_to
           ? `<span class="assign-badge">👤 ${escapeHtml(o.assigned_to)}</span>`
           : `<button class="btn-take" id="takeOrderBtn">✋ Взять в работу</button>`}
-        <span class="status-age" title="Время в текущем статусе">⏱ в статусе ${timeAgo(o.status_changed_at || o.updated_at)}</span>
+        <span class="status-age" title="Время в текущем статусе">⏱ ${timeAgo(o.status_changed_at || o.updated_at)}</span>
         ${o.is_paid ? '<span class="paid-badge">💳 оплачен</span>' : ''}
-        <button class="btn-mini btn-pin ${o.pinned ? 'pinned-on' : ''}" id="pinBtn" title="Закрепить вверху списка">📌 ${o.pinned ? 'закреплён' : 'закрепить'}</button>
-        <button class="btn-mini" id="remindBtn" title="Поставить напоминание">⏰ напомнить</button>
-        ${o.assigned_to ? `<button class="btn-mini" id="transferBtn" title="Передать другому менеджеру">↪ передать</button>` : ''}
+        <div class="detail-icon-actions">
+          <button class="icon-btn ${o.pinned ? 'icon-btn-on' : ''}" id="pinBtn" title="${o.pinned ? 'Открепить' : 'Закрепить вверху списка'}" aria-label="${o.pinned ? 'Открепить' : 'Закрепить'}">📌</button>
+          <button class="icon-btn" id="remindBtn" title="Поставить напоминание" aria-label="Напомнить">⏰</button>
+          ${o.assigned_to ? `<button class="icon-btn" id="transferBtn" title="Передать другому менеджеру" aria-label="Передать">↪</button>` : ''}
+        </div>
       </div>
       ${st.next ? `<div class="next-step">➡️ <b>Дальше:</b> ${escapeHtml(st.next)}</div>` : ''}
       <details class="detail-collapse">
@@ -1239,11 +1241,11 @@ function renderInquiryDetail(id) {
 
   box.innerHTML = `
     <div class="detail-top">
-      <button class="mobile-back" id="mobileBack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>К списку</button>
-      <div class="detail-head-compact">
-        <h2>Обращение №${q.number || ''}</h2>
+      <div class="detail-head-row">
+        <button class="mobile-back" id="mobileBack" aria-label="К списку"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+        <h2 class="detail-title">Обращение №${q.number || ''}</h2>
+        <span class="detail-subtitle">· ${escapeHtml(typeLabel)}</span>
         <span class="detail-status-badge">${escapeHtml(st.label)}</span>
-        <span class="detail-head-sum">${escapeHtml(typeLabel)}</span>
       </div>
       <div class="detail-quickstatus">
         ${q.status === 'new' ? `
@@ -1256,23 +1258,26 @@ function renderInquiryDetail(id) {
           ${q.status === 'in_progress' ? `<button class="btn-primary btn-create-order" id="inqCreateOrder">➕ Создать заказ</button>` : ''}
         `}
       </div>
-      ${q.status === 'new' ? `
-      <div class="inq-new-hint">
+      ${q.status === 'new' && !localStorage.getItem('lizard_inq_hint_dismissed') ? `
+      <div class="inq-new-hint" id="inqNewHint">
+        <button class="inq-hint-close" id="inqHintClose" aria-label="Скрыть подсказку" title="Скрыть подсказку (больше не показывать)">✕</button>
         <b>Что делать с новым обращением:</b><br>
         <b>«✋ Взять в работу»</b> — если нужно сначала обсудить детали с клиентом. Обращение закрепится за вами, статус сменится на «В работе».<br>
         <b>«➕ Создать заказ»</b> — если уже знаете что нужно клиенту. Обращение закроется автоматически, диалог продолжится в заказе.<br>
         <i>Не закрывайте обращения «как есть» — заказы оформляйте именно отсюда, чтобы сохранить связь обращение↔заказ в журнале и аналитике.</i>
       </div>` : ''}
-      <div class="detail-assign-row">
+      <div class="detail-info-row">
         ${q.assigned_to
           ? `<span class="assign-badge">👤 ${escapeHtml(q.assigned_to)}</span>`
           : (q.status === 'new'
               ? ''  /* кнопка «Взять в работу» уже есть выше — не дублируем */
               : `<button class="btn-take" id="takeInqBtn">✋ Взять в работу</button>`)}
-        <span class="status-age" title="Время в текущем статусе">⏱ в статусе ${timeAgo(q.status_changed_at || q.updated_at)}</span>
-        <button class="btn-mini btn-pin ${q.pinned ? 'pinned-on' : ''}" id="pinBtn" title="Закрепить вверху списка">📌 ${q.pinned ? 'закреплён' : 'закрепить'}</button>
-        <button class="btn-mini" id="remindBtn" title="Поставить напоминание">⏰ напомнить</button>
-        ${q.assigned_to ? `<button class="btn-mini" id="transferBtn" title="Передать другому менеджеру">↪ передать</button>` : ''}
+        <span class="status-age" title="Время в текущем статусе">⏱ ${timeAgo(q.status_changed_at || q.updated_at)}</span>
+        <div class="detail-icon-actions">
+          <button class="icon-btn ${q.pinned ? 'icon-btn-on' : ''}" id="pinBtn" title="${q.pinned ? 'Открепить' : 'Закрепить вверху списка'}" aria-label="${q.pinned ? 'Открепить' : 'Закрепить'}">📌</button>
+          <button class="icon-btn" id="remindBtn" title="Поставить напоминание" aria-label="Напомнить">⏰</button>
+          ${q.assigned_to ? `<button class="icon-btn" id="transferBtn" title="Передать другому менеджеру" aria-label="Передать">↪</button>` : ''}
+        </div>
       </div>
       <details class="detail-collapse">
         <summary>Детали обращения и оформление заказа</summary>
@@ -1330,6 +1335,13 @@ function renderInquiryDetail(id) {
   if (mbq) mbq.onclick = backToList;
   setupCopyId();
 
+  // Скрыть подсказку про новые обращения (один раз — больше не показывать)
+  const hintClose = document.getElementById('inqHintClose');
+  if (hintClose) hintClose.onclick = () => {
+    localStorage.setItem('lizard_inq_hint_dismissed', '1');
+    const hint = document.getElementById('inqNewHint');
+    if (hint) hint.remove();
+  };
   // Взять в работу — теперь делает 3 вещи сразу:
   //   1. Назначает текущего менеджера ответственным (assigned_to)
   //   2. Переводит статус в 'in_progress' (если был 'new')
