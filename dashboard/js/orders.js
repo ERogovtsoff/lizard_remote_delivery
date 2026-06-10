@@ -1508,6 +1508,7 @@ async function setupConvo(context, customerTgId, active) {
   // Сбрасываем состояние переписки предыдущей карточки
   serverMsgs = [];
   pendingOut = [];
+  lastConvoSignature = '';   // сброс — иначе старый отпечаток помешает первой отрисовке
 
   await refreshConvo();
 
@@ -1641,18 +1642,33 @@ async function refreshConvo() {
 }
 
 // Рисует переписку: серверные сообщения + ещё не подтверждённые pending снизу.
+// Перерисовываем DOM только если набор сообщений действительно изменился —
+// иначе каждые N секунд innerHTML = html сбрасывает картинки и даёт «прыжки».
+let lastConvoSignature = '';
 function renderConvoFromCache() {
   const box = document.getElementById('convoMessages');
   if (!box) return;
   const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
 
-  let html = '';
   if (serverMsgs.length === 0 && pendingOut.length === 0) {
-    box.innerHTML = '<div class="convo-empty">Сообщений пока нет. Можете написать первым.</div>';
+    if (box.firstChild?.className !== 'convo-empty') {
+      box.innerHTML = '<div class="convo-empty">Сообщений пока нет. Можете написать первым.</div>';
+    }
+    lastConvoSignature = 'empty';
     return;
   }
+
+  // Отпечаток текущего состояния: id'шники сообщений + текст/состояние pending.
+  // Если он не изменился — DOM не трогаем.
+  const sig = serverMsgs.map(m => `${m.id}:${m.read_at ? 1 : 0}`).join('|')
+            + '#' + pendingOut.map(p => `${p.tempId}:${p.state}`).join('|');
+  if (sig === lastConvoSignature) {
+    return;  // ничего не изменилось — пропускаем перерисовку
+  }
+  lastConvoSignature = sig;
+
+  let html = '';
   html += serverMsgs.map(renderConvoMsg).join('');
-  // Оптимистичные (неподтверждённые) — снизу, с пометкой состояния
   html += pendingOut.map(renderPendingMsg).join('');
   box.innerHTML = html;
   // Привязка цитирования: клик на входящем сообщении → процитировать в composer (#5)
@@ -1717,7 +1733,12 @@ function renderConvoMsg(m) {
   let inner = '';
   if (m.attachment_url) {
     if (m.attachment_type === 'photo') {
-      inner += `<a href="${escapeHtml(m.attachment_url)}" target="_blank" rel="noopener"><img class="cmsg-photo" src="${escapeHtml(m.attachment_url)}" loading="lazy"></a>`;
+      // Контейнер фиксированной высоты ДО загрузки картинки —
+      // это резервирует место и предотвращает «прыжки» позиции скролла
+      // когда картинка догружается (особенно с loading="lazy").
+      inner += `<a class="cmsg-photo-wrap" href="${escapeHtml(m.attachment_url)}" target="_blank" rel="noopener">`
+            +    `<img class="cmsg-photo" src="${escapeHtml(m.attachment_url)}" loading="lazy" alt="фото">`
+            +  `</a>`;
     } else {
       inner += `<a class="cmsg-file" href="${escapeHtml(m.attachment_url)}" target="_blank" rel="noopener">📎 Вложение</a>`;
     }

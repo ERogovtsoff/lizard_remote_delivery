@@ -956,6 +956,10 @@ html, body {
   overscroll-behavior: contain;
   /* Плавная прокрутка на iOS */
   -webkit-overflow-scrolling: touch;
+  /* Браузерный «якорь»: при изменении высоты контента (например, догрузка фото)
+     браузер удерживает позицию относительно сообщения, видимого в viewport,
+     а не сверху страницы. Это родное поведение, но иногда сбрасывается — явно. */
+  overflow-anchor: auto;
   padding: 8px 28px;
   display: flex;
   flex-direction: column;
@@ -977,7 +981,34 @@ html, body {
 .cmsg-bot .cmsg-bubble { background: #fff7e6; border: 1px dashed #f0d090; color: #6b4f00; }
 .cmsg-text { white-space: pre-wrap; }
 .cmsg-meta { font-size: 11px; color: var(--text-muted); margin-top: 3px; text-align: right; }
-.cmsg-photo { max-width: 200px; max-height: 200px; border-radius: 8px; display: block; margin-bottom: 4px; }
+/* Контейнер фото в чате — резервирует место ДО загрузки картинки,
+   чтобы при подгрузке (особенно при loading="lazy") не было «прыжков»
+   позиции скролла. Размер фиксированный 200×200, картинка вписывается через object-fit. */
+.cmsg-photo-wrap {
+  display: block;
+  width: 200px;
+  height: 200px;
+  margin-bottom: 4px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg);
+  /* Плейсхолдер пока картинка не загрузилась — лёгкая «шахматка» */
+  background-image:
+    linear-gradient(45deg, var(--border) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--border) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--border) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--border) 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+  opacity: 0.85;
+}
+.cmsg-photo {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  border-radius: 8px;
+}
 .cmsg-file { color: var(--accent-dark); text-decoration: none; font-weight: 500; }
 
 /* Композер прижат к низу */
