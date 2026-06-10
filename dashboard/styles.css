@@ -509,6 +509,23 @@ html, body {
     display: flex !important;
   }
 
+  /* На мобиле .order-detail НЕ должен иметь свой scrollbar — это создавало
+     вложенные скроллы (страница + карточка + чат), отсюда рывки на iOS Safari.
+     Делаем карточку обычной страницей: скроллится естественно через
+     родителя (.main), внутри .convo-messages — свой отдельный скролл-контейнер
+     с overscroll-behavior: contain. */
+  .order-detail {
+    overflow-y: visible;
+    padding: 0;
+    max-width: 100%;
+    flex: 0 0 auto;
+  }
+  .main {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
   /* Карточки на всю ширину, меньше отступов */
   .order-detail > .detail-head,
   .order-detail > .detail-meta,
@@ -518,7 +535,13 @@ html, body {
     margin-right: 16px;
   }
   .convo-section .detail-section-title { padding: 10px 16px 6px; }
-  .convo-messages { padding: 8px 16px; }
+  /* На мобиле чат — фиксированной высоты и со своим скроллом.
+     Иначе при пустой переписке он схлопывается, а при длинной — растягивает страницу. */
+  .convo-messages {
+    padding: 8px 16px;
+    max-height: 55vh;
+    min-height: 240px;
+  }
   .convo-composer { padding: 10px 16px; }
   .catalog-editor { padding: 16px; }
 
@@ -928,6 +951,11 @@ html, body {
 .convo-messages {
   flex: 1;
   overflow-y: auto;
+  /* Предотвращаем «протекание» прокрутки на родителя — частая причина рывков
+     на iOS Safari, когда чат и страница начинают скроллиться одновременно */
+  overscroll-behavior: contain;
+  /* Плавная прокрутка на iOS */
+  -webkit-overflow-scrolling: touch;
   padding: 8px 28px;
   display: flex;
   flex-direction: column;
@@ -1284,7 +1312,6 @@ html, body {
 @media (max-width: 760px) {
   .detail-top {
     padding: 12px 16px 8px;
-    max-height: 48vh;
   }
   .detail-head-compact h2 { font-size: 16px; }
   .detail-head-sum { font-size: 12px; }
@@ -2771,12 +2798,14 @@ img.di-thumb:hover { box-shadow: 0 0 0 2px var(--accent); }
   .transfer-row { padding: 14px; min-height: 56px; }
 
   /* ---------- 4) Карточка заказа/обращения ---------- */
+  /* На мобиле НЕ делаем detail-top sticky — это даёт рывки прокрутки,
+     потому что внутри detail уже скроллится .convo-messages, и нативный браузер
+     с несколькими вложенными скролл-контейнерами на iOS работает рывками.
+     Лучший UX — детальная карточка скроллится как одна страница, а чат внизу
+     прокручивается отдельно только своим контейнером. */
   .detail-top {
     padding: 12px 16px 8px;
     background: var(--surface);
-    position: sticky;
-    top: 52px;     /* высота mobile-topbar */
-    z-index: 10;
     border-bottom: 1px solid var(--border);
   }
   .detail-head-compact {

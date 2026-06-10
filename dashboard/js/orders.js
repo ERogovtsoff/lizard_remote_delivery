@@ -911,17 +911,17 @@ function renderOrderDetail(id) {
 
   // Взять в работу — назначает текущего менеджера + переводит новый заказ в «В работе».
   // Раньше только проставлял assigned_to, и менеджеры игнорировали статус.
-  // Теперь одна кнопка делает обе вещи: «принял заказ → клиент уведомлён».
+  // Теперь одна кнопка делает обе вещи: «принял заказ + сменил статус».
+  // Сообщение клиенту НЕ шлём — менеджер сам ответит лично, не нужен спам-робот.
   const takeBtn = document.getElementById('takeOrderBtn');
   if (takeBtn) takeBtn.onclick = async () => {
     takeBtn.disabled = true;
     try {
       await api.assignManager({ order_id: o.id }, managerUsername);
       o.assigned_to = managerUsername;
-      // Если статус «новый» — переводим в «в работе» с автосообщением клиенту
+      // Если статус «новый» — переводим в «в работе» без автосообщения клиенту
       if (o.status === 'new') {
-        const clientMsg = 'Взяли ваш заказ в работу 🙌 Скоро вернёмся с деталями.';
-        await api.setOrderStatus(o.id, 'in_progress', clientMsg, o.customer_tg_id, managerUsername, 'new');
+        await api.setOrderStatus(o.id, 'in_progress', null, o.customer_tg_id, managerUsername, 'new');
         o.status = 'in_progress';
         o.status_changed_at = new Date().toISOString();
       }
@@ -1259,7 +1259,7 @@ function renderInquiryDetail(id) {
       ${q.status === 'new' ? `
       <div class="inq-new-hint">
         <b>Что делать с новым обращением:</b><br>
-        <b>«✋ Взять в работу»</b> — если нужно сначала обсудить детали с клиентом. Клиенту уходит «Получили ваше сообщение, скоро ответим», обращение закрепляется за вами.<br>
+        <b>«✋ Взять в работу»</b> — если нужно сначала обсудить детали с клиентом. Обращение закрепится за вами, статус сменится на «В работе».<br>
         <b>«➕ Создать заказ»</b> — если уже знаете что нужно клиенту. Обращение закроется автоматически, диалог продолжится в заказе.<br>
         <i>Не закрывайте обращения «как есть» — заказы оформляйте именно отсюда, чтобы сохранить связь обращение↔заказ в журнале и аналитике.</i>
       </div>` : ''}
@@ -1342,10 +1342,11 @@ function renderInquiryDetail(id) {
     try {
       await api.assignManager({ inquiry_id: q.id }, managerUsername);
       q.assigned_to = managerUsername;
-      // Если ещё «новое» — переводим в «в работу» с автосообщением клиенту
+      // Если ещё «новое» — переводим в «в работу» БЕЗ автосообщения клиенту.
+      // Менеджер сам ответит лично — нет смысла слать роботное «получили скоро ответим»
+      // секундой ранее реального ответа. Передаём clientMsg=null.
       if (q.status === 'new') {
-        const clientMsg = 'Получили ваше сообщение 🙌 Скоро ответим!';
-        await api.setInquiryStatus(q.id, 'in_progress', clientMsg, q.customer_tg_id, managerUsername, 'new');
+        await api.setInquiryStatus(q.id, 'in_progress', null, q.customer_tg_id, managerUsername, 'new');
         q.status = 'in_progress';
       }
       const inArr = inquiries.find(x => String(x.id) === String(q.id));
