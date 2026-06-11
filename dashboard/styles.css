@@ -525,6 +525,20 @@ html, body {
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
   }
+  /* Секции верхнего уровня (Клиенты, Каталог, Аналитика) на мобиле
+     НЕ должны иметь свой overflow — иначе вложенный скролл с .main даёт рывки.
+     Скролл живёт только в .main. Раздел Заказы на мобиле работает через
+     mobile-detail режим — секция тоже не скроллится отдельно. */
+  .section-customers,
+  .section-analytics,
+  .section-catalog,
+  body.mobile-detail .order-detail {
+    overflow: visible !important;
+  }
+  /* Список заказов на мобиле — тоже без своего скролла (когда не открыт detail) */
+  body:not(.mobile-detail) .orders-list {
+    overflow: visible;
+  }
 
   /* Карточки на всю ширину, меньше отступов */
   .order-detail > .detail-head,
@@ -813,7 +827,20 @@ html, body {
 
 /* ====================== Раздел «Заказы» ====================== */
 .orders-side { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.orders-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+.orders-list {
+  /* ОДИН скролл-контейнер на всю секцию списка — внутрь.
+     Раньше было два (.orders-list + .orders-items) и на iOS Safari это
+     давало рывки при скролле. Теперь один — браузер однозначно понимает
+     что прокручивать при touch-жесте. */
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-anchor: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
 .orders-tabs {
   display: flex;
   padding: 12px 16px 8px;
@@ -839,7 +866,8 @@ html, body {
   font-size: 11px;
 }
 .orders-tab.active .tab-badge { background: rgba(255,255,255,0.25); }
-.orders-items { flex: 1; overflow-y: auto; }
+/* НЕТ собственного overflow — иначе будет вложенный скролл. */
+.orders-items { flex: 0 0 auto; }
 .order-row {
   padding: 12px 16px;
   border-bottom: 1px solid var(--border);
@@ -1290,8 +1318,9 @@ html, body {
   flex-shrink: 0;
   padding: 12px 28px 10px;
   border-bottom: 1px solid var(--border);
-  max-height: 55vh;
-  overflow-y: auto;
+  /* НЕ ставим overflow-y: auto — раньше тут было max-height: 55vh + overflow,
+     что создавало вложенный скролл внутри .order-detail и .convo-messages.
+     Это давало рывки на iOS Safari. Содержимое шапки компактное, не нуждается. */
 }
 
 /* Заголовок одной строкой: ← | Название | · подзаголовок | badge */
