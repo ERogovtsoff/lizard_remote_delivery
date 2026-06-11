@@ -1202,9 +1202,16 @@ async def outbox_worker(bot: Bot) -> None:
 
 HEARTBEAT_INTERVAL_SEC = 30
 HEALTH_ALERT_INTERVAL_SEC = 90
-HEALTH_ALERT_COOLDOWN_SEC = 15 * 60   # не больше 1 алерта на компонент в 15 минут
+HEALTH_ALERT_COOLDOWN_SEC = 15 * 60   # не больше 1 алерта ОДНОГО ТИПА на компонент в 15 минут
 # Какое состояние мы помним между итерациями (чтобы засечь СМЕНУ состояния)
 _health_known_state: dict = {}        # component -> 'ok' | 'down'
+# Счётчик «нестабильных» наблюдений: компонент должен показать `down` подряд
+# несколько раз чтобы мы считали это реальным сбоем (а не сетевым моргуном).
+_health_down_streak: dict = {}        # component -> int
+DOWN_CONFIRM_COUNT = 2                # сколько подряд `down` нужно для алерта
+# Когда последний раз слали алерт каждого типа на компонент.
+# Это разнесено, чтобы cooldown «упал» не блокировал «восстановлено» (баг fix).
+_last_alert_sent: dict = {}           # (component, kind) -> datetime, где kind = 'down' | 'ok'
 
 
 async def heartbeat_worker(bot: Bot) -> None:
@@ -1228,77 +1235,138 @@ def _health_label(component: str) -> str:
 
 async def health_alert_worker(bot: Bot) -> None:
     """
-    Раз в HEALTH_ALERT_INTERVAL_SEC читает health_status. Если статус изменился
-    с прошлой итерации (ok→down или down→ok) — шлёт алерт дежурным.
-    Алерт по одному компоненту не чаще HEALTH_ALERT_COOLDOWN_SEC.
+    Раз в HEALTH_ALERT_INTERVAL_SEC читает health_status. Алертит дежурных при:
+      - down подряд DOWN_CONFIRM_COUNT раз  →  «⚠️ Проблема»
+      - down → ok                            →  «✅ Восстановлен»
+    Алерты группируются (если за итерацию упало/восстановилось несколько компонентов).
+    Cooldown применяется к каждому виду отдельно: «упал» не блокирует «восстановлено».
     """
     global _health_known_state
-    # Первая итерация — инициализация: запоминаем что есть, но не алертим.
     is_first = True
     while True:
         try:
             rows = await supabase_get("health_status", {
-                "select": "component,status,error_message,last_alert_at",
+                "select": "component,status,error_message",
             })
             new_state = {r["component"]: r["status"] for r in (rows or [])}
 
             if is_first:
                 _health_known_state = new_state
                 is_first = False
-            else:
-                # Сравниваем со старым состоянием — алертим только при значимой смене.
-                # Матрица переходов:
-                #   ok    → down    : алерт «проблема»
-                #   unknown → down  : алерт «проблема» (узнали что плохо)
-                #   down  → ok      : алерт «восстановлен»
-                #   unknown → ok    : МОЛЧИМ (просто узнали что всё норма после старта)
-                #   *     → unknown : МОЛЧИМ (потеря наблюдения, не сбой)
-                #   x     → x       : МОЛЧИМ
-                for r in (rows or []):
-                    comp = r["component"]
-                    new_status = r["status"]
-                    old_status = _health_known_state.get(comp)
-                    if old_status is None or new_status == old_status:
-                        continue
-                    # Любой переход в unknown — не алертим
-                    if new_status == "unknown":
-                        continue
-                    # Переход unknown → ok — это не «восстановление», а просто
-                    # первое подтверждение работоспособности. Молчим.
-                    if old_status == "unknown" and new_status == "ok":
-                        continue
-                    # Проверим cooldown: last_alert_at недавно?
-                    last_alert = _parse_ts(r.get("last_alert_at")) if r.get("last_alert_at") else None
-                    if last_alert is not None:
-                        age = (datetime.now(timezone.utc) - last_alert).total_seconds()
-                        if age < HEALTH_ALERT_COOLDOWN_SEC:
-                            continue
-                    # Формируем текст и шлём
-                    label = _health_label(comp)
-                    if new_status == "down":
-                        text = (
-                            f"⚠️ <b>Проблема с сервисом</b>\n\n"
-                            f"Компонент: <b>{label}</b>\n"
-                            f"Статус: ❌ недоступен"
-                        )
-                        if r.get("error_message"):
-                            text += f"\n\n<i>{html.escape(r['error_message'][:200])}</i>"
-                        text += "\n\nЕсли проблема не уйдёт сама — проверь работу сервиса вручную."
-                    elif new_status == "ok":
-                        text = f"✅ Компонент восстановлен: <b>{label}</b>"
-                    else:
-                        continue
-                    # Шлём дежурным и фиксируем last_alert_at
-                    chats = await get_duty_chat_ids()
-                    for chat in chats:
-                        try:
-                            await retry_network(lambda: bot.send_message(chat, text), what="health_alert")
-                        except Exception as e:
-                            log.warning("health alert send to %s failed: %s", chat, e)
-                    await supabase_patch("health_status", {"component": f"eq.{comp}"},
-                                         {"last_alert_at": now_iso()})
+                await asyncio.sleep(HEALTH_ALERT_INTERVAL_SEC)
+                continue
 
-                _health_known_state = new_state
+            # Собираем компоненты для двух типов алертов:
+            #   to_alert_down  — упавшие (подтверждённые DOWN_CONFIRM_COUNT раз подряд)
+            #   to_alert_ok    — восстановленные после реального сбоя
+            to_alert_down = []  # list of (component, error_message)
+            to_alert_ok   = []  # list of component
+
+            now = datetime.now(timezone.utc)
+
+            for r in (rows or []):
+                comp = r["component"]
+                new_status = r["status"]
+                old_status = _health_known_state.get(comp)
+
+                # === Логика подтверждения "down" (защита от моргунов) ===
+                if new_status == "down":
+                    _health_down_streak[comp] = _health_down_streak.get(comp, 0) + 1
+                else:
+                    # Сбрасываем счётчик при любом не-down статусе
+                    _health_down_streak[comp] = 0
+
+                # Игнорируем переходы в unknown — это не сбой, а потеря наблюдения
+                if new_status == "unknown":
+                    continue
+                # unknown → ok — не «восстановление», просто первое подтверждение
+                if old_status == "unknown" and new_status == "ok":
+                    continue
+
+                if new_status == "down":
+                    # Алертим только если: (1) ещё не алертили «down» по этому компоненту
+                    #                     (2) накопилось DOWN_CONFIRM_COUNT подтверждений
+                    streak = _health_down_streak.get(comp, 0)
+                    if streak < DOWN_CONFIRM_COUNT:
+                        continue
+                    # Cooldown по типу 'down': не шлём чаще раза в COOLDOWN
+                    last = _last_alert_sent.get((comp, "down"))
+                    if last and (now - last).total_seconds() < HEALTH_ALERT_COOLDOWN_SEC:
+                        continue
+                    # Не алертим если в _health_known_state уже было 'down'
+                    # (это означает что мы уже отправляли алерт ранее)
+                    if old_status == "down":
+                        continue
+                    to_alert_down.append((comp, r.get("error_message") or ""))
+
+                elif new_status == "ok":
+                    # Восстановление: алертим только если был реальный сбой
+                    # (мы отправляли алерт «down» по этому компоненту)
+                    if old_status != "down":
+                        continue
+                    # Cooldown по типу 'ok'
+                    last = _last_alert_sent.get((comp, "ok"))
+                    if last and (now - last).total_seconds() < HEALTH_ALERT_COOLDOWN_SEC:
+                        continue
+                    to_alert_ok.append(comp)
+
+            # === Отправка алертов (сгруппированных) ===
+            chats = await get_duty_chat_ids() if (to_alert_down or to_alert_ok) else []
+
+            if to_alert_down and chats:
+                if len(to_alert_down) == 1:
+                    comp, err = to_alert_down[0]
+                    text = (
+                        f"⚠️ <b>Проблема с сервисом</b>\n\n"
+                        f"Компонент: <b>{_health_label(comp)}</b>\n"
+                        f"Статус: ❌ недоступен"
+                    )
+                    if err:
+                        text += f"\n\n<i>{html.escape(err[:200])}</i>"
+                    text += "\n\nЕсли проблема не уйдёт сама — проверь работу сервиса вручную."
+                else:
+                    labels = "\n".join(f"  • {_health_label(c)}" for c, _ in to_alert_down)
+                    text = (
+                        f"⚠️ <b>Проблемы с сервисами</b>\n\n"
+                        f"Сразу несколько компонентов недоступны:\n{labels}\n\n"
+                        f"Возможно, это сетевая проблема или общий сбой провайдера. "
+                        f"Если не восстановится в течение пары минут — проверь вручную."
+                    )
+                for chat in chats:
+                    try:
+                        await retry_network(lambda: bot.send_message(chat, text), what="health_alert_down")
+                    except Exception as e:
+                        log.warning("health alert (down) send to %s failed: %s", chat, e)
+                for comp, _ in to_alert_down:
+                    _last_alert_sent[(comp, "down")] = now
+
+            if to_alert_ok and chats:
+                if len(to_alert_ok) == 1:
+                    text = f"✅ Компонент восстановлен: <b>{_health_label(to_alert_ok[0])}</b>"
+                else:
+                    labels = "\n".join(f"  • {_health_label(c)}" for c in to_alert_ok)
+                    text = f"✅ <b>Сервисы восстановлены</b>\n\n{labels}"
+                for chat in chats:
+                    try:
+                        await retry_network(lambda: bot.send_message(chat, text), what="health_alert_ok")
+                    except Exception as e:
+                        log.warning("health alert (ok) send to %s failed: %s", chat, e)
+                for comp in to_alert_ok:
+                    _last_alert_sent[(comp, "ok")] = now
+
+            # Обновляем «известное состояние» — но только в той части, где мы
+            # уверены в результате. Для down — только если streak подтверждён.
+            # Для остальных — обновляем как есть.
+            confirmed_state = {}
+            for comp, status in new_state.items():
+                if status == "down" and _health_down_streak.get(comp, 0) < DOWN_CONFIRM_COUNT:
+                    # Не подтверждено — оставляем старое значение, чтобы не считать
+                    # одиночный моргун за реальный сбой
+                    confirmed_state[comp] = _health_known_state.get(comp, "unknown")
+                else:
+                    confirmed_state[comp] = status
+            _health_known_state = confirmed_state
+
         except Exception as e:
             log.warning("health_alert_worker iteration failed: %s", e)
         await asyncio.sleep(HEALTH_ALERT_INTERVAL_SEC)
