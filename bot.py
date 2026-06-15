@@ -1269,6 +1269,12 @@ async def health_alert_worker(bot: Bot) -> None:
                 new_status = r["status"]
                 old_status = _health_known_state.get(comp)
 
+                # Компонент 'bot' мониторит ВНЕШНИЙ watchdog (pg_cron в Supabase),
+                # а не сам бот — иначе при смерти бота некому слать алерт.
+                # Здесь пропускаем, чтобы не было дублей с dead-man's-switch.
+                if comp == "bot":
+                    continue
+
                 # === Логика подтверждения "down" (защита от моргунов) ===
                 if new_status == "down":
                     _health_down_streak[comp] = _health_down_streak.get(comp, 0) + 1
