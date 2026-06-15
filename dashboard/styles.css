@@ -3528,3 +3528,12 @@ img.di-thumb:hover { box-shadow: 0 0 0 2px var(--accent); }
 @media (max-width: 760px) {
   .inq-actions-new button { min-width: auto; flex-basis: 100%; }
 }
+
+/* Недоставленное сообщение (клиент заблокировал бота / ошибка) */
+.cmsg-bubble.cmsg-failed {
+  border: 1px solid var(--danger);
+  background: #fef2f2;
+}
+[data-theme="dark"] .cmsg-bubble.cmsg-failed { background: #3a1818; border-color: #6a2020; }
+.cmsg-undelivered { color: var(--danger); font-weight: 600; }
+[data-theme="dark"] .cmsg-undelivered { color: #ff9088; }

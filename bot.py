@@ -297,8 +297,11 @@ async def save_message(customer_tg_id: int, direction: str, *, text: str = None,
                        sender: str = "client", manager_username: str = None,
                        attachment_url: str = None, attachment_type: str = None,
                        tg_file_id: str = None, source: str = "bot",
-                       inquiry_id: str = None, order_id: int = None) -> None:
-    """Сохраняет сообщение в БД (для отображения в dashboard). Не критично к сбоям."""
+                       inquiry_id: str = None, order_id: int = None,
+                       delivery_status: str = None) -> None:
+    """Сохраняет сообщение в БД (для отображения в dashboard). Не критично к сбоям.
+    delivery_status: None/'delivered' — норма; 'blocked' — клиент заблокировал бота;
+    'failed' — иная ошибка доставки."""
     if not supabase_ready():
         return
     try:
@@ -314,6 +317,7 @@ async def save_message(customer_tg_id: int, direction: str, *, text: str = None,
             "source": source,
             "inquiry_id": inquiry_id,
             "order_id": order_id,
+            "delivery_status": delivery_status,
         })
     except Exception as e:
         log.warning("save_message error: %s", e)
@@ -1131,6 +1135,7 @@ async def process_outbox(bot: Bot) -> int:
                     attachment_type=("photo" if attachment_url else None),
                     source="dashboard",
                     inquiry_id=ctx_inquiry, order_id=ctx_order,
+                    delivery_status="delivered",
                 )
                 # Помечаем отправленным
                 await supabase_patch("outbox", {"id": f"eq.{outbox_id}"},
@@ -1147,9 +1152,21 @@ async def process_outbox(bot: Bot) -> int:
                     pass
 
             except TelegramForbiddenError:
-                # Клиент заблокировал бота — помечаем ошибкой, чтобы не зацикливаться
+                # Клиент заблокировал бота (или не нажимал Start) — помечаем outbox,
+                # И записываем сообщение в историю с пометкой 'blocked', чтобы
+                # менеджер видел: «я это писал, но клиент не получил».
                 await supabase_patch("outbox", {"id": f"eq.{outbox_id}"},
                                      {"sent_at": now_iso(), "error": "blocked"})
+                await save_message(
+                    customer_tg_id, "out",
+                    text=text, sender="manager",
+                    manager_username=manager_username,
+                    attachment_url=attachment_url,
+                    attachment_type=("photo" if attachment_url else None),
+                    source="dashboard",
+                    inquiry_id=ctx_inquiry, order_id=ctx_order,
+                    delivery_status="blocked",
+                )
                 log.info("Outbox %s: клиент %s заблокировал бота", outbox_id, customer_tg_id)
             except _RETRYABLE as e:
                 # Сетевой сбой даже после ретраев — НЕ закрываем запись.
@@ -1158,9 +1175,20 @@ async def process_outbox(bot: Bot) -> int:
                 log.warning("Outbox %s: сеть недоступна, оставляю в очереди (%s)",
                             outbox_id, type(e).__name__)
             except Exception as e:
-                # Окончательная (несетевая) ошибка — помечаем, чтобы не застряло навсегда
+                # Окончательная (несетевая) ошибка — помечаем, чтобы не застряло навсегда.
+                # Тоже пишем в историю с пометкой 'failed'.
                 await supabase_patch("outbox", {"id": f"eq.{outbox_id}"},
                                      {"sent_at": now_iso(), "error": str(e)[:200]})
+                await save_message(
+                    customer_tg_id, "out",
+                    text=text, sender="manager",
+                    manager_username=manager_username,
+                    attachment_url=attachment_url,
+                    attachment_type=("photo" if attachment_url else None),
+                    source="dashboard",
+                    inquiry_id=ctx_inquiry, order_id=ctx_order,
+                    delivery_status="failed",
+                )
                 log.warning("Outbox %s send failed: %s", outbox_id, e)
         return len(rows)
     except Exception as e:

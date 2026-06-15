@@ -556,6 +556,11 @@ function updateNavBadges() {
 }
 
 
+// Отпечаток последнего отрисованного списка — чтобы при опросе каждые 5 секунд
+// не пересоздавать DOM зря (innerHTML = html вызывает «прыжки» при скролле,
+// особенно на мобиле — тот же баг что был в чате, ровно по тем же причинам).
+let lastListSignature = '';
+
 function renderOrdersList() {
   const list = document.getElementById('ordersList');
   if (!list) return;
@@ -566,6 +571,24 @@ function renderOrdersList() {
   // Применяем поиск и фильтр статуса
   let items = activeTab === 'orders' ? orders.slice() : inquiries.slice();
   items = applyListFilters(items);
+
+  // Считаем отпечаток: только то что влияет на отрисовку строк.
+  // Если он совпадает с прошлым — пропускаем перерисовку.
+  // Учитываем: id, статус, assigned_to, pinned, status_changed_at, is_paid,
+  // total_usd (для заказов), unread, текущий activeId, вкладку, фильтры, поиск.
+  const sigItems = items.map(it => [
+    it.id, it.status, it.assigned_to || '', it.pinned ? 1 : 0,
+    it.status_changed_at || it.updated_at || '',
+    it.is_paid ? 1 : 0, it.total_usd || '',
+    unreadOrders.has(String(it.id)) || unreadInquiries.has(String(it.id)) ? 1 : 0,
+  ].join(':')).join('|');
+  // Также учитываем «состояние UI»: активный таб, текущий выбранный, фильтры, поиск,
+  // вид (список/борд), счётчик firedReminders (для пульсации иконки)
+  const sig = `${activeTab}#${activeId}#${statusFilter}#${onlyMine ? 1 : 0}`
+            + `#${listView}#${searchQuery}#${countOrders}#${countInq}`
+            + `#${firedReminderKeys.size}#${sigItems}`;
+  if (sig === lastListSignature) return;
+  lastListSignature = sig;
 
   // Варианты фильтра статуса зависят от вкладки
   const statusFilterOpts = activeTab === 'orders'
@@ -1520,6 +1543,7 @@ async function setupConvo(context, customerTgId, active) {
   // Сбрасываем состояние переписки предыдущей карточки
   serverMsgs = [];
   pendingOut = [];
+  queuedOutbox = [];
   lastConvoSignature = '';   // сброс — иначе старый отпечаток помешает первой отрисовке
 
   await refreshConvo();
@@ -1612,6 +1636,7 @@ async function setupConvo(context, customerTgId, active) {
 
 let serverMsgs = [];   // последние сообщения из БД
 let pendingOut = [];   // оптимистичные (неподтверждённые) исходящие [{tempId,text,hasAttachment,ts,state}]
+let queuedOutbox = []; // зависшие в очереди outbox (бот ещё не обработал) — из БД
 let convoLoading = false;  // защита от параллельных refreshConvo
 
 async function refreshConvo() {
@@ -1631,6 +1656,24 @@ async function refreshConvo() {
     return;
   }
   serverMsgs = msgs || [];
+
+  // Подгружаем зависшие в очереди outbox (бот ещё не обработал) — чтобы
+  // показать «в очереди на отправку» даже после перезагрузки страницы.
+  // Это сообщения, которые ушли в outbox, но ещё не доставлены и не записаны
+  // в messages. Без этого они были бы невидимы после reload.
+  try {
+    const pendingOutbox = await api.loadPendingOutbox(convoContext);
+    // Фильтруем те, что уже есть в serverMsgs (на всякий случай — по тексту+времени)
+    queuedOutbox = (pendingOutbox || []).filter(ob => {
+      return !serverMsgs.some(m =>
+        m.direction === 'out' &&
+        (m.text || '') === (ob.text || '') &&
+        Math.abs(new Date(m.created_at).getTime() - new Date(ob.created_at).getTime()) < 60000
+      );
+    });
+  } catch (_) {
+    queuedOutbox = [];
+  }
 
   // Подтверждаем pending: исходящее серверное сообщение считается «той же»
   // оптимистичной копией, если совпадает текст/наличие вложения И создано
@@ -1662,7 +1705,7 @@ function renderConvoFromCache() {
   if (!box) return;
   const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
 
-  if (serverMsgs.length === 0 && pendingOut.length === 0) {
+  if (serverMsgs.length === 0 && pendingOut.length === 0 && queuedOutbox.length === 0) {
     if (box.firstChild?.className !== 'convo-empty') {
       box.innerHTML = '<div class="convo-empty">Сообщений пока нет. Можете написать первым.</div>';
     }
@@ -1670,10 +1713,11 @@ function renderConvoFromCache() {
     return;
   }
 
-  // Отпечаток текущего состояния: id'шники сообщений + текст/состояние pending.
-  // Если он не изменился — DOM не трогаем.
-  const sig = serverMsgs.map(m => `${m.id}:${m.read_at ? 1 : 0}`).join('|')
-            + '#' + pendingOut.map(p => `${p.tempId}:${p.state}`).join('|');
+  // Отпечаток текущего состояния: id'шники сообщений + текст/состояние pending
+  // + зависшие outbox. Если не изменился — DOM не трогаем.
+  const sig = serverMsgs.map(m => `${m.id}:${m.read_at ? 1 : 0}:${m.delivery_status || ''}`).join('|')
+            + '#' + pendingOut.map(p => `${p.tempId}:${p.state}`).join('|')
+            + '@' + queuedOutbox.map(o => o.id).join('|');
   if (sig === lastConvoSignature) {
     return;  // ничего не изменилось — пропускаем перерисовку
   }
@@ -1681,6 +1725,8 @@ function renderConvoFromCache() {
 
   let html = '';
   html += serverMsgs.map(renderConvoMsg).join('');
+  // Зависшие в очереди (бот ещё не доставил) — показываем как «в очереди»
+  html += queuedOutbox.map(renderQueuedMsg).join('');
   html += pendingOut.map(renderPendingMsg).join('');
   box.innerHTML = html;
   // Привязка цитирования: клик на входящем сообщении → процитировать в composer (#5)
@@ -1737,6 +1783,17 @@ function renderPendingMsg(p) {
   return `<div class="cmsg cmsg-out ${cls}"><div class="cmsg-bubble">${att}${txt}<div class="cmsg-meta">@${escapeHtml(managerUsername)} · ${status}</div></div></div>`;
 }
 
+// Зависшее в очереди сообщение (есть в outbox, бот ещё не доставил).
+// Показывает «в очереди» с временем, чтобы менеджер понимал что доставка
+// ещё не случилась (например, бот недоступен или клиент пока не открыл чат).
+function renderQueuedMsg(o) {
+  const att = o.attachment_url ? '<div class="cmsg-text">📎 Вложение</div>' : '';
+  const txt = o.text ? `<div class="cmsg-text">${escapeHtml(o.text)}</div>` : '';
+  const ageMin = Math.round((Date.now() - new Date(o.created_at).getTime()) / 60000);
+  const ageLabel = ageMin < 1 ? 'только что' : ageMin < 60 ? `${ageMin} мин назад` : `${Math.round(ageMin/60)} ч назад`;
+  return `<div class="cmsg cmsg-out cmsg-pending"><div class="cmsg-bubble">${att}${txt}<div class="cmsg-meta">⏳ в очереди на отправку · ${ageLabel}</div></div></div>`;
+}
+
 function renderConvoMsg(m) {
   const out = m.direction === 'out';
   const isBot = m.sender === 'bot';
@@ -1759,13 +1816,33 @@ function renderConvoMsg(m) {
   if (!inner) inner = `<div class="cmsg-text cmsg-muted">📎 вложение (не удалось загрузить)</div>`;
   let who = '';
   if (out) who = isBot ? '🤖 авто' : (m.manager_username ? '@' + escapeHtml(m.manager_username) : 'менеджер');
-  const meta = `<div class="cmsg-meta">${who ? who + ' · ' : ''}${escapeHtml(formatTime(m.created_at))} ✓</div>`;
+
+  // Индикатор доставки для исходящих сообщений менеджера (не для авто-бота).
+  // delivery_status: delivered/null = доставлено ✓, blocked = клиент заблокировал,
+  // failed = ошибка доставки.
+  let deliveryMark = '';
+  let bubbleExtra = '';
+  if (out && !isBot) {
+    const ds = m.delivery_status;
+    if (ds === 'blocked') {
+      deliveryMark = ' · <span class="cmsg-undelivered">🚫 не доставлено (бот заблокирован)</span>';
+      bubbleExtra = ' cmsg-failed';
+    } else if (ds === 'failed') {
+      deliveryMark = ' · <span class="cmsg-undelivered">⚠️ ошибка доставки</span>';
+      bubbleExtra = ' cmsg-failed';
+    } else {
+      deliveryMark = ' ✓';   // delivered или null (старые сообщения)
+    }
+  } else if (out) {
+    deliveryMark = ' ✓';
+  }
+  const meta = `<div class="cmsg-meta">${who ? who + ' · ' : ''}${escapeHtml(formatTime(m.created_at))}${deliveryMark}</div>`;
   // Только входящие сообщения с текстом — кликабельны для цитирования (#5)
   const quoteAttrs = (!out && m.text)
     ? ` data-quote="${escapeHtml(m.text)}" title="Кликните, чтобы процитировать"`
     : '';
   const quoteCls = (!out && m.text) ? ' cmsg-quotable' : '';
-  return `<div class="${cls}${quoteCls}"${quoteAttrs}><div class="cmsg-bubble">${inner}${meta}</div></div>`;
+  return `<div class="${cls}${quoteCls}"${quoteAttrs}><div class="cmsg-bubble${bubbleExtra}">${inner}${meta}</div></div>`;
 }
 
 async function sendConvoMessage() {

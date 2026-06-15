@@ -352,6 +352,27 @@ export async function loadOrderMessages(orderId, customerTgId) {
   });
 }
 
+// Незавершённые исходящие из очереди outbox (бот ещё не обработал —
+// sent_at IS NULL). Нужно чтобы показать менеджеру «в очереди на отправку»
+// даже после перезагрузки страницы. context = { order_id } | { inquiry_id }.
+export async function loadPendingOutbox(context = {}) {
+  const params = {
+    select: 'id,text,attachment_url,created_at,inquiry_id,order_id',
+    sent_at: 'is.null',
+    order: 'created_at.asc',
+    limit: '100',
+  };
+  if (context.order_id != null) params.order_id = `eq.${context.order_id}`;
+  else if (context.inquiry_id != null) params.inquiry_id = `eq.${context.inquiry_id}`;
+  else return [];
+  try {
+    return await get('outbox', params);
+  } catch (e) {
+    console.warn('loadPendingOutbox failed:', e);
+    return [];
+  }
+}
+
 // Пометить входящие сообщения клиента прочитанными.
 export async function markRead(customerTgId) {
   try {
