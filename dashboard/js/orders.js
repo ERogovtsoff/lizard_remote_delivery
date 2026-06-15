@@ -850,6 +850,7 @@ function renderOrderDetail(id) {
           : `<button class="btn-take" id="takeOrderBtn">✋ Взять в работу</button>`}
         <span class="status-age" title="Время в текущем статусе">⏱ ${timeAgo(o.status_changed_at || o.updated_at)}</span>
         ${o.is_paid ? '<span class="paid-badge">💳 оплачен</span>' : ''}
+        ${cust?.bot_blocked ? '<span class="blocked-badge" title="Клиент заблокировал бота — сообщения не доставляются">🚫 бот заблокирован</span>' : ''}
         <div class="detail-icon-actions">
           <button class="icon-btn ${o.pinned ? 'icon-btn-on' : ''}" id="pinBtn" title="${o.pinned ? 'Открепить' : 'Закрепить вверху списка'}" aria-label="${o.pinned ? 'Открепить' : 'Закрепить'}">📌</button>
           <button class="icon-btn" id="remindBtn" title="Поставить напоминание" aria-label="Напомнить">⏰</button>
@@ -925,7 +926,7 @@ function renderOrderDetail(id) {
 
     <div class="convo-section">
       <div class="convo-messages" id="convoMessages"></div>
-      ${renderComposer(isOrderActive(o.status))}
+      ${renderComposer(isOrderActive(o.status), { blocked: !!cust?.bot_blocked, at: cust?.bot_blocked_at })}
     </div>
   `;
 
@@ -1296,6 +1297,7 @@ function renderInquiryDetail(id) {
               ? ''  /* кнопка «Взять в работу» уже есть выше — не дублируем */
               : `<button class="btn-take" id="takeInqBtn">✋ Взять в работу</button>`)}
         <span class="status-age" title="Время в текущем статусе">⏱ ${timeAgo(q.status_changed_at || q.updated_at)}</span>
+        ${cust?.bot_blocked ? '<span class="blocked-badge" title="Клиент заблокировал бота — сообщения не доставляются">🚫 бот заблокирован</span>' : ''}
         <div class="detail-icon-actions">
           <button class="icon-btn ${q.pinned ? 'icon-btn-on' : ''}" id="pinBtn" title="${q.pinned ? 'Открепить' : 'Закрепить вверху списка'}" aria-label="${q.pinned ? 'Открепить' : 'Закрепить'}">📌</button>
           <button class="icon-btn" id="remindBtn" title="Поставить напоминание" aria-label="Напомнить">⏰</button>
@@ -1343,7 +1345,7 @@ function renderInquiryDetail(id) {
 
     <div class="convo-section">
       <div class="convo-messages" id="convoMessages"></div>
-      ${renderComposer(isInquiryActive(q.status))}
+      ${renderComposer(isInquiryActive(q.status), { blocked: !!cust?.bot_blocked, at: cust?.bot_blocked_at })}
     </div>
   `;
 
@@ -1477,10 +1479,22 @@ let convoActive = false;
 let convoAttachment = null;  // { url, name } прикреплённый файл
 
 // Разметка композера (поле ввода внизу). disabled — если статус неактивный.
-function renderComposer(active) {
+function renderComposer(active, blockedInfo) {
   if (!active) {
     return `<div class="convo-locked">
       🔒 Переписка доступна только в активном статусе. Чтобы написать клиенту — верните заявку в работу.
+    </div>`;
+  }
+  // Клиент заблокировал бота — поле ввода блокируем, потому что сообщения
+  // всё равно не доставятся. Показываем понятное пояснение.
+  if (blockedInfo && blockedInfo.blocked) {
+    const since = blockedInfo.at
+      ? ` (с ${new Date(blockedInfo.at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })})`
+      : '';
+    return `<div class="convo-blocked">
+      🚫 <b>Клиент заблокировал бота</b>${since}.<br>
+      Сообщения отсюда <b>не будут доставлены</b>, пока клиент не разблокирует бота.
+      Если нужно срочно связаться — используйте другой канал (если есть контакт).
     </div>`;
   }
   return `

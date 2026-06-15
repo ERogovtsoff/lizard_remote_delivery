@@ -56,7 +56,9 @@ from aiogram.filters import CommandStart, CommandObject
 from aiogram.types import (
     Message,
     ReplyKeyboardRemove,
+    ChatMemberUpdated,
 )
+from aiogram.filters import ChatMemberUpdatedFilter, KICKED, MEMBER
 
 
 # ============================ КОНФИГ ============================
@@ -919,6 +921,35 @@ def _should_notify_message(customer_tg_id: int) -> bool:
     return True
 
 
+@router.my_chat_member(ChatMemberUpdatedFilter(member_status_changed=KICKED))
+async def on_bot_blocked(event: ChatMemberUpdated) -> None:
+    """Клиент заблокировал бота. Telegram присылает это событие в реальном времени.
+    Пишем в БД, чтобы дашборд показал менеджеру «клиент заблокировал бота»."""
+    user = event.from_user
+    if user is None or is_superadmin(user) or await is_manager(user):
+        return  # игнорируем менеджеров/суперадмина
+    try:
+        await supabase_patch("customers", {"tg_id": f"eq.{user.id}"},
+                             {"bot_blocked": True, "bot_blocked_at": now_iso()})
+        log.info("Клиент %s (@%s) заблокировал бота", user.id, user.username or "")
+    except Exception as e:
+        log.warning("on_bot_blocked: не удалось обновить customers: %s", e)
+
+
+@router.my_chat_member(ChatMemberUpdatedFilter(member_status_changed=MEMBER))
+async def on_bot_unblocked(event: ChatMemberUpdated) -> None:
+    """Клиент разблокировал бота (или впервые нажал Start). Снимаем флаг блокировки."""
+    user = event.from_user
+    if user is None or is_superadmin(user) or await is_manager(user):
+        return
+    try:
+        await supabase_patch("customers", {"tg_id": f"eq.{user.id}"},
+                             {"bot_blocked": False, "bot_blocked_at": now_iso()})
+        log.info("Клиент %s (@%s) разблокировал бота", user.id, user.username or "")
+    except Exception as e:
+        log.warning("on_bot_unblocked: не удалось обновить customers: %s", e)
+
+
 @router.message(F.text | F.photo | F.document | F.video | F.voice | F.video_note | F.audio | F.sticker)
 async def handle_client_message(message: Message, bot: Bot) -> None:
     """
@@ -1141,6 +1172,15 @@ async def process_outbox(bot: Bot) -> int:
                 await supabase_patch("outbox", {"id": f"eq.{outbox_id}"},
                                      {"sent_at": now_iso()})
 
+                # Успешная доставка — клиент НЕ заблокирован. Если был помечен
+                # заблокированным (а событие разблокировки пропустили) — снимаем.
+                try:
+                    await supabase_patch("customers",
+                                         {"tg_id": f"eq.{customer_tg_id}", "bot_blocked": "eq.true"},
+                                         {"bot_blocked": False, "bot_blocked_at": now_iso()})
+                except Exception:
+                    pass
+
                 # Активность по открытым обращениям клиента
                 try:
                     await supabase_patch(
@@ -1157,6 +1197,12 @@ async def process_outbox(bot: Bot) -> int:
                 # менеджер видел: «я это писал, но клиент не получил».
                 await supabase_patch("outbox", {"id": f"eq.{outbox_id}"},
                                      {"sent_at": now_iso(), "error": "blocked"})
+                # Резервный механизм (если my_chat_member пропустили) — помечаем клиента.
+                try:
+                    await supabase_patch("customers", {"tg_id": f"eq.{customer_tg_id}"},
+                                         {"bot_blocked": True, "bot_blocked_at": now_iso()})
+                except Exception:
+                    pass
                 await save_message(
                     customer_tg_id, "out",
                     text=text, sender="manager",
@@ -1440,7 +1486,10 @@ async def main() -> None:
     asyncio.create_task(health_alert_worker(bot))
 
     try:
-        await dp.start_polling(bot)
+        # allowed_updates явно включает my_chat_member (блокировка/разблокировка бота).
+        # resolve_used_update_types() сам определит все типы по зарегистрированным
+        # хендлерам, включая наши my_chat_member.
+        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
         # Закрываем переиспользуемый HTTP-клиент
         global _http_client

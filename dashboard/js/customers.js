@@ -202,6 +202,7 @@ function renderCustomerCard(c) {
   if (agg.ordersActive > 0) tags.push(`<span class="cust-tag active">🔥 в работе: ${agg.ordersActive}</span>`);
   if (hasUnread) tags.push('<span class="cust-tag unread">✉️ ждёт ответа</span>');
   if (c.cart_reminder_sent_at) tags.push('<span class="cust-tag cart">🛒 брошенная корзина</span>');
+  if (c.bot_blocked) tags.push('<span class="cust-tag blocked">🚫 бот заблокирован</span>');
 
   const tgLink = c.username
     ? `<a class="cust-tg-link" href="https://t.me/${escapeHtml(c.username)}" target="_blank" rel="noopener" title="Открыть чат в Telegram">@${escapeHtml(c.username)} →</a>`

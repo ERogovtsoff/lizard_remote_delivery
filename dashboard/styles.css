@@ -3537,3 +3537,30 @@ img.di-thumb:hover { box-shadow: 0 0 0 2px var(--accent); }
 [data-theme="dark"] .cmsg-bubble.cmsg-failed { background: #3a1818; border-color: #6a2020; }
 .cmsg-undelivered { color: var(--danger); font-weight: 600; }
 [data-theme="dark"] .cmsg-undelivered { color: #ff9088; }
+
+/* Блокировка бота клиентом */
+.convo-blocked {
+  padding: 14px 18px;
+  background: #fef2f2;
+  border-top: 1px solid var(--danger);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.convo-blocked b { color: var(--danger); }
+[data-theme="dark"] .convo-blocked { background: #2a1818; border-color: #6a2020; }
+
+.blocked-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  background: #fee2e2;
+  color: #b91c1c;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+[data-theme="dark"] .blocked-badge { background: #4a1818; color: #ff9088; }
+
+.cust-tag.blocked { background: #fee2e2; color: #b91c1c; }
+[data-theme="dark"] .cust-tag.blocked { background: #4a1818; color: #ff9088; }
