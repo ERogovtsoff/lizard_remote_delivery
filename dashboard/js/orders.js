@@ -1274,7 +1274,6 @@ function renderInquiryDetail(id) {
       <div class="detail-quickstatus">
         ${q.status === 'new' ? `
           <div class="inq-actions-new">
-            <button class="btn-primary btn-take-inq" id="takeInqBtnNew">✋ Взять в работу</button>
             <button class="btn-primary btn-create-order" id="inqCreateOrder">➕ Создать заказ</button>
           </div>
         ` : `
@@ -1285,10 +1284,10 @@ function renderInquiryDetail(id) {
       ${q.status === 'new' && !localStorage.getItem('lizard_inq_hint_dismissed') ? `
       <div class="inq-new-hint" id="inqNewHint">
         <button class="inq-hint-close" id="inqHintClose" aria-label="Скрыть подсказку" title="Скрыть подсказку (больше не показывать)">✕</button>
-        <b>Что делать с новым обращением:</b><br>
-        <b>«✋ Взять в работу»</b> — если нужно сначала обсудить детали с клиентом. Обращение закрепится за вами, статус сменится на «В работе».<br>
-        <b>«➕ Создать заказ»</b> — если уже знаете что нужно клиенту. Обращение закроется автоматически, диалог продолжится в заказе.<br>
-        <i>Не закрывайте обращения «как есть» — заказы оформляйте именно отсюда, чтобы сохранить связь обращение↔заказ в журнале и аналитике.</i>
+        <b>Как работать с обращением:</b><br>
+        Просто <b>ответьте клиенту</b> в чате — обращение автоматически возьмётся в работу и закрепится за вами.<br>
+        Если уже знаете что нужно клиенту — нажмите <b>«➕ Создать заказ»</b>, обращение закроется, диалог продолжится в заказе.<br>
+        <i>Не закрывайте обращения «как есть» — заказы оформляйте именно отсюда, чтобы сохранить связь обращение↔заказ в аналитике.</i>
       </div>` : ''}
       <div class="detail-info-row">
         ${q.assigned_to
@@ -1885,6 +1884,12 @@ async function sendConvoMessage() {
   renderConvoFromCache();   // дорисовать pending
 
   try {
+    // АВТО-ВЗЯТИЕ В РАБОТУ: если обращение/заказ ещё «Новое» — перед отправкой
+    // первого ответа автоматически назначаем менеджера и переводим в «В работе».
+    // Менеджеру не нужно нажимать отдельную кнопку — сам факт ответа клиенту
+    // означает что он взял это в работу.
+    await maybeAutoTakeInWork();
+
     await api.sendReply(convoCustomerId, text, managerUsername, convoContext, attachmentUrl);
     // Помечаем «в очереди у бота» — ждём подтверждения из БД
     const p = pendingOut.find(x => x.tempId === tempId);
@@ -1900,6 +1905,42 @@ async function sendConvoMessage() {
     renderConvoFromCache();
   } finally {
     input.focus();
+  }
+}
+
+// Если текущее открытое обращение/заказ в статусе «Новое» — назначаем
+// текущего менеджера и переводим в «В работе». Вызывается при первом ответе.
+async function maybeAutoTakeInWork() {
+  if (!convoContext) return;
+  try {
+    if (convoContext.inquiry_id != null) {
+      const q = inquiries.find(x => String(x.id) === String(convoContext.inquiry_id));
+      if (q && q.status === 'new') {
+        await api.assignManager({ inquiry_id: q.id }, managerUsername);
+        // Без автосообщения клиенту (clientMsg=null) — менеджер сам пишет
+        await api.setInquiryStatus(q.id, 'in_progress', null, q.customer_tg_id, managerUsername, 'new');
+        q.status = 'in_progress';
+        q.assigned_to = managerUsername;
+        showToast('✋ Обращение взято в работу');
+        renderInquiryDetail(q.id);
+        renderOrdersList();
+      }
+    } else if (convoContext.order_id != null) {
+      const o = orders.find(x => String(x.id) === String(convoContext.order_id));
+      if (o && o.status === 'new') {
+        await api.assignManager({ order_id: o.id }, managerUsername);
+        await api.setOrderStatus(o.id, 'in_progress', null, o.customer_tg_id, managerUsername, 'new');
+        o.status = 'in_progress';
+        o.assigned_to = managerUsername;
+        o.status_changed_at = new Date().toISOString();
+        showToast('✋ Заказ взят в работу');
+        renderOrderDetail(o.id);
+        renderOrdersList();
+      }
+    }
+  } catch (e) {
+    // Не блокируем отправку сообщения, если авто-перевод не удался — просто логируем
+    console.warn('maybeAutoTakeInWork failed:', e);
   }
 }
 
